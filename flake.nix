@@ -201,7 +201,7 @@
         then {
           nixOS = nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
-            specialArgs = {inherit unstable;};
+            specialArgs = {inherit self unstable;};
             modules = [
               sharedModule
               disko.nixosModules.disko
