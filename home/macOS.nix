@@ -14,20 +14,20 @@ in {
 
   home.packages = filterAvailable [
     # Languages & runtimes (macOS specific)
-    pkgs.luarocks
-    pkgs.pipenv
-    pkgs.poetry
+    unstable.luarocks
+    unstable.pipenv
+    unstable.poetry
 
     # Language servers (macOS specific)
     # texlab moved to home/base.nix (cross-platform)
 
     # VCS / GitOps
-    pkgs.glab
-    pkgs.gitlab-runner
+    unstable.glab
+    unstable.gitlab-runner
 
     # Text / docs
-    pkgs.gnugrep
-    pkgs.gnused
+    unstable.gnugrep
+    unstable.gnused
 
     # Default-app management (sets UTI/MIME handlers via LaunchServices)
     unstable.duti
@@ -53,7 +53,7 @@ in {
     HOMEBREW_NO_ENV_HINTS = "1";
 
     ARCHFLAGS = "-arch ${
-      if pkgs.stdenv.hostPlatform.isAarch64
+      if unstable.stdenv.hostPlatform.isAarch64
       then "arm64"
       else "x86_64"
     }";
@@ -154,8 +154,23 @@ in {
   };
 
   #  Ghostty terminal emulator config
+  #
+  # ghostty is installed via the Homebrew cask (config/Brewfile), not
+  # via Nix: pkgs.ghostty is marked broken on Darwin.  Setting
+  # package = null prevents the Home Manager module from adding the
+  # broken derivation to home.packages while still wiring up shell
+  # integration and XDG config-file management.
 
-  home.file.".config/ghostty/config".text =
+  programs.ghostty = {
+    enable = true;
+    package = null; # installed via Homebrew cask; pkgs.ghostty is broken on Darwin
+    enableZshIntegration = true;
+    # settings deliberately unset: the module writes nothing to
+    # xdg.configFile."ghostty/config" when settings = {}, so our manual
+    # entry below is the sole writer and there is no attribute conflict.
+  };
+
+  xdg.configFile."ghostty/config".text =
     (lib.fileContents ../config/ghostty/config)
     + "\n# Platform\nfont-size = 22\nshell-integration = detect\n";
 
@@ -174,7 +189,7 @@ in {
 
   home.activation.finderFavorites = lib.hm.dag.entryAfter ["homeLayout" "homeLayoutMacOS"] ''
     MYSIDES_BIN="${
-      if pkgs.stdenv.hostPlatform.isAarch64
+      if unstable.stdenv.hostPlatform.isAarch64
       then "/opt/homebrew/bin/mysides"
       else "/usr/local/bin/mysides"
     }"

@@ -12,8 +12,8 @@
     name = "Gemma 4 26B";
   }
   {
-    model = "qwen3-coder-next:q4_K_M";
-    name = "Qwen 3 Coder Next Q4_K_M";
+    model = "qwen3.5:35b";
+    name = "Qwen 3.5 35B";
   }
   {
     model = "qwen3.5:0.8b";

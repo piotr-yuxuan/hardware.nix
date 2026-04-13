@@ -1,0 +1,424 @@
+#+title: Local LLM inference on Framework 16 AMD 7040
+#+author: piotr-yuxuan
+
+Decision record and technical notes for running large language models
+locally on the Framework 16 laptop (AMD Ryzen 7 7840HS, Radeon 780M
+iGPU, 64 GiB DDR5).  Covers the hardware constraints, the tools
+evaluated, backend choices, model selection, and the final
+architecture.
+
+* Hardware profile
+
+| Component | Spec                                                |
+|-----------+-----------------------------------------------------|
+| CPU       | AMD Ryzen 7 7840HS (Zen 4, 8C/16T, AVX-512 as 2x AVX2) |
+| iGPU      | AMD Radeon 780M (RDNA 3, =gfx1103=, 12 CUs)       |
+| VRAM      | None (iGPU shares system RAM, ~50-70 GB/s bandwidth) |
+| RAM       | 64 GiB DDR5                                         |
+| Storage   | 1 TB NVMe (~230 GiB free)                           |
+
+The Radeon 780M is an integrated GPU.  It has no dedicated VRAM;
+every byte it uses comes from the same DDR5 pool as the CPU.  Memory
+bandwidth is roughly 50-70 GB/s, far below the 400+ GB/s of discrete
+cards with GDDR6/HBM.  This shapes every decision below.
+
+* Inference servers evaluated
+
+** vLLM
+
+[[https://vllm.ai/][vLLM]] is a high-throughput LLM serving engine designed for data
+centre GPUs (NVIDIA A100/H100, AMD Instinct MI250/MI300X).
+
+Findings:
+
+- *NVIDIA CUDA*: not applicable, no NVIDIA GPU present.
+- *Intel XPU*: not applicable, no Intel discrete GPU.
+- *AMD ROCm*: the Radeon 780M is =gfx1103=, which is not in vLLM's
+  supported GPU list.  vLLM supports gfx1100/1101/1150/1151 for
+  consumer AMD.  The iGPU's shared memory bandwidth is also far below
+  what vLLM expects.
+- *CPU (x86)*: technically supported with AVX2, but vLLM's CPU backend
+  is slow, does not support GGUF models, and targets data centre
+  workloads.
+
+*Verdict*: not suitable for this hardware.  On a consumer laptop,
+Ollama (llama.cpp) outperforms vLLM CPU by a significant margin.
+
+** Ollama (llama.cpp)
+
+[[https://ollama.com/][Ollama]] wraps [[https://github.com/ggml-org/llama.cpp][llama.cpp]] in a user-friendly CLI and HTTP API.  It
+handles model management, quantisation, and exposes an
+OpenAI-compatible endpoint on =localhost:11434=.
+
+Strengths:
+
+- Simple model management (=ollama pull=, =ollama run=).
+- GGUF quantised models (Q4_K_M, Q5_K_M, Q8_0) fit large models in
+  limited RAM.
+- Already packaged in nixpkgs with ROCm/Vulkan options.
+- Integrates with Open WebUI and opencode out of the box.
+
+Limitations:
+
+- Does not expose speculative decoding ([[https://github.com/ollama/ollama/issues/5800][ollama#5800]], still open).
+- Does not expose KV cache quantisation, Vulkan backend selection, or
+  fine-grained GPU layer control.
+- ROCm acceleration on the 780M is unreliable (see the backend
+  section below).
+
+*Verdict*: the pragmatic default.  Use Ollama for day-to-day model
+management and as the primary opencode provider.  For maximum
+throughput, run llama-server alongside it.
+
+** llama-server (llama.cpp standalone)
+
+The =llama-server= binary from llama.cpp provides a raw
+OpenAI-compatible HTTP server with access to every llama.cpp feature:
+
+- Speculative decoding (=--model-draft=, =--draft=).
+- Vulkan backend (=-DGGML_VULKAN=ON= at build time).
+- KV cache quantisation (=--cache-type-k q8_0 --cache-type-v q8_0=).
+- Flash attention (=--flash-attn=).
+- Full GPU layer offload control (=--gpu-layers=, =--gpu-layers-draft=).
+- UMA detection for iGPUs (unified memory architecture).
+
+*Verdict*: the best option for maximum throughput on this hardware.
+Runs as a systemd service alongside Ollama, reusing its GGUF blobs.
+Implemented in =hosts/nixOS.nix=.
+
+** Other tools considered
+
+*** TabbyAPI (ExLlamaV2/V3)
+
+NVIDIA-only.  Requires CUDA.  Not suitable.
+
+*** koboldcpp
+
+A llama.cpp fork with a built-in web UI.  Viable but less appropriate
+for a headless systemd service.  Its feature set overlaps with
+llama-server, and it adds UI complexity that Open WebUI already
+provides.
+
+*** ZenDNN
+
+AMD's Zen CPU optimisation library for llama.cpp.  Experimental at
+the time of evaluation.  Not packaged in nixpkgs.
+
+* GPU backend: Vulkan vs ROCm
+
+This was the most critical technical decision.  Both Vulkan and
+ROCm/HIP are GPU compute backends that llama.cpp supports.  On the
+Radeon 780M (=gfx1103=), only one of them actually works.
+
+** What they are
+
+*Vulkan* is a cross-platform graphics and compute API managed by the
+Khronos Group.  For GPU compute in llama.cpp it uses compute shaders
+(GLSL/SPIR-V) dispatched through the standard Vulkan API.  On AMD
+GPUs under Linux the driver is Mesa RADV (open source, ships with
+Mesa).  Vulkan treats the GPU as a generic compute device with no
+vendor lock-in.
+
+*ROCm/HIP* is AMD's proprietary GPU compute platform, the AMD
+equivalent of CUDA.  HIP is a C++ runtime API that mirrors CUDA
+almost 1:1.  Under the hood ROCm compiles HIP kernels through
+LLVM/AMDGPU and dispatches them via the HSA runtime.  It depends on
+a large stack: the =amdgpu= kernel driver, =rocBLAS= (backed by the
+Tensile code generator), =hipBLAS=, =rocWMMA=, and more.
+
+** ROCm does not work on gfx1103
+
+AMD's [[https://rocm.docs.amd.com/projects/install-on-linux/en/latest/reference/system-requirements.html][ROCm system requirements]] list the following consumer GPUs:
+
+| GPU                      | LLVM target     | Supported |
+|--------------------------+-----------------+-----------|
+| RX 7900 XTX/XT/GRE      | gfx1100         | Yes       |
+| RX 7800 XT / 7700 XT    | gfx1101         | Yes       |
+| RX 9070 XT / 9070 / 9060 | gfx1200/gfx1201 | Yes       |
+| *Radeon 780M (iGPU)*    | *gfx1103*       | *No*      |
+
+The Radeon/Ryzen ROCm page mentions APU support only for AI Max 300
+Series (Strix Halo, gfx1151).  The 7040 series (Phoenix, gfx1103) is
+absent.
+
+Consequences:
+
+1. *rocBLAS has no precompiled kernels for gfx1103.*  The
+   =TensileLibrary= ships targets for gfx1100/1101/1102 but not
+   gfx1103.  Any matrix multiplication call crashes.
+
+2. *Current llama.cpp builds crash on gfx1103 with HIP.*  Multiple
+   open issues document fatal failures:
+   - Flash Attention WMMA kernels: "no device code compatible with
+     HIP arch 1300" ([[https://github.com/ggml-org/llama.cpp/issues/20839][#20839]]).
+   - SCALE kernel failure on warmup ([[https://github.com/ggml-org/llama.cpp/issues/21603][#21603]]).
+   - The =HSA_OVERRIDE_GFX_VERSION=11.0.0= workaround itself causes
+     MMQ kernel failures.
+
+3. *MMVQ performance regression.*  A commit tuning MMVQ for discrete
+   RDNA 3 cards dropped generation speed on the iGPU from 18 to
+   13 t/s ([[https://github.com/ggml-org/llama.cpp/issues/20647][#20647]]).  The iGPU's lower CU count means tuning
+   constants for discrete GPUs hurt it.
+
+4. *Even when ROCm worked (older builds), the delta was small.*  One
+   user measured ~24 seconds warmed-up generation with ROCm vs ~26
+   seconds with Vulkan on the 780M for Llama 3 8B Q5_K_M at 12K
+   context.  Roughly 8 % faster, not enough to justify the
+   instability.
+
+** Vulkan works out of the box
+
+On NixOS, Vulkan through Mesa RADV requires zero extra configuration.
+The =hardware.graphics.enable= option (already set by
+nixos-hardware's =framework-16-7040-amd= profile) provides Vulkan
+1.3+ support for RDNA 3 including gfx1103.
+
+Community benchmarks from the [[https://github.com/ggml-org/llama.cpp/discussions/10879][Vulkan performance scoreboard]]
+(Discussion #10879, 700+ comments, actively maintained):
+
+| Chip                    | pp512 t/s | tg128 t/s |
+|-------------------------+-----------+-----------|
+| AMD Ryzen AI 9 300      |    479.07 |     22.41 |
+| AMD Ryzen 8000          |    266.19 |     20.53 |
+| AMD Ryzen 7000 (ours)   |    281.62 |     19.91 |
+| AMD Ryzen Z1 Extreme    |    199.36 |     18.77 |
+
+(Llama 2 7B Q4_0, all layers offloaded to iGPU.)
+
+The Vulkan backend:
+
+- Correctly detects UMA (unified memory architecture) on the 780M.
+- Supports flash attention on gfx1103.
+- Supports KHR_coopmat (cooperative matrix, detected automatically on
+  RDNA 3).
+- Has no known fatal bugs for gfx1103.
+
+One runtime optimisation: set =RADV_PERFTEST=nogttspill= to fix a
+Mesa performance issue on AMD iGPUs.
+
+** NixOS setup complexity compared
+
+*Vulkan*: zero lines of extra config.  Mesa RADV is already present.
+llama-cpp is built with =vulkanSupport = true= (a single override).
+
+*ROCm*: would require custom nixpkgs overlays, possible rocBLAS
+recompilation with gfx1103 Tensile targets (extremely slow), a forest
+of environment variables (=HIPCXX=, =HIP_PATH=,
+=HIP_DEVICE_LIB_PATH=, =HSA_OVERRIDE_GFX_VERSION=), and NixOS is not
+a supported ROCm distribution.
+
+** Decision
+
+Use Vulkan.  ROCm is broken on this GPU and infeasible to maintain on
+NixOS.
+
+* Model selection
+
+** Memory budget
+
+With 64 GiB total RAM and roughly 10-14 GiB for the OS and services,
+about 50 GiB is available for LLM inference.  This must cover model
+weights, the draft model (for speculative decoding), the KV cache,
+and runtime overhead.
+
+Rule of thumb at Q4_K_M quantisation: approximately 0.6 GB per
+billion parameters for dense models.  MoE models store all expert
+weights even though only a fraction activates per token, so the full
+parameter count determines memory use.
+
+** Speculative decoding constraints
+
+Speculative decoding in llama.cpp pairs a large "main" model with a
+small "draft" model.  The draft model generates candidate tokens
+cheaply; the main model verifies them in a single batch pass.  This
+amortises the cost of the slow main model over multiple tokens.
+
+Requirements:
+
+- The draft model must share the *same vocabulary/tokenizer* as the
+  main model (same model family).  llama.cpp checks vocab type,
+  BOS/EOS tokens, and token text at startup.
+- The *architectures* can differ (e.g. MoE main + dense draft).
+  llama.cpp only validates vocabulary, not architecture.
+- Both models must fit in memory simultaneously along with KV caches.
+
+Expected speedup on CPU/iGPU for structured code generation:
+*1.3x to 1.6x*.  The theoretical 2x from the llama.cpp speculative
+decoding PR was measured on Apple Silicon with Metal GPU
+acceleration.  CPU-dominant systems see smaller gains because batch
+verification parallelism is limited.
+
+** Ollama does not support speculative decoding
+
+[[https://github.com/ollama/ollama/issues/5800][ollama#5800]] is still an open feature request.  A PR was rejected due
+to backend rewrites.  To use speculative decoding you must run
+=llama-server= (or =llama-speculative=) directly, bypassing Ollama.
+opencode can still work if pointed at llama-server's
+OpenAI-compatible endpoint.
+
+** Models evaluated
+
+*** Qwen3.5 family
+
+All Qwen3.5 models use the "Gated Delta Networks combined with sparse
+Mixture-of-Experts" hybrid architecture and share the same tokenizer
+(=Qwen2Tokenizer=, 248,320 tokens).
+
+| Tag               | Arch       | Params | Q4_K_M size | Dense/MoE |
+|-------------------+------------+--------+-------------+-----------|
+| =qwen3.5:0.8b=   | qwen35     | 873M   | 1.0 GB      | Dense     |
+| =qwen3.5:2b=     | qwen35     | 2B     | 2.7 GB      | Dense     |
+| =qwen3.5:4b=     | qwen35     | 4B     | 3.4 GB      | Dense     |
+| =qwen3.5:9b=     | qwen35     | 9B     | 6.6 GB      | Dense     |
+| =qwen3.5:27b=    | qwen35     | 27B    | 17 GB       | Dense     |
+| =qwen3.5:35b=    | qwen35moe  | 36B    | 24 GB       | MoE       |
+| =qwen3.5:122b=   | qwen35moe  | 122B   | 81 GB       | MoE       |
+
+Speculative decoding across the family works because they share the
+same tokenizer despite differing architectures (=qwen35= vs
+=qwen35moe=).  Confirmed by reading llama.cpp's =speculative.cpp=
+source: it checks vocab type, BOS/EOS, and token text, but not
+architecture.
+
+*** Qwen3 family (previous generation)
+
+| Tag             | Params | Q4_K_M size |
+|-----------------+--------+-------------|
+| =qwen3:32b=    | 32B    | 20 GB       |
+| =qwen3:0.6b=   | 0.6B   | 0.5 GB      |
+
+Same tokenizer within the Qwen3 family (151,936 tokens), but
+*incompatible with Qwen3.5* (different tokenizer, different vocab
+size).
+
+*** Cross-family incompatibility
+
+=qwen3-coder-next= (Qwen3-Next family) and =qwen3.5:0.8b= (Qwen3.5
+family) have incompatible tokenizers.  They cannot be paired for
+speculative decoding.
+
+** Combinations that fit in 50 GiB
+
+| Main model     | Draft model    | Weight total | KV headroom |
+|----------------+----------------+--------------+-------------|
+| qwen3.5:27b   | qwen3.5:0.8b  | ~18 GB       | ~32 GB      |
+| qwen3.5:35b   | qwen3.5:0.8b  | ~25 GB       | ~25 GB      |
+| qwen3.5:35b   | qwen3.5:2b    | ~27 GB       | ~23 GB      |
+| qwen3:32b     | qwen3:0.6b    | ~20.5 GB     | ~29 GB      |
+
+KV cache sizing (rough, varies by architecture):
+
+- At FP16: ~2 MB per token of context.
+- At Q8_0 (=--cache-type-k q8_0 --cache-type-v q8_0=): roughly half.
+- 8K context at Q8_0: ~8 GB.
+- 16K context at Q8_0: ~16 GB.
+
+** Draft model size tradeoff
+
+| Draft size | Pros                          | Cons                              |
+|------------+-------------------------------+-----------------------------------|
+| 0.8b       | Very fast drafting per token   | Lower acceptance rate             |
+| 2b         | Higher acceptance rate         | Slower per draft token            |
+| 4b         | Best acceptance rate           | Noticeable memory and speed cost  |
+
+On CPU/iGPU-bound systems the sweet spot is usually the smallest
+model because CPU parallelism for batch verification is limited.
+
+** Chosen configuration
+
+- *Main model*: =qwen3.5:35b= (24 GB, MoE with 36B total params).
+- *Draft model*: =qwen3.5:0.8b= (1 GB, dense, same Qwen3.5
+  tokenizer).
+- *KV cache*: Q8_0, allowing roughly 12-16K context in the remaining
+  ~25 GB.
+- *GPU offload*: all layers (=--gpu-layers 99 --gpu-layers-draft 99=)
+  to the 780M via Vulkan.
+
+The MoE model activates only a fraction of its 36B parameters per
+token, making it faster per token than a dense 27B model.  The
+tradeoff is that the speculative decoding speedup is less pronounced
+with MoE (since per-token cost is already low), and it uses 7 GB more
+RAM than the dense 27B alternative.
+
+* Architecture as implemented
+
+Two inference servers run independently, both using models from
+Ollama's blob store:
+
+#+begin_example
+                   +-----------+
+                   |  opencode |
+                   +-----+-----+
+                   /models menu
+                  /             \
+         :11434/v1           :8081/v1
+    +--------+--------+ +--------+--------+
+    |     Ollama       | |  llama-server   |
+    |  (ROCm/OpenCL)   | |    (Vulkan)     |
+    |  single model    | | speculative dec |
+    +--------+--------+ +--------+--------+
+             |                   |
+             +----.ollama/models/blobs (shared GGUF files)
+#+end_example
+
+| Property               | Ollama                  | llama-server                    |
+|-------------------------+-------------------------+---------------------------------|
+| Port                    | 11434                   | 8081                            |
+| GPU backend             | ROCm (via NixOS module) | Vulkan (Mesa RADV)              |
+| Speculative decoding    | No (not supported)      | Yes (draft 16, p-min 0.75)      |
+| KV cache quantisation   | No                      | Yes (Q8_0)                      |
+| Flash attention         | Via Ollama defaults     | Yes (=--flash-attn=)            |
+| Model management        | =ollama pull/list/rm=   | Reuses Ollama blobs at runtime  |
+| Started at boot         | No                      | No                              |
+| systemd unit            | =ollama.service=        | =llama-server.service=          |
+
+Both services are installed but not started at boot (=wantedBy =
+lib.mkForce []=).  Start whichever you need:
+
+#+begin_src sh
+sudo systemctl start ollama        # simple, broad model support
+sudo systemctl start llama-server  # speculative decoding, Vulkan
+#+end_src
+
+opencode can target either via the =/models= menu.
+
+* File map
+
+| File                                  | Role                                          |
+|---------------------------------------+-----------------------------------------------|
+| =config/ollama-models.nix=            | Single source of truth for model list          |
+| =hosts/nixOS.nix= (Ollama block)    | =services.ollama= with ROCm, =loadModels=     |
+| =hosts/nixOS.nix= (llama-server)    | =systemd.services.llama-server= with Vulkan    |
+| =scripts/llama-server-resolve-model.sh= | Resolves Ollama tag to GGUF blob path       |
+| =scripts/llama-server-start.sh=       | ExecStart: resolve blobs, exec llama-server    |
+| =home/base.nix= (opencode)           | Two providers: Ollama (:11434) + llama-server (:8081) |
+| =docs/package-guide.org= (llama-cpp) | Usage reference for the llama-server service   |
+
+* First-time setup
+
+After =nixos-rebuild switch=:
+
+#+begin_src sh
+# 1. Pull the models (Ollama manages downloads)
+ollama pull qwen3.5:35b    # 24 GB
+ollama pull qwen3.5:0.8b   # already present
+
+# 2. Start llama-server
+sudo systemctl start llama-server
+
+# 3. Verify
+curl http://127.0.0.1:8081/v1/models
+
+# 4. In opencode, use /models to switch to llama-server provider
+#+end_src
+
+* References
+
+- llama.cpp Vulkan performance scoreboard: [[https://github.com/ggml-org/llama.cpp/discussions/10879][Discussion #10879]]
+- ROCm gfx1103 TensileLibrary missing: [[https://github.com/ggml-org/llama.cpp/issues/20839][llama.cpp #20839]]
+- ROCm SCALE kernel crash on gfx1103: [[https://github.com/ggml-org/llama.cpp/issues/21603][llama.cpp #21603]]
+- ROCm MMVQ regression on gfx1103: [[https://github.com/ggml-org/llama.cpp/issues/20647][llama.cpp #20647]]
+- Ollama speculative decoding request: [[https://github.com/ollama/ollama/issues/5800][ollama #5800]]
+- llama.cpp speculative decoding source: =examples/speculative/speculative.cpp=
+- AMD ROCm system requirements: [[https://rocm.docs.amd.com/projects/install-on-linux/en/latest/reference/system-requirements.html]]
+- nixpkgs llama-cpp package: =pkgs/by-name/ll/llama-cpp/package.nix= (=vulkanSupport ? false=)

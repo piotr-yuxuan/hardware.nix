@@ -148,7 +148,8 @@ in {
     unstable.hunspellDicts.pl_PL
     unstable.hunspellDicts.es_ES
     unstable.hunspellDicts.de_DE
-    (unstable.callPackage ../packages/hunspell-dict-la.nix {})
+    (unstable
+      .callPackage ../packages/hunspell-dict-la.nix {})
     unstable.aspell
     unstable.aspellDicts.en
     unstable.aspellDicts.fr
@@ -445,6 +446,9 @@ in {
   programs.opencode = {
     enable = true;
     settings = {
+      # https://opencode.ai/docs/providers/#ollama
+      # https://docs.ollama.com/integrations/opencode
+      "$schema" = "https://opencode.ai/config.json";
       provider = {
         ollama = {
           npm = "@ai-sdk/openai-compatible";
@@ -455,6 +459,14 @@ in {
               value = {name = "${m.name} (ollama)";};
             })
             ollamaModels);
+        };
+        llama-server = {
+          npm = "@ai-sdk/openai-compatible";
+          name = "llama-server (local, speculative decoding)";
+          options.baseURL = "http://localhost:8081/v1";
+          models = {
+            "qwen3.5:35b" = {name = "Qwen 3.5 35B (llama-server)";};
+          };
         };
       };
     };

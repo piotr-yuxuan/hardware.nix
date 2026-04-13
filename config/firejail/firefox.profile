@@ -3,6 +3,16 @@
 # private-bin is incompatible with NixOS (Nix store paths are not in
 # the locations firejail searches) so it must be disabled.
 ignore private-bin
+
+# private-etc mounts a tmpfs over /etc that is populated with copies of
+# the host files at sandbox startup.  When NetworkManager updates
+# /etc/resolv.conf on a WiFi network change, the copy inside the sandbox
+# becomes stale and Firefox loses DNS resolution while all other
+# applications (which read the live file) continue to work.  Disabling
+# private-etc lets Firefox see the host /etc directly so resolv.conf
+# updates are always visible.
+ignore private-etc
+
 ignore whitelist ${DOWNLOADS}
 whitelist ${HOME}/Downloads
 

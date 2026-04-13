@@ -17,6 +17,7 @@ using it right away.
   - [[python3][python3]]
   - [[nodejs][nodejs]]
   - [[rustup][rustup]]
+  - [[go][go]]
 - [[Clojure ecosystem][Clojure ecosystem]]
   - [[clojure (nixOS only)][clojure (nixOS only)]]
   - [[babashka][babashka]]
@@ -32,7 +33,6 @@ using it right away.
   - [[prettier][prettier]]
 - [[Testing][Testing]]
   - [[bats][bats]]
-- [[Search & navigation][Search & navigation]]
   - [[ripgrep][ripgrep]]
   - [[silver-searcher (ag)][silver-searcher (ag)]]
   - [[fzf][fzf]]
@@ -59,6 +59,8 @@ using it right away.
   - [[bmon][bmon]]
   - [[yt-dlp][yt-dlp]]
   - [[ffmpeg][ffmpeg]]
+  - [[graphviz][graphviz]]
+  - [[pandoc][pandoc]]
 - [[IaC / Cloud][IaC / Cloud]]
   - [[awscli2][awscli2]]
   - [[aws-vault][aws-vault]]
@@ -80,7 +82,7 @@ using it right away.
 - [[LaTeX][LaTeX]]
   - [[texliveFull][texliveFull]]
   - [[tectonic][tectonic]]
-  - [[texlab (macOS only)][texlab (macOS only)]]
+  - [[texlab][texlab]]
   - [[texstudio (nixOS only)][texstudio (nixOS only)]]
 - [[Music & audio][Music & audio]]
   - [[picard][picard]]
@@ -94,6 +96,7 @@ using it right away.
   - [[async-profiler][async-profiler]]
   - [[flamegraph][flamegraph]]
 - [[AI / ML][AI / ML]]
+  - [[llama-cpp][llama-cpp]]
   - [[ollama][ollama]]
   - [[openai-whisper][openai-whisper]]
   - [[opencode][opencode]]
@@ -104,6 +107,7 @@ using it right away.
 - [[Spell & grammar][Spell & grammar]]
   - [[hunspell][hunspell]]
   - [[aspell][aspell]]
+  - [[ispell][ispell]]
   - [[languagetool][languagetool]]
   - [[grammalecte (python3Packages)][grammalecte (python3Packages)]]
 - [[Encryption & security][Encryption & security]]
@@ -129,7 +133,6 @@ using it right away.
   - [[vscode][vscode]]
   - [[maestral / maestral-gui][maestral / maestral-gui]]
   - [[signal-desktop][signal-desktop]]
-  - [[xiphos / sword][xiphos / sword]]
   - [[mermaid-cli][mermaid-cli]]
   - [[difftastic][difftastic]]
   - [[dust / duf][dust / duf]]
@@ -137,6 +140,7 @@ using it right away.
   - [[bees (nixOS only)][bees (nixOS only)]]
   - [[bluez (Bluetooth)][bluez (Bluetooth)]]
   - [[USB-C monitor hotplug stabilisation][USB-C monitor hotplug stabilisation]]
+  - [[touchpad-watchdog (nixOS only)][touchpad-watchdog (nixOS only)]]
   - [[date-menu-formatter (nixOS only)][date-menu-formatter (nixOS only)]]
   - [[emoji-copy (nixOS only)][emoji-copy (nixOS only)]]
   - [[grand-theft-focus (nixOS only)][grand-theft-focus (nixOS only)]]
@@ -164,11 +168,8 @@ using it right away.
   - [[cdrtools][cdrtools]]
   - [[tesseract][tesseract]]
 - [[macOS only packages][macOS only packages]]
-  - [[go][go]]
   - [[glab][glab]]
   - [[gitlab-runner][gitlab-runner]]
-  - [[graphviz][graphviz]]
-  - [[pandoc][pandoc]]
   - [[ghostty (macOS only)][ghostty (macOS only)]]
   - [[duti (macOS only)][duti (macOS only)]]
   - [[mysides (macOS only)][mysides (macOS only)]]
@@ -228,6 +229,13 @@ Rust toolchain manager.  First run installs a default toolchain.
 #+begin_src sh
 rustup default stable          # install the stable toolchain
 cargo new hello && cd hello && cargo run
+#+end_src
+
+** go
+Go programming language.  Installed cross-platform via =home/base.nix=.
+#+begin_src sh
+go run main.go
+go build -o app .
 #+end_src
 
 * Clojure ecosystem
@@ -579,6 +587,23 @@ ffmpeg -i input.wav -codec:a libopus output.opus   # transcode audio
 ffmpeg -i video.mp4 -vn -acodec copy audio.m4a     # strip video, keep audio
 #+end_src
 
+** graphviz
+Graph visualisation (DOT language).  Installed cross-platform via
+=home/base.nix=.
+#+begin_src sh
+dot -Tpng graph.dot -o graph.png
+echo "digraph { A -> B -> C }" | dot -Tsvg > graph.svg
+#+end_src
+
+** pandoc
+Universal document converter.  Installed cross-platform via
+=home/base.nix= (=programs.pandoc.enable=).
+#+begin_src sh
+pandoc README.md -o README.pdf
+pandoc -f org -t docx notes.org -o notes.docx
+pandoc --list-input-formats
+#+end_src
+
 * IaC / Cloud
 
 ** awscli2
@@ -725,9 +750,10 @@ tectonic document.tex          # compile (fetches missing packages automatically
 tectonic -X build              # build a Tectonic.toml project
 #+end_src
 
-** texlab (macOS only)
+** texlab
 LaTeX language server.  Used by Eglot / VS Code for completion,
-diagnostics, and forward/inverse search.
+diagnostics, and forward/inverse search.  Installed cross-platform via
+=home/base.nix=.
 
 ** texstudio (nixOS only)
 LaTeX IDE with integrated PDF viewer, build system, and symbol tables.
@@ -802,6 +828,29 @@ perf script | stackcollapse-perf.pl | flamegraph.pl > flame.svg
 
 * AI / ML
 
+** llama-cpp
+llama.cpp HTTP server with Vulkan GPU acceleration and speculative
+decoding.  Built with =vulkanSupport = true= for the Radeon 780M
+iGPU (=hosts/nixOS.nix=).  Reuses GGUF model blobs downloaded by
+Ollama, so =ollama pull= is the only model management needed.  The
+service exposes an OpenAI-compatible API on port 8081, separate from
+Ollama on 11434.  The service is not started at boot.
+#+begin_src sh
+# Ensure models are downloaded first
+ollama pull qwen3.5:35b
+ollama pull qwen3.5:0.8b
+
+# NixOS (systemd service)
+sudo systemctl start llama-server   # start the server
+sudo systemctl stop llama-server    # stop the server
+systemctl status llama-server       # check whether it is running
+
+# Test the API
+curl http://127.0.0.1:8081/v1/models
+curl http://127.0.0.1:8081/v1/chat/completions \
+  -d '{"model":"qwen3.5:35b","messages":[{"role":"user","content":"Hello"}]}'
+#+end_src
+
 ** ollama
 Run LLMs locally. Installed as a cross-platform CLI package
 (=home/base.nix=). On NixOS the =services.ollama= module adds a
@@ -843,6 +892,8 @@ Browser-based chat interface for Ollama and OpenAI-compatible APIs.
 Installed as a cross-platform CLI package (=home/base.nix=). On NixOS
 the =services.open-webui= module adds a systemd service
 (=hosts/nixOS.nix=); the service is not started at boot.
+Authentication is disabled (=WEBUI_AUTH=false=) so the UI is
+accessible without login on localhost.
 #+begin_src sh
 # NixOS (systemd service)
 sudo systemctl start open-webui  # start the server
@@ -894,6 +945,14 @@ aspell check document.txt
 echo "testt" | aspell -a -d en
 #+end_src
 
+** ispell
+Classic interactive spell checker.  Installed cross-platform via
+=home/base.nix= (=unstable.ispell=).
+#+begin_src sh
+ispell document.txt                # interactive spell check
+echo "speling" | ispell -a         # pipe mode; * means correct
+#+end_src
+
 ** languagetool
 Grammar and style checker (EN, FR, PL, DE, ES, …).
 #+begin_src sh
@@ -941,6 +1000,24 @@ firejail --list                # show running sandboxed processes
 firejail --tree                # sandbox hierarchy
 firejail --debug code          # launch with debug logging
 #+end_src
+
+*** NixOS profile overrides
+
+The local overlay in =config/firejail/firefox.profile= suppresses two
+upstream directives that are incompatible with NixOS:
+
+- =ignore private-bin=: the upstream profile restricts the binaries
+  visible in the sandbox to a known list.  NixOS stores all binaries
+  under =/nix/store=, which is outside the locations firejail searches,
+  so the restriction breaks Firefox entirely.
+
+- =ignore private-etc=: the upstream profile mounts a tmpfs over =/etc=
+  populated with copies of the host files taken at sandbox startup.
+  When NetworkManager updates =/etc/resolv.conf= after a WiFi network
+  change, the stale copy inside the sandbox makes DNS resolution fail
+  and Firefox loses internet access while all other applications
+  continue to work.  Disabling this directive lets Firefox read the
+  live =/etc/resolv.conf= directly.
 
 ** auditd (nixOS only)
 Linux kernel audit daemon.  Logs execve calls, password file changes,
@@ -1116,14 +1193,6 @@ maestral ls /                  # list Dropbox root
 ** signal-desktop
 Encrypted messaging.
 
-** xiphos / sword
-Bible study application (=xiphos=) and the underlying text engine
-(=sword=).
-#+begin_src sh
-diatheke -b KJV -k "John 3:16"              # query a Bible module from CLI
-installmgr -sc                               # list remote SWORD repositories
-#+end_src
-
 ** mermaid-cli
 Render Mermaid diagrams to PNG/SVG (used by =ob-mermaid= in Emacs).
 #+begin_src sh
@@ -1193,6 +1262,22 @@ Levers:
 systemctl status usbc-monitor-stabilize              # watchdog running
 cat /sys/bus/pci/devices/0000:c3:00.3/power/control   # should be on
 cat /sys/bus/pci/devices/0000:c3:00.3/d3cold_allowed   # should be 0
+#+end_src
+
+** touchpad-watchdog (nixOS only)
+The PixArt PIXA3854 I2C HID touchpad on the Framework 16 AMD 7040
+sometimes enters a stuck state where the firmware sends only
+=MSC_TIMESTAMP= heartbeat events with no position data.  This happens
+both after suspend/resume and spontaneously during normal use.
+
+The watchdog service (=touchpad-watchdog=) samples raw evdev events
+every few seconds.  When it detects the stuck signature (timestamps
+flowing, no position data), it reloads the =i2c_hid_acpi= kernel
+module to reinitialise the firmware.  Configured in =hosts/nixOS.nix=,
+scripts in =scripts/touchpad_watchdog.py= and =scripts/touchpad-watchdog.zsh=.
+#+begin_src sh
+systemctl status touchpad-watchdog     # watchdog running
+journalctl -u touchpad-watchdog -f     # watch for recovery events
 #+end_src
 
 ** date-menu-formatter (nixOS only)
@@ -1470,13 +1555,6 @@ tesseract image.png output_text
 
 * macOS only packages
 
-** go
-Go programming language.
-#+begin_src sh
-go run main.go
-go build -o app .
-#+end_src
-
 ** glab
 GitLab CLI.
 #+begin_src sh
@@ -1489,21 +1567,6 @@ glab ci status
 Run CI/CD jobs locally.
 #+begin_src sh
 gitlab-runner exec docker test_job
-#+end_src
-
-** graphviz
-Graph visualisation (DOT language).
-#+begin_src sh
-dot -Tpng graph.dot -o graph.png
-echo "digraph { A -> B -> C }" | dot -Tsvg > graph.svg
-#+end_src
-
-** pandoc
-Universal document converter.
-#+begin_src sh
-pandoc README.md -o README.pdf
-pandoc -f org -t docx notes.org -o notes.docx
-pandoc --list-input-formats
 #+end_src
 
 ** ghostty (macOS only)

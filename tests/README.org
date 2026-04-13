@@ -1,0 +1,130 @@
+#+TITLE: Testing conventions
+#+AUTHOR: example
+#+STARTUP: overview
+
+* Overview
+
+This repository uses three test technologies:
+
+- *BATS* (Bash Automated Testing System) for shell activation scripts
+- *pytest* for Python scripts (=scripts/touchpad_watchdog.py= and others)
+- *NixOS VM tests* (=nixosTest= framework) for future integration tests
+  requiring a live NixOS system
+
+Use BATS when the code under test is a shell script; use pytest when it is
+Python; use NixOS VM tests only when the change requires a running NixOS
+system to validate (e.g. systemd service activation, kernel module loading).
+Do not introduce additional frameworks without a concrete justification
+grounded in a gap the existing frameworks cannot fill.
+
+* Running the suites
+
+** All BATS tests
+#+begin_src sh
+bats --tap tests/
+#+end_src
+
+** Linux-only BATS tests (nixOS)
+#+begin_src sh
+bats --tap tests/home-layout.bats tests/nixOS
+#+end_src
+
+** macOS-only BATS tests
+#+begin_src sh
+bats --tap tests/home-layout.bats tests/macOS
+#+end_src
+
+** Python tests
+#+begin_src sh
+pytest        # from the repository root; pytest.ini sets testpaths = tests
+pytest -v     # verbose (already the default via addopts in pytest.ini)
+#+end_src
+
+* Isolation contract
+
+Every BATS test suite MUST use =tests/helpers/isolation.bash=:
+
+#+begin_src bash
+load '../helpers/isolation'
+
+setup()    { isolation_setup; }
+teardown() { isolation_teardown; }
+#+end_src
+
+=isolation_setup= creates a fresh =tmpdir= and exports it.  =isolation_teardown=
+removes it safely using =${tmpdir:?}= so an empty variable aborts the shell
+rather than expanding to =rm -rf ""=.
+
+Every pytest test file MUST import fixtures from =tests/conftest.py= rather
+than duplicating setup logic.  The shared fixtures are:
+
+- =scripts_dir= (session-scoped): =Path= to =scripts/=.
+- =fake_sysfs=: builds a temporary =/sys/class/input= tree.
+- =fifo_factory=: creates named FIFOs in =tmp_path/fifos/=.
+- =write_to_fifo=: forks a child to write bytes to a FIFO; caller must =waitpid=.
+
+* Mock contract
+
+No test may invoke a real system binary against the host:
+
+| Binary      | Replacement |
+|-------------+-------------|
+| =brew=      | =make_fake_bin brew= or =make_fake_brew= |
+| =mysides=   | =make_fake_bin mysides= |
+| =osascript= | =make_fake_osascript= (from =nix_mocks.bash=) |
+| =nix=       | =make_fake_nix= (from =nix_mocks.bash=) |
+| =jq=        | =make_fake_jq= (from =nix_mocks.bash=) |
+| =modprobe=  | =make_fake_bin modprobe= |
+| =nft=       | =make_fake_bin nft= |
+
+Fake binaries created by =make_fake_bin= append each invocation as
+="NAME ARGS..."= to =$HOME/.fake-calls=.  Read the log with =fake_calls=.
+
+Polkit rules in =config/polkit/= are plain JavaScript files; their syntax
+can be checked with =js --check= or =node --check= if those tools are
+available, but the primary validation is =nix flake check= which exercises
+=builtins.readFile= evaluation.
+
+Ghostty configuration is managed via =xdg.configFile= on both platforms;
+tests should assert the XDG path, not the =.config/= literal path.
+
+On macOS, Ghostty is installed via the Homebrew cask (=config/Brewfile=) rather
+than as a Nix package, because =pkgs.ghostty= is marked broken on Darwin.  The
+Home Manager module is therefore called with =package = null= to avoid adding the
+broken derivation to =home.packages= while still enabling shell integration and
+=xdg.configFile= management.  Tests for the Ghostty config live in
+=tests/macOS/ghostty-config.bats= and verify the assembled text content rather
+than running Home Manager activation.
+
+* Dry-run contract
+
+Every script that honours =DRY_RUN_CMD= MUST have at least one test in
+dry-run mode that asserts no filesystem mutation occurred.
+
+Use =run_script_dry= from =isolation.bash= to run a script in dry-run mode:
+
+#+begin_src bash
+@test "dry run: no symlinks created" {
+    run run_script_dry "$SCRIPT"
+    [[ $status -eq 0 ]]
+    [[ ! -L $tmpdir/mov ]]
+}
+#+end_src
+
+* Adding a new BATS test file
+
+1. Create the file under =tests/= (or =tests/macOS/=, =tests/nixOS/=).
+2. Load =isolation.bash= with the correct relative path:
+   #+begin_src bash
+   load '../helpers/isolation'
+   #+end_src
+3. Call =isolation_setup= / =isolation_teardown= in =setup()= / =teardown()=.
+4. Use =run_script= or =run_script_dry= instead of hand-rolling the subshell.
+5. Use =make_fake_bin= for any binary that must not touch the real host.
+
+* Flake structure conventions
+
+=mkDarwinHost= accepts =extraHmModules= and =extraHostModules= for
+per-architecture layering; the zero-module call must evaluate identically to
+the pre-refactor positional call.  Verify this by comparing =nix flake show=
+output before and after.

@@ -7,13 +7,17 @@
 # Locate Homebrew at the well-known prefixes (ARM then Intel). During
 # activation the PATH is minimal, so we cannot rely on `command -v
 # brew`.
-if [[ -x /opt/homebrew/bin/brew ]]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-elif [[ -x /usr/local/bin/brew ]]; then
-    eval "$(/usr/local/bin/brew shellenv)"
+# HOMEBREW_ARM_PREFIX and HOMEBREW_X86_PREFIX are overridable for tests;
+# they default to the real well-known paths.
+_brew_arm="${HOMEBREW_ARM_PREFIX:-/opt/homebrew}/bin/brew"
+_brew_x86="${HOMEBREW_X86_PREFIX:-/usr/local}/bin/brew"
+if [[ -x $_brew_arm ]]; then
+	eval "$($_brew_arm shellenv)"
+elif [[ -x $_brew_x86 ]]; then
+	eval "$($_brew_x86 shellenv)"
 else
-    echo "brewBundle: skipping Brewfile activation because Homebrew is not found." >&2
-    return -1 2>/dev/null || exit -1
+	echo "brewBundle: skipping Brewfile activation because Homebrew is not found." >&2
+	return -1 2>/dev/null || exit -1
 fi
 
 # Refresh the Homebrew formula/cask index before installing.

@@ -217,7 +217,7 @@
               homeManagerModule
 
               ./hosts/nixOS.nix
-            ];
+          ];
           };
         }
         else {}
@@ -227,7 +227,11 @@
     # Usage: sudo darwin-rebuild switch --flake .#macOS-arm64 --impure
     #    or: sudo darwin-rebuild switch --flake .#macOS-x86_64 --impure
     darwinConfigurations = let
-      mkDarwinHost = system: let
+      mkDarwinHost = {
+        system,
+        extraHmModules ? [],
+        extraHostModules ? [],
+      }: let
         unstable-darwin = import nixpkgs-unstable {
           inherit system;
           config.allowUnfree = true;
@@ -270,16 +274,16 @@
                 };
 
                 users.${darwinUser} = {
-                  imports = [./home/base.nix ./home/macOS.nix];
+                  imports = [./home/base.nix ./home/macOS.nix] ++ extraHmModules;
                   home.stateVersion = "25.11";
                 };
               };
             }
-          ];
+          ] ++ extraHostModules;
         };
     in {
-      macOS-arm64 = mkDarwinHost "aarch64-darwin";
-      macOS-x86_64 = mkDarwinHost "x86_64-darwin";
+      macOS-arm64 = mkDarwinHost { system = "aarch64-darwin"; };
+      macOS-x86_64 = mkDarwinHost { system = "x86_64-darwin"; };
     };
   };
 }
