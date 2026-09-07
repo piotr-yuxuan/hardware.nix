@@ -19,6 +19,11 @@ grounded in a gap the existing frameworks cannot fill.
 
 * Running the suites
 
+Install Bash, Zsh, Git, and BATS before running the shell suites. Zsh is
+required by =getting-started-new-codebase.zsh= and the Python watchdog
+integration tests. The Linux CI jobs install it explicitly so those tests
+run even on a runner without Zsh preinstalled.
+
 ** All BATS tests
 #+begin_src sh
 bats --recursive --tap tests/

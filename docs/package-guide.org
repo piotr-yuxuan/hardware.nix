@@ -148,6 +148,7 @@ language and platform support. The unstable package set is pinned to
   - [[tmux][tmux]]
 - [[linux-laptop-only packages][linux-laptop-only packages]]
   - [[Emacs][Emacs]]
+  - [[PyCharm][PyCharm]]
   - [[firefox-devedition][firefox-devedition]]
   - [[vscode][vscode]]
   - [[maestral / maestral-gui][maestral / maestral-gui]]
@@ -1399,6 +1400,13 @@ linux-laptop uses the PGTK build so graphical frames connect directly to the
 GNOME Wayland session. This avoids keeping a second XWayland cursor
 and display-scaling path. Terminal Emacs remains available through the
 explicit =emacs -nw= fallback.
+
+** PyCharm
+Python IDE with code navigation, refactoring, and an integrated debugger.
+Linux uses =unstable.jetbrains.pycharm= in =home/linux-laptop.nix=.
+macOS uses the [[https://formulae.brew.sh/cask/pycharm][Homebrew cask]] in =config/Brewfile= for the native app.
+The pinned Nix package invokes a Cython build hook against a path absent
+from the macOS bundle, so it is excluded from the Darwin Nix closure.
 
 ** firefox-devedition
 Firefox with developer tools enabled by default.

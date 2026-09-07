@@ -42,6 +42,9 @@ cask "itraffic"
 cask "libreoffice"
 cask "macfuse"
 cask "notunes"
+# The pinned Nix PyCharm package uses an absent Cython path on Darwin.
+# Use the native app here; Linux keeps the Nix package.
+cask "pycharm"
 cask "rectangle"
 cask "slack@beta"
 cask "visual-studio-code" # macOS GUI install; extensions managed via vscode "..." below

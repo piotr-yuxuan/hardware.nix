@@ -47,6 +47,7 @@ in {
       # GUI apps
       unstable.emacs-pgtk
       unstable.libreoffice
+      unstable.jetbrains.pycharm # macOS uses the native Homebrew cask
       # Firefox, VSCode, Signal, VLC, and Transmission are
       # sandboxed via Firejail at the system level (hosts/linux-laptop.nix).
       # Do not install them here or the unwrapped binaries would shadow

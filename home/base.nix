@@ -142,8 +142,6 @@ in {
     unstable.terraform-docs
     unstable.terraform-landscape
 
-    unstable.jetbrains.pycharm
-
     # CloudFormation
     unstable.rain # CloudFormation deploy / diff CLI
 
