@@ -156,7 +156,7 @@ Already installed. Fast line counting by language.
 tokei . tokei src/ --sort code
 #+end_src
 
-** Tier 2: Podman containers (x86_64 only, nixOS)
+** Tier 2: Podman containers (x86_64 only, linux-laptop)
 
 *** Hercules
 

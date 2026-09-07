@@ -1,0 +1,2 @@
+{:java {:download-jdk-source? true
+        :decompile-jar-as-project? true}}

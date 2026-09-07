@@ -3,9 +3,17 @@
 tap "brunobonacci/lazy-tools"
 tap "jimeh/emacs-builds"
 
+# curl: forced by HOMEBREW_FORCE_BREWED_CURL=1 (home/macOS.nix), so
+# Homebrew uses its own keg-only curl for downloads. The interactive
+# curl on PATH still comes from Nix (unstable.curl). Declared here so
+# brew bundle cleanup does not flag it (and its libssh2 dep) as drift.
+brew "curl"
+brew "enchant" # Spellchecker wrapping library (also in nixpkgs; keep in sync)
 brew "jenv" # Consider pkgs.jdk + home-manager PATH management
 brew "lft" # kept because it's not found in nixpkgs 25.11
 brew "likec4" # vs-code extension dependency
+brew "meson" # Fast and user friendly build system
+brew "pkgconf" # pkg-config implementation (Homebrew name)
 brew "texlive" # Complex meta-package; brew's texlive handles macOS
                # font/path registration more reliably than nixpkgs
                # texlive.combined.*
@@ -26,6 +34,7 @@ cask "appcleaner"
 cask "firefox@developer-edition"
 cask "flux-app"
 cask "ghostty"
+cask "docker-desktop" # Docker Desktop (GUI + daemon)
 cask "google-chrome"
 cask "google-chrome@canary"
 cask "inkscape"
@@ -39,7 +48,20 @@ cask "visual-studio-code" # macOS GUI install; extensions managed via vscode "..
 cask "vlc"
 cask "goldenpassport" # Google Authenticator clone (TOTP)
 cask "localsend" # Cross-platform AirDrop alternative
-cask "mysides" # Manages Finder sidebar favourite locations
+cask "middleclick" # Three/four-finger trackpad tap → middle click
+cask "notion" # Notes/wiki
+cask "notion-calendar" # Calendar
+cask "gimp"
 
-vscode "github.copilot-chat"
+# AI coding tools — not packaged in nixpkgs, so the Homebrew cask is the
+# canonical install on macOS.
+cask "claude" # Claude desktop app
+cask "claude-code" # Claude Code CLI
+cask "codex" # OpenAI Codex CLI (depends on the ripgrep formula)
+cask "codex-app" # Codex desktop app
+
+# visualvm: installed via this cask on macOS (native VisualVM.app); on
+# linux-laptop (Linux) it comes from nixpkgs (home/linux-laptop.nix). Splitting the
+# two mechanisms avoids a duplicate Nix copy on macOS.
+cask "visualvm"
 vscode "likec4.likec4-vscode"

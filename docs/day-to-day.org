@@ -8,16 +8,16 @@ troubleshooting.
 
 #+begin_src zsh
 # NixOS
-sudo nixos-rebuild switch --flake .#nixOS
+sudo nixos-rebuild switch --flake .#linux-laptop
 
 # macOS
-darwin-rebuild switch --flake .#macOS-arm64
+darwin-rebuild switch --flake .#macOS
 #+end_src
 
 * Update flake inputs
 
 Each input URL in =flake.nix= pins a specific branch (e.g.
-=github:NixOS/nixpkgs/nixos-25.11=).  =nix flake update= advances
+=github:NixOS/nixpkgs/nixos-26.05=).  =nix flake update= advances
 every input to the latest commit on its current branch.  It will never
 jump to a new release: only security patches and bug fixes land on a
 stable branch.
@@ -58,11 +58,11 @@ input and rebuilding is enough:
 
 #+begin_src zsh
 nix flake update nixpkgs
-sudo nixos-rebuild switch --flake .#nixOS
+sudo nixos-rebuild switch --flake .#linux-laptop
 #+end_src
 
 =boot.kernelPackages = pkgs.linuxPackages_latest= in
-=hosts/nixOS.nix= tracks the latest stable kernel.  AMD microcode is
+=hosts/linux-laptop.nix= tracks the latest stable kernel.  AMD microcode is
 handled by =hardware-configuration.nix=
 (=hardware.cpu.amd.updateMicrocode=).
 
@@ -70,7 +70,7 @@ handled by =hardware-configuration.nix=
 
 fwupd manages UEFI and peripheral firmware independently of Nix
 channel updates.  After enabling =services.fwupd.enable = true= in
-=hosts/nixOS.nix= and rebuilding:
+=hosts/linux-laptop.nix= and rebuilding:
 
 #+begin_src zsh
 fwupdmgr refresh
@@ -106,9 +106,9 @@ Then lock, validate, and rebuild:
 nix flake update
 nix flake check
 # NixOS
-sudo nixos-rebuild switch --flake .#nixOS
+sudo nixos-rebuild switch --flake .#linux-laptop
 # macOS
-darwin-rebuild switch --flake .#macOS-arm64 --impure
+darwin-rebuild switch --flake .#macOS
 #+end_src
 
 *Do not change =stateVersion=.*  =system.stateVersion= and
@@ -128,7 +128,7 @@ days).  To trigger it manually:
 sudo nix-collect-garbage --delete-older-than 14d
 
 # Also remove old boot entries (NixOS only)
-sudo nixos-rebuild boot --flake .#nixOS
+sudo nixos-rebuild boot --flake .#linux-laptop
 #+end_src
 
 * List generations
@@ -191,11 +191,108 @@ brew reinstall --cask <name> # force-reinstall a broken cask
 
 #+begin_src zsh
 # NixOS: build only
-sudo nixos-rebuild build --flake .#nixOS
+sudo nixos-rebuild build --flake .#linux-laptop
 
 # macOS: build only
-darwin-rebuild build --flake .#macOS-arm64
+darwin-rebuild build --flake .#macOS
 #+end_src
+
+* Test a branch without activating it                              :macos:
+
+The typical situation: a worktree under =.worktree/nnn-slug= tracks a
+plan branch and you want to know whether it builds, whether =PATH=
+looks sane, and whether your binaries resolve to the expected store
+paths, all without =darwin-rebuild switch=ing into it.
+
+There is no =build-vm= equivalent on macOS, and no way to "activate
+just for this shell" the full closure (launchd agents, =defaults=,
+=/etc=, =/Library/Fonts/Nix Fonts/= etc. are global by nature).  The
+safe workflow is *build, inspect, diff, then probe in a sub-shell*.
+
+** 1. Build the closure without activating
+
+#+begin_src zsh
+cd .worktree/nnn-slug
+darwin-rebuild build --flake .#macOS
+#+end_src
+
+This populates =./result= with the full system closure.  Nothing under
+=/run/=, =/nix/var/nix/profiles/=, =/etc/=, =/Library/= or =launchd=
+is touched.
+
+For Home Manager alone (faster iteration when only =home/= changes):
+
+#+begin_src zsh
+home-manager build --flake .#macOS
+# closure ends up in ./result; user-facing tools live in ./result/home-path/bin
+#+end_src
+
+** 2. Diff against the live system
+
+#+begin_src zsh
+# Full system closure
+nix store diff-closures /run/current-system ./result
+
+# User profile (after `home-manager build`)
+nix store diff-closures \
+  ~/.local/state/nix/profiles/home-manager ./result
+#+end_src
+
+See "Reading the diff output" below for the syntax.
+
+** 3. Probe binaries from the built closure
+
+The system closure exposes its tools at =./result/sw/bin/=, the user
+closure at =./result/home-path/bin/=.  Two ways to exercise them:
+
+#+begin_src zsh
+# Run one specific binary out of the closure
+./result/sw/bin/zsh --version
+./result/home-path/bin/git --version
+
+# Or open a sub-shell with the built closure ahead of $PATH.
+# Exiting the sub-shell restores the previous environment exactly.
+PATH="$PWD/result/sw/bin:$PWD/result/home-path/bin:$PATH" zsh
+which git           # should resolve under /nix/store/...-home-path/...
+type emacs          # same
+exit
+#+end_src
+
+This is enough to catch most regressions: missing dependency, wrong
+version on =PATH=, broken wrapper script, mis-set =MANPATH= /
+=XDG_DATA_DIRS=, etc.  What it cannot catch are activation-time side
+effects (launchd agents, =defaults write=, font registration with
+Core Text, dock layout); those genuinely require a real =switch=.
+
+** 4. When you are confident, activate
+
+#+begin_src zsh
+darwin-rebuild switch --flake .#macOS
+#+end_src
+
+If anything goes wrong, =darwin-rebuild switch --rollback= reverts to
+the previous generation.
+
+** Testing a single custom derivation
+
+Sometimes you only want to check one package from =./packages/=, not
+the whole closure.  Use =nix build= / =nix shell= against the flake's
+pinned =nixpkgs-unstable=:
+
+#+begin_src zsh
+# Build only: produces ./result -> /nix/store/...-zapfino-...
+nix build --impure --expr \
+  '(builtins.getFlake (toString ./.)).inputs.nixpkgs-unstable.legacyPackages.${builtins.currentSystem}.callPackage ./packages/zapfino.nix {}'
+
+# Or open a sub-shell with the package on PATH
+nix shell --impure --expr \
+  '(builtins.getFlake (toString ./.)).inputs.nixpkgs-unstable.legacyPackages.${builtins.currentSystem}.callPackage ./packages/zapfino.nix {}'
+#+end_src
+
+=--impure= is required because the expression reads files from the
+working directory.  =builtins.getFlake= reuses the same lockfile that
+=darwin-rebuild= would, so the result matches what a real switch
+would install.
 
 * Diff before switching
 
@@ -222,7 +319,7 @@ quickest way to audit what a rebuild will change before committing to
 * Test in a VM (NixOS only)
 
 #+begin_src zsh
-nixos-rebuild build-vm --flake .#nixOS
+nixos-rebuild build-vm --flake .#linux-laptop
 ./result/bin/run-*-vm
 #+end_src
 
@@ -266,7 +363,7 @@ echo 'experimental-features = nix-command flakes' >> ~/.config/nix/nix.conf
 Rebuild and reboot:
 
 #+begin_src zsh
-sudo nixos-rebuild boot --flake .#nixOS && sudo reboot
+sudo nixos-rebuild boot --flake .#linux-laptop && sudo reboot
 #+end_src
 
 *** How the keyboard layout reaches the initrd
@@ -324,7 +421,7 @@ password file and rebuild:
 #+begin_src zsh
 echo "new-password" | mkpasswd -m sha-512 -s \
   | sudo tee /etc/secrets/example-password > /dev/null
-sudo nixos-rebuild switch --flake .#nixOS
+sudo nixos-rebuild switch --flake .#linux-laptop
 #+end_src
 
 * Fonts not showing up

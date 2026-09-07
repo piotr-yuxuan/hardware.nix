@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -16,12 +19,22 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: cachix/install-nix-action@51f3067b56fe8ae331890c77d4e454f6d60615ff
-        with:
-          extra_nix_config: |
-            extra-platforms = aarch64-darwin
       - uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39
-      - name: nix flake check (no build)
-        run: nix flake check --no-build
+      - name: Scan for secrets
+        run: nix shell --inputs-from . nixpkgs-unstable#gitleaks -c gitleaks dir . --redact --no-banner
+      - name: Evaluate the Linux system
+        run: nix flake check --no-write-lock-file
+      - name: Evaluate the Apple Silicon system and Home Manager generation
+        run: |
+          nix eval --raw '.#darwinConfigurations.macOS.system.drvPath'
+          nix eval --raw '.#darwinConfigurations.macOS.config.home-manager.users.example.home.activationPackage.drvPath'
+      - name: Check Nix and shell sources
+        run: |
+          nix shell --inputs-from . nixpkgs-unstable#statix nixpkgs-unstable#deadnix nixpkgs-unstable#shellcheck -c bash -euo pipefail -c '
+            statix check
+            deadnix --fail
+            find scripts -name "*.sh" -print0 | xargs -0 shellcheck
+          '
 
   check-brewfile:
     runs-on: macos-latest
@@ -69,16 +82,10 @@ jobs:
           purge-prefixes: nix-macos-
           purge-created: 0
           purge-primary-key: never
-      - name: Build macOS-arm64
-        run: nix build --impure '.#darwinConfigurations.macOS-arm64.system'
-      - name: Dry-activate (validate activation scripts)
-        if: always()
-        run: |
-          if [[ -L ./result ]]; then
-            ./result/activate --dry-run 2>&1 || true
-          else
-            echo "Skipped: no build result available"
-          fi
+      - name: Verify the runner architecture
+        run: test "$(uname -m)" = arm64
+      - name: Build the Apple Silicon system without activation
+        run: nix build --no-write-lock-file '.#darwinConfigurations.macOS.system'
 
   test-shellscripts:
     runs-on: macos-latest
@@ -96,7 +103,7 @@ jobs:
       - name: Install bats-core (Linux)
         run: sudo apt-get install -y bats
       - name: Run tests (Linux)
-        run: bats --tap tests/home-layout.bats tests/nixOS
+        run: bats --tap tests/home-layout.bats tests/getting-started-new-codebase.bats tests/linux-laptop
 
   test-python:
     runs-on: ubuntu-latest
@@ -108,4 +115,4 @@ jobs:
       - name: Install pytest
         run: pip install pytest
       - name: Run Python tests
-        run: pytest tests/test_touchpad_watchdog.py -v
+        run: pytest -v

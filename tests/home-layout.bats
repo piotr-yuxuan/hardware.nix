@@ -35,7 +35,7 @@ live() {
     TEST_HOME="$tmpdir" TEST_SCRIPT="$SCRIPT" bash -c '
         export HOME=$TEST_HOME
         DRY_RUN_CMD=
-        source $TEST_SCRIPT
+        source "$TEST_SCRIPT"
     '
 }
 
@@ -160,7 +160,7 @@ live() {
     run env TEST_HOME="$tmpdir" TEST_SCRIPT="$SCRIPT" bash -c '
         export HOME=$TEST_HOME
         DRY_RUN_CMD=echo
-        source $TEST_SCRIPT
+        source "$TEST_SCRIPT"
     '
     [[ $status -eq 0 ]]
     [[ ! -d $tmpdir/bin ]]
@@ -172,7 +172,7 @@ live() {
     run env TEST_HOME="$tmpdir" TEST_SCRIPT="$SCRIPT" bash -c '
         export HOME=$TEST_HOME
         DRY_RUN_CMD=echo
-        source $TEST_SCRIPT
+        source "$TEST_SCRIPT"
     '
     [[ $output == *"mkdir"* ]]
 }
@@ -181,7 +181,7 @@ live() {
     run env TEST_HOME="$tmpdir" TEST_SCRIPT="$SCRIPT" bash -c '
         export HOME=$TEST_HOME
         DRY_RUN_CMD=echo
-        source $TEST_SCRIPT
+        source "$TEST_SCRIPT"
     '
     [[ $output == *"ln -s"* ]]
 }

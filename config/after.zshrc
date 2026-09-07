@@ -25,13 +25,6 @@ zstyle ':completion:*' cache-path "$HOME/.zcompcache"
 [[ "$TERM_PROGRAM" == 'vscode' ]] && \
   command -v code &>/dev/null && . "$(code --locate-shell-integration-path zsh)"
 
-# eat shell integration
-[[ -n "$EAT_SHELL_INTEGRATION_DIR" ]] &&
-    source "$EAT_SHELL_INTEGRATION_DIR/zsh"
-
-# Align erase character to DEL so eat's delete key works.
-[[ -n "$EAT_SHELL_INTEGRATION_DIR" ]] && stty erase '^?'
-
 # OSC 133 prompt annotations (mistty)
 autoload -Uz add-zsh-hook
 _emt_precmd()  { printf '\e]133;A\e\\'; }
@@ -42,8 +35,8 @@ add-zsh-hook preexec _emt_preexec
 add-zsh-hook chpwd   _emt_chpwd
 _emt_chpwd  # fire once at startup for initial directory tracking
 
-# VISUAL: reuse Emacs frame inside eat/mistty
-if [[ -n "$MISTTY" || -n "$EAT_SHELL_INTEGRATION_DIR" ]]; then
+# VISUAL: reuse Emacs frame inside mistty
+if [[ -n "$MISTTY" ]]; then
     export VISUAL='emacsclient --reuse-frame'
 else
     export VISUAL='emacsclient --create-frame'
@@ -54,10 +47,6 @@ fi
 autoload -Uz edit-command-line
 zle -N edit-command-line
 bindkey '^X^E' edit-command-line
-
-# Disable autosuggestions inside eat: ghost text clashes with eat's rendering.
-# Keep them in mistty (shell renders natively), Gnome Console, and Ghostty.
-[[ -n "$EAT_SHELL_INTEGRATION_DIR" ]] && ZSH_AUTOSUGGEST_STRATEGY=()
 
 # Login greeting (once per boot)
 if [[ -t 1 && ! -f "$HOME/.hushlogin" ]]; then

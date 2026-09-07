@@ -28,7 +28,11 @@ Temporary Items
 .#*
 *.elc
 /auto-save-list
-.dir-locals-2.el
+.dir-locals-*.el
+.org-id-locations
+tramp
+eshell/history
+eshell/lastdir
 
 # -----------------------------------------------------------------------------
 # JVM / Java / Kotlin / Scala
@@ -84,7 +88,7 @@ Cargo.lock
 vendor/
 
 # -----------------------------------------------------------------------------
-# Node / JavaScript
+# Node / JavaScript / TypeScript
 # -----------------------------------------------------------------------------
 node_modules/
 npm-debug.log*
@@ -95,6 +99,11 @@ yarn-error.log*
 .yarn/cache
 .yarn/unplugged
 .parcel-cache
+*.js.map
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+.next/
+.nuxt/
 
 # -----------------------------------------------------------------------------
 # Terraform / OpenTofu
@@ -135,9 +144,37 @@ result
 result-*
 
 # -----------------------------------------------------------------------------
-# Vim / Neovim (belt-and-suspenders)
+# LaTeX
 # -----------------------------------------------------------------------------
-*.swp
-*.swo
-*~
-.netrwhist
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.synctex(busy)
+*.toc
+*.nav
+*.snm
+*.vrb
+*.idx
+*.ilg
+*.ind
+*.glg
+*.glo
+*.gls
+*.ist
+*.acn
+*.acr
+*.alg
+*.xdy
+*.bak*
+*.maf
+*.mtc*
+*.stc*

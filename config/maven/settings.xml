@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~/.m2/settings.xml provisioned by hardware.nix.
+
+  The download-sources profile makes Maven (and the Clojure CLI when
+  invoked via `clojure -X:deps mvn-pom; mvn dependency:sources`)
+  always resolve *-sources.jar files alongside compiled artefacts.
+  clojure-lsp reads those source jars directly through M-. on Java
+  interop forms, so navigation lands on the .java source instead of
+  the CFR-decompiled fallback under ~/.cache/clojure-lsp/java/decompiled/.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <profiles>
+    <profile>
+      <id>download-sources</id>
+      <properties>
+        <downloadSources>true</downloadSources>
+      </properties>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>download-sources</activeProfile>
+  </activeProfiles>
+</settings>

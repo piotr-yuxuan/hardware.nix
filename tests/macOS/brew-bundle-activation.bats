@@ -3,12 +3,12 @@
 # shellcheck disable=SC2154  # tmpdir is set by isolation_setup before any test body runs
 #
 # The script runs `brew bundle` during Home Manager activation on macOS.
-# It discovers Homebrew at /opt/homebrew (ARM) then /usr/local (Intel).
+# It discovers Homebrew at /opt/homebrew.
 #
 # Isolation strategy:
-# - HOMEBREW_ARM_PREFIX and HOMEBREW_X86_PREFIX env vars override the
-#   hardcoded discovery paths, pointing them into $tmpdir so a fake brew
-#   binary is found without root access and without macOS being required.
+# - HOMEBREW_PREFIX env var overrides the hardcoded discovery path,
+#   pointing it into $tmpdir so a fake brew binary is found without root
+#   access and without macOS being required.
 # - The fake brew records every invocation in $HOME/.fake-calls and emits
 #   valid shellenv output so the PATH setup inside the script succeeds.
 # - BREWFILE is set to a known path inside $tmpdir.
@@ -32,14 +32,16 @@ teardown() { isolation_teardown; }
 # Helpers
 # ---------------------------------------------------------------------------
 
-# make_fake_brew <prefix_dir> [brew_update_exit_code]
+# make_fake_brew <prefix_dir> [brew_update_exit_code] [brew_bundle_install_exit_code] [brew_bundle_cleanup_exit_code]
 # Creates a fake brew binary at <prefix_dir>/bin/brew.
 # Its shellenv subcommand adds <prefix_dir>/bin to PATH so the same fake
 # is found after the script calls eval "$(brew shellenv)".
-# If brew_update_exit_code is non-zero, brew update exits with that code.
+# Exit codes default to 0.
 make_fake_brew() {
     local prefix="$1"
     local update_exit="${2:-0}"
+    local bundle_install_exit="${3:-0}"
+    local bundle_cleanup_exit="${4:-0}"
     mkdir -p "$prefix/bin"
     {
         printf '#!/bin/sh\n'
@@ -48,6 +50,10 @@ make_fake_brew() {
         printf '    printf '"'"'export PATH="%s/bin:$PATH"\n'"'"' "%s"\n' "$prefix" "$prefix"
         printf 'elif [ "$1" = "update" ]; then\n'
         printf '    exit %d\n' "$update_exit"
+        printf 'elif [ "$1" = "bundle" ] && [ "$2" = "install" ]; then\n'
+        printf '    exit %d\n' "$bundle_install_exit"
+        printf 'elif [ "$1" = "bundle" ] && [ "$2" = "cleanup" ]; then\n'
+        printf '    exit %d\n' "$bundle_cleanup_exit"
         printf 'fi\n'
     } > "$prefix/bin/brew"
     chmod +x "$prefix/bin/brew"
@@ -57,7 +63,7 @@ make_fake_brew() {
 # Sources the script in live mode in a zsh subshell.
 run_brew() {
     env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" "$@" zsh -c '
-        export HOME BREWFILE HOMEBREW_ARM_PREFIX HOMEBREW_X86_PREFIX
+        export HOME BREWFILE HOMEBREW_PREFIX
         source "$1"
     ' _ "$SCRIPT"
 }
@@ -66,7 +72,7 @@ run_brew() {
 # Sources the script in dry-run mode (DRY_RUN_CMD=echo).
 run_brew_dry() {
     env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" DRY_RUN_CMD=echo "$@" zsh -c '
-        export HOME BREWFILE DRY_RUN_CMD HOMEBREW_ARM_PREFIX HOMEBREW_X86_PREFIX
+        export HOME BREWFILE DRY_RUN_CMD HOMEBREW_PREFIX
         source "$1"
     ' _ "$SCRIPT"
 }
@@ -75,52 +81,34 @@ run_brew_dry() {
 # a. No brew at either well-known path
 # ---------------------------------------------------------------------------
 
-@test "exits non-zero when Homebrew is not found at either path" {
+@test "exits 0 when Homebrew is not found (non-fatal)" {
     run env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" \
-        HOMEBREW_ARM_PREFIX="$tmpdir/no-arm" \
-        HOMEBREW_X86_PREFIX="$tmpdir/no-x86" \
+        HOMEBREW_PREFIX="$tmpdir/no-brew" \
         zsh -c '
-            export HOME BREWFILE HOMEBREW_ARM_PREFIX HOMEBREW_X86_PREFIX
+            export HOME BREWFILE HOMEBREW_PREFIX
             source "$1"
         ' _ "$SCRIPT"
-    [[ $status -ne 0 ]]
+    [[ $status -eq 0 ]]
 }
 
 @test "prints 'Homebrew is not found' to stderr when no brew is available" {
     run env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" \
-        HOMEBREW_ARM_PREFIX="$tmpdir/no-arm" \
-        HOMEBREW_X86_PREFIX="$tmpdir/no-x86" \
+        HOMEBREW_PREFIX="$tmpdir/no-brew" \
         zsh -c '
-            export HOME BREWFILE HOMEBREW_ARM_PREFIX HOMEBREW_X86_PREFIX
+            export HOME BREWFILE HOMEBREW_PREFIX
             source "$1" 2>&1
         ' _ "$SCRIPT"
     [[ $output == *"Homebrew is not found"* ]]
 }
 
 # ---------------------------------------------------------------------------
-# b. brew found at /opt/homebrew (ARM prefix)
+# b. brew found at /opt/homebrew
 # ---------------------------------------------------------------------------
 
-@test "exits 0 when brew is found at the ARM prefix" {
-    make_fake_brew "$tmpdir/arm-brew"
-    run run_brew HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-                 HOMEBREW_X86_PREFIX="$tmpdir/no-x86"
+@test "exits 0 when brew is found at the Homebrew prefix" {
+    make_fake_brew "$tmpdir/brew"
+    run run_brew HOMEBREW_PREFIX="$tmpdir/brew"
     [[ $status -eq 0 ]]
-}
-
-@test "ARM prefix is tried before the Intel prefix" {
-    make_fake_brew "$tmpdir/arm-brew"
-    make_fake_brew "$tmpdir/x86-brew"
-    run_brew HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-             HOMEBREW_X86_PREFIX="$tmpdir/x86-brew"
-    # Only the ARM brew should have been called.
-    [[ $(fake_calls) == *"$tmpdir/arm-brew"* ]] || \
-        [[ $(fake_calls) == *"brew shellenv"* ]]
-    # The x86 brew's shellenv should not have been called.
-    # (We check that only one "shellenv" entry is present.)
-    local shellenv_count
-    shellenv_count=$(fake_calls | grep -c "brew shellenv" || true)
-    [[ $shellenv_count -eq 1 ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -128,9 +116,8 @@ run_brew_dry() {
 # ---------------------------------------------------------------------------
 
 @test "live mode: brew update is called" {
-    make_fake_brew "$tmpdir/arm-brew"
-    run_brew HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-             HOMEBREW_X86_PREFIX="$tmpdir/no-x86"
+    make_fake_brew "$tmpdir/brew"
+    run_brew HOMEBREW_PREFIX="$tmpdir/brew"
     [[ $(fake_calls) == *"brew update"* ]]
 }
 
@@ -138,22 +125,36 @@ run_brew_dry() {
 # d. Live mode: brew bundle install is called with the correct --file
 # ---------------------------------------------------------------------------
 
-@test "live mode: brew bundle install is called with the correct Brewfile path" {
-    make_fake_brew "$tmpdir/arm-brew"
-    run_brew HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-             HOMEBREW_X86_PREFIX="$tmpdir/no-x86"
+@test "live mode: brew bundle install is called with --upgrade (no --greedy: unsupported here)" {
+    make_fake_brew "$tmpdir/brew"
+    run_brew HOMEBREW_PREFIX="$tmpdir/brew"
     [[ $(fake_calls) == *"brew bundle install --file $tmpdir/Brewfile --upgrade"* ]]
+    # `brew bundle install` does not accept --greedy; ensure we did not regress.
+    [[ $(fake_calls) != *"brew bundle install --file $tmpdir/Brewfile --upgrade --greedy"* ]]
+}
+
+@test "live mode: brew upgrade --greedy is called separately for auto-updating casks" {
+    make_fake_brew "$tmpdir/brew"
+    run_brew HOMEBREW_PREFIX="$tmpdir/brew"
+    [[ $(fake_calls) == *"brew upgrade --greedy"* ]]
 }
 
 # ---------------------------------------------------------------------------
-# e. Live mode: brew bundle cleanup is called
+# e. Live mode: drift detection runs brew bundle cleanup in read-only mode
 # ---------------------------------------------------------------------------
 
-@test "live mode: brew bundle cleanup is called with the correct Brewfile path" {
-    make_fake_brew "$tmpdir/arm-brew"
-    run_brew HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-             HOMEBREW_X86_PREFIX="$tmpdir/no-x86"
+@test "live mode: drift detection runs brew bundle cleanup (read-only, no --force)" {
+    make_fake_brew "$tmpdir/brew"
+    run_brew HOMEBREW_PREFIX="$tmpdir/brew"
     [[ $(fake_calls) == *"brew bundle cleanup --file $tmpdir/Brewfile"* ]]
+    # No --force unless the user accepts uninstall via the TTY prompt.
+    [[ $(fake_calls) != *"--force"* ]]
+}
+
+@test "live mode: brew cleanup --prune=all -v is called to tidy cache" {
+    make_fake_brew "$tmpdir/brew"
+    run_brew HOMEBREW_PREFIX="$tmpdir/brew"
+    [[ $(fake_calls) == *"brew cleanup --prune=all -v"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -161,9 +162,8 @@ run_brew_dry() {
 # ---------------------------------------------------------------------------
 
 @test "live mode: brew update appears before brew bundle install in the call log" {
-    make_fake_brew "$tmpdir/arm-brew"
-    run_brew HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-             HOMEBREW_X86_PREFIX="$tmpdir/no-x86"
+    make_fake_brew "$tmpdir/brew"
+    run_brew HOMEBREW_PREFIX="$tmpdir/brew"
     local calls; calls=$(fake_calls)
     local update_line install_line
     update_line=$(echo "$calls"  | grep -n "brew update"          | head -1 | cut -d: -f1)
@@ -177,35 +177,31 @@ run_brew_dry() {
 # ---------------------------------------------------------------------------
 
 @test "dry-run mode: exits 0" {
-    make_fake_brew "$tmpdir/arm-brew"
+    make_fake_brew "$tmpdir/brew"
     run env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" DRY_RUN_CMD=echo \
-        HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-        HOMEBREW_X86_PREFIX="$tmpdir/no-x86" \
+        HOMEBREW_PREFIX="$tmpdir/brew" \
         zsh -c '
-            export HOME BREWFILE DRY_RUN_CMD HOMEBREW_ARM_PREFIX HOMEBREW_X86_PREFIX
+            export HOME BREWFILE DRY_RUN_CMD HOMEBREW_PREFIX
             source "$1"
         ' _ "$SCRIPT"
     [[ $status -eq 0 ]]
 }
 
 @test "dry-run mode: brew update and bundle commands are printed to stdout" {
-    make_fake_brew "$tmpdir/arm-brew"
+    make_fake_brew "$tmpdir/brew"
     run env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" DRY_RUN_CMD=echo \
-        HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-        HOMEBREW_X86_PREFIX="$tmpdir/no-x86" \
+        HOMEBREW_PREFIX="$tmpdir/brew" \
         zsh -c '
-            export HOME BREWFILE DRY_RUN_CMD HOMEBREW_ARM_PREFIX HOMEBREW_X86_PREFIX
+            export HOME BREWFILE DRY_RUN_CMD HOMEBREW_PREFIX
             source "$1"
         ' _ "$SCRIPT"
     [[ $output == *"brew update"* ]]
     [[ $output == *"brew bundle install"* ]]
-    [[ $output == *"brew bundle cleanup"* ]]
 }
 
 @test "dry-run mode: brew update and bundle are NOT recorded in fake_calls" {
-    make_fake_brew "$tmpdir/arm-brew"
-    run_brew_dry HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-                 HOMEBREW_X86_PREFIX="$tmpdir/no-x86"
+    make_fake_brew "$tmpdir/brew"
+    run_brew_dry HOMEBREW_PREFIX="$tmpdir/brew"
     # shellenv IS called (discovery step), but update/bundle are only echoed.
     [[ $(fake_calls) != *"brew update"* ]]
     [[ $(fake_calls) != *"brew bundle install"* ]]
@@ -213,21 +209,36 @@ run_brew_dry() {
 }
 
 # ---------------------------------------------------------------------------
-# h. brew update failure: script continues (no set -e; failure is intentionally
-#    non-fatal to allow partial operation when the network is unavailable)
+# h. brew update failure: script continues (non-fatal to allow partial
+#    operation when the network is unavailable)
 # ---------------------------------------------------------------------------
 
 @test "brew update failure: script continues and exits 0" {
     # The script has no set -e; a failed brew update does not abort execution.
-    make_fake_brew "$tmpdir/arm-brew" 1
-    run run_brew HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-                 HOMEBREW_X86_PREFIX="$tmpdir/no-x86"
+    make_fake_brew "$tmpdir/brew" 1
+    run run_brew HOMEBREW_PREFIX="$tmpdir/brew"
     [[ $status -eq 0 ]]
 }
 
 @test "brew update failure: brew bundle install is still called" {
-    make_fake_brew "$tmpdir/arm-brew" 1
-    run_brew HOMEBREW_ARM_PREFIX="$tmpdir/arm-brew" \
-             HOMEBREW_X86_PREFIX="$tmpdir/no-x86"
+    make_fake_brew "$tmpdir/brew" 1
+    run_brew HOMEBREW_PREFIX="$tmpdir/brew"
     [[ $(fake_calls) == *"brew bundle install"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# i. brew bundle install failure: script exits non-zero (do not silently
+#    succeed when Brewfile entries fail to install)
+# ---------------------------------------------------------------------------
+
+@test "brew bundle install failure: exits 0 (non-fatal)" {
+    make_fake_brew "$tmpdir/brew" 0 1
+    run run_brew HOMEBREW_PREFIX="$tmpdir/brew"
+    [[ $status -eq 0 ]]
+}
+
+@test "brew bundle install failure: cleanup is not called" {
+    make_fake_brew "$tmpdir/brew" 0 1
+    run run_brew HOMEBREW_PREFIX="$tmpdir/brew"
+    [[ $(fake_calls) != *"brew bundle cleanup"* ]]
 }

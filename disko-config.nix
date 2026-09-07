@@ -29,7 +29,7 @@
               };
               content = {
                 type = "lvm_pv";
-                vg = "vg-nixOS";
+                vg = "vg-linux-laptop";
               };
             };
           };
@@ -37,7 +37,7 @@
       };
     };
 
-    lvm_vg."vg-nixOS" = {
+    lvm_vg."vg-linux-laptop" = {
       type = "lvm_vg";
       lvs = {
         lv-swap = {

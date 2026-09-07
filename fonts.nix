@@ -9,15 +9,16 @@
   unstable.nerd-fonts.iosevka-term
   unstable.nerd-fonts.fira-code
   unstable.nerd-fonts.inconsolata
+  unstable.font-awesome_7
+  unstable.libertine
 
   # Serif / historical / ligature-rich
   unstable.junicode # medieval/historical, rich OpenType features
   unstable.libertinus # fork of Linux Libertine, extensive ligatures
   unstable.eb-garamond # Garamond revival, old-style ligatures & alternates
   unstable.cardo # scholarly serif, historic glyphs & diacritics
-  unstable.alegreya # dynamic serif with small-caps & ligatures
   unstable.sorts-mill-goudy # Goudy Old Style revival, f-ligatures
-  unstable.crimson-pro # elegant body serif, OpenType features
+  unstable.crimson-pro # elegant body serif, OpenType features. Also contains Alegreya-Black.
   unstable.gentium # SIL, covers Latin/Cyrillic/Greek with diacritics
 
   # Code fonts with ligatures

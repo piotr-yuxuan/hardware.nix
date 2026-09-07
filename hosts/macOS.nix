@@ -2,9 +2,8 @@
 #
 # Manages Nix, shells, security hardening, and macOS default preferences.
 #
-# Apply: darwin-rebuild switch --flake .#macOS-arm64 --impure  (or .#macOS-x86_64)
+# Apply: darwin-rebuild switch --flake .#macOS
 {
-  pkgs,
   lib,
   unstable,
   ...
@@ -24,23 +23,12 @@
       # substituters entry is ever added without a matching key here.
       trusted-public-keys = [
         "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-        "nix-wpe-webkit.cachix.org-1:ItCjHkz1Y5QcwqI9cTGNWHzcox4EqcXqKvOygxpwYHE="
       ];
       substituters = [
         "https://cache.nixos.org"
-        "https://nix-wpe-webkit.cachix.org"
       ];
-      # Scoped to the machine owner so future accounts cannot push
-      # arbitrary store paths bypassing signature verification.
-      trusted-users = let
-        user = builtins.getEnv "USER";
-      in
-        ["root"]
-        ++ (
-          if user != ""
-          then [user]
-          else []
-        );
+      # Only root may override the daemon trust settings.
+      trusted-users = ["root"];
     };
     gc = {
       automatic = false; # replaced by the nh-clean launchd agent below
@@ -50,7 +38,7 @@
   # nh: weekly garbage collection via a launchd user agent.
   # nix-darwin has no programs.nh module, so the periodic job is wired
   # manually.  Runs every Sunday at 03:00, keeping the last 5 generations
-  # and anything newer than 7 days (mirrors the nixOS policy exactly).
+  # and anything newer than 7 days (mirrors the linux-laptop policy exactly).
   # nh clean also removes gcroots, unlike plain nix-collect-garbage.
   launchd.user.agents.nh-clean = {
     serviceConfig = {
@@ -124,6 +112,11 @@
 
     # Enable subpixel font rendering on non-Apple displays.
     AppleFontSmoothing = 2;
+
+    # Automatically switch between Light and Dark appearance at
+    # sunrise/sunset. Requires Location Services enabled in System
+    # Settings > Privacy & Security > Location Services.
+    AppleInterfaceStyleSwitchesAutomatically = true;
   };
 
   # Trackpad
@@ -183,8 +176,8 @@
     disable-shadow = true; # cleaner window captures
   };
 
-  # Disable "Are you sure you want to open this application?" quarantine dialog.
-  system.defaults.LaunchServices.LSQuarantine = false;
+  # Preserve quarantine checks for downloaded applications.
+  system.defaults.LaunchServices.LSQuarantine = true;
 
   # Reduce entrypoints for Spaces.
   system.defaults.spaces.spans-displays = false;
@@ -220,6 +213,12 @@
       "Assistant Enabled" = false;
     };
 
+    # Mission Control / gestures
+    "com.apple.dock" = {
+      # Swipe down with four fingers to show only the current app's windows.
+      showAppExposeGestureEnabled = true;
+    };
+
     # Finder sidebar
     "com.apple.finder" = {
       ShowRecentTags = false;
@@ -239,11 +238,12 @@
       DSDontWriteUSBStores = true;
     };
 
-    # Disable desktop widgets (removes the Photos widget and all others).
-    # Disable Sequoia window tiling/snapping (conflicts with Rectangle).
+    # Show desktop widgets (but not in Stage Manager). Disable Sequoia
+    # window tiling/snapping (conflicts with Rectangle).
     "com.apple.WindowManager" = {
       EnableStandardClickToShowDesktop = false;
-      StandardHideWidgets = true;
+      StandardHideWidgets = false;
+      StageManagerHideWidgets = true;
       EnableWindowSnapping = false;
       EnableTiledWindowMargins = false;
     };
@@ -251,6 +251,15 @@
     # Rectangle: hide menu bar icon (icon is unnecessary; use keyboard shortcuts).
     "com.knollsoft.Rectangle" = {
       hideStatusItem = true;
+    };
+
+    # MiddleClick: synthesise a middle-click from a four-finger trackpad
+    # tap, so e.g. Firefox closes a tab when tapped. Four fingers, not
+    # three, because three-finger drag is enabled above
+    # (system.defaults.trackpad.TrackpadThreeFingerDrag) and would
+    # otherwise conflict.
+    "art.ginzburg.MiddleClick" = {
+      fingers = 4;
     };
 
     # Disable Tip notifications.
@@ -261,11 +270,14 @@
     # Suppress Spaces / Mission Control keyboard & trackpad triggers.
     "com.apple.symbolichotkeys" = {
       # 32/34 = Mission Control (Ctrl-Up / Ctrl-Down)
+      # 60/61 = Input sources (Ctrl-Space and Ctrl-Opt-Space by default)
       # 75/76 = Move left/right a Space (Ctrl-Left / Ctrl-Right)
       # 79/80 = Switch to Desktop 1 / 2
       AppleSymbolicHotKeys = {
         "32" = {enabled = false;};
         "34" = {enabled = false;};
+        "60" = {enabled = false;};
+        "61" = {enabled = false;};
         "75" = {enabled = false;};
         "76" = {enabled = false;};
         "79" = {enabled = false;};
@@ -341,14 +353,16 @@
     enable = true;
     enableStealthMode = true; # drop unsolicited ICMP
     allowSignedApp = false;
+    # Block inbound connections to non-essential apps, including app listeners
+    # exposed to the LAN. Set false if a legitimate inbound service requires it.
+    blockAllIncoming = true;
   };
 
   # Hostname
   # Do NOT set networking.hostName or networking.computerName.
 
   # Users
-  # The darwin user is declared in flake.nix (users.users.${darwinUser})
-  # so Home Manager can derive home.username and home.homeDirectory.
+  # The primary user is declared in flake.nix (example).
 
   # Fonts
   # nix-darwin copies these into /Library/Fonts/Nix Fonts/ so that

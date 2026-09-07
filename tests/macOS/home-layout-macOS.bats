@@ -9,7 +9,7 @@
 #   - setup() asserts tmpdir is non-empty before any test body runs.
 #   - teardown() uses ${tmpdir:?} so the shell aborts rm -rf instead of
 #     expanding to rm -rf "" if the variable were empty or unset.
-#   - All paths are passed to zsh subprocesses via exported environment
+#   - All paths are passed to Bash subprocesses via exported environment
 #     variables, never interpolated into the -c string, so a path that
 #     contains single quotes or other metacharacters cannot inject code.
 
@@ -42,7 +42,7 @@ live() {
         export HOME=$TEST_HOME
         export CHFLAGS_BIN
         DRY_RUN_CMD=
-        source $TEST_SCRIPT
+        source "$TEST_SCRIPT"
     '
 }
 
@@ -111,7 +111,7 @@ chflags_log() { cat "$tmpdir/.chflags-calls" 2>/dev/null || true; }
         export HOME=$TEST_HOME
         export CHFLAGS_BIN
         DRY_RUN_CMD=echo
-        source $TEST_SCRIPT
+        source "$TEST_SCRIPT"
     '
     [[ $status -eq 0 ]]
     [[ ! -L $tmpdir/mov ]]
@@ -123,7 +123,7 @@ chflags_log() { cat "$tmpdir/.chflags-calls" 2>/dev/null || true; }
         export HOME=$TEST_HOME
         export CHFLAGS_BIN
         DRY_RUN_CMD=echo
-        source $TEST_SCRIPT
+        source "$TEST_SCRIPT"
     '
     [[ $output == *"ln -s"*"Movies"*"mov"* ]]
 }
@@ -134,7 +134,7 @@ chflags_log() { cat "$tmpdir/.chflags-calls" 2>/dev/null || true; }
         export HOME=$TEST_HOME
         export CHFLAGS_BIN
         DRY_RUN_CMD=echo
-        source $TEST_SCRIPT
+        source "$TEST_SCRIPT"
     '
     [[ $output == *"chflags hidden"*"Desktop"* ]]
 }
@@ -145,7 +145,7 @@ chflags_log() { cat "$tmpdir/.chflags-calls" 2>/dev/null || true; }
         export HOME=$TEST_HOME
         export CHFLAGS_BIN
         DRY_RUN_CMD=echo
-        source $TEST_SCRIPT
+        source "$TEST_SCRIPT"
     '
     [[ -z $(chflags_log) ]]
 }

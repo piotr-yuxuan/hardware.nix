@@ -48,7 +48,7 @@ Disko reads =disko-config.nix= and creates:
 
 1. A 1 GB *ESP* partition (FAT32, mounted at =/boot=).
 2. A *LUKS-encrypted* partition spanning the rest of the NVMe.
-3. Inside LUKS, an *LVM volume group* (=vg-nixOS=) containing:
+3. Inside LUKS, an *LVM volume group* (=vg-linux-laptop=) containing:
    - =lv-swap= (72 GB): swap with resume support for hibernate.
    - =lv-btrfs= (remaining space): Btrfs with subvolumes for =/=,
      =/home/example=, =.cache=, and =/.snapshots=.
@@ -91,7 +91,7 @@ drift and ensures the password state is always reproducible.
 
 #+begin_src zsh
 cd /tmp/nixos
-sudo nixos-install --flake .#nixOS --root /mnt
+sudo nixos-install --flake .#linux-laptop --root /mnt
 #+end_src
 
 You will be asked to set the *root password*. The first build downloads

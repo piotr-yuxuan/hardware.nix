@@ -1,4 +1,5 @@
-# Firefox Developer Edition: sandboxed with ~/Downloads access.
+# Firefox Developer Edition: retain the upstream application-directory
+# whitelist and sensitive-state blacklists.
 #
 # private-bin is incompatible with NixOS (Nix store paths are not in
 # the locations firejail searches) so it must be disabled.
@@ -12,17 +13,6 @@ ignore private-bin
 # private-etc lets Firefox see the host /etc directly so resolv.conf
 # updates are always visible.
 ignore private-etc
-
-ignore whitelist ${DOWNLOADS}
-whitelist ${HOME}/Downloads
-
-# NixOS Firefox uses XDG paths (~/.config/mozilla, ~/.cache/mozilla)
-# rather than ~/.mozilla.  Whitelist them so profiles, logins, and
-# cache persist across sessions.
-noblacklist ${HOME}/.config/mozilla
-noblacklist ${HOME}/.cache/mozilla
-whitelist ${HOME}/.config/mozilla
-whitelist ${HOME}/.cache/mozilla
 
 # Portal access for desktop integration under Wayland.  The upstream
 # profile only allows org.freedesktop.portal.Documents.  Without this

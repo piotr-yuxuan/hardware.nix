@@ -6,7 +6,7 @@
 
 Hourly btrfs snapshots of =/home/example= (subvolume =@example=) into =/.snapshots/=.
 
-Managed by =btrbk= via the NixOS module in =hosts/nixOS.nix=.
+Managed by =btrbk= via the NixOS module in =hosts/linux-laptop.nix=.
 Config generated at =/etc/btrbk/home.conf=.
 
 Retention: 24 hourly · 5 daily · 3 weekly.

@@ -13,6 +13,10 @@ cursor-style-blink = false
 window-width = 80
 window-height = 25
 
+# Wayland: suppress the resize-dimensions tooltip (fires on spurious
+# resize events under Hyprland, blocks text selection).
+resize-overlay = never
+
 # Colours
 background = #263138
 foreground = #A1B0B8

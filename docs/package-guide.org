@@ -6,6 +6,11 @@ This guide covers every package in the fleet configuration.  For each
 tool you get: what it does, and a couple of examples so you can start
 using it right away.
 
+System foundations use stable nixpkgs.  User-facing Home Manager packages and
+program overrides use unstable nixpkgs so developer tools receive current
+language and platform support. The unstable package set is pinned to
+[[https://github.com/NixOS/nixpkgs/commit/c043004d1c6985732bcc1cbc5a9c9aecbbb4e0f0][c043004d1c69]] in =flake.lock=.
+
 * Table of contents :TOC_2_org:
 - [[Build toolchain][Build toolchain]]
   - [[gcc][gcc]]
@@ -13,28 +18,39 @@ using it right away.
   - [[pkg-config][pkg-config]]
   - [[enchant][enchant]]
   - [[meson / ninja][meson / ninja]]
+  - [[esbuild][esbuild]]
 - [[Languages & runtimes][Languages & runtimes]]
   - [[python3][python3]]
+  - [[uv][uv]]
   - [[nodejs][nodejs]]
-  - [[rustup][rustup]]
+  - [[bun][bun]]
+  - [[Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)][Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)]]
   - [[go][go]]
 - [[Clojure ecosystem][Clojure ecosystem]]
-  - [[clojure (nixOS only)][clojure (nixOS only)]]
+  - [[clojure][clojure]]
   - [[babashka][babashka]]
   - [[clj-kondo][clj-kondo]]
   - [[leiningen][leiningen]]
   - [[neil][neil]]
   - [[Practicalli deps.edn][Practicalli deps.edn]]
 - [[Language servers (Eglot)][Language servers (Eglot)]]
-- [[Formatters][Formatters]]
+  - [[tailwindcss-language-server][tailwindcss-language-server]]
+  - [[htmx-lsp][htmx-lsp]]
+  - [[docker-compose-language-service][docker-compose-language-service]]
+  - [[marksman][marksman]]
+  - [[vscode-langservers-extracted][vscode-langservers-extracted]]
+  - [[tofu-ls][tofu-ls]]
+- [[Formatters and linters][Formatters and linters]]
+  - [[alejandra / statix / deadnix][alejandra / statix / deadnix]]
   - [[black / isort / ruff][black / isort / ruff]]
+  - [[cljfmt][cljfmt]]
   - [[yamlfmt / yamllint][yamlfmt / yamllint]]
   - [[shfmt / shellcheck][shfmt / shellcheck]]
   - [[prettier][prettier]]
 - [[Testing][Testing]]
   - [[bats][bats]]
   - [[ripgrep][ripgrep]]
-  - [[silver-searcher (ag)][silver-searcher (ag)]]
+  - [[silver-searcher-ng (ag)][silver-searcher-ng (ag)]]
   - [[fzf][fzf]]
   - [[zoxide][zoxide]]
   - [[fd][fd]]
@@ -45,10 +61,12 @@ using it right away.
   - [[yq-go][yq-go]]
   - [[fx][fx]]
   - [[curl][curl]]
+  - [[socat][socat]]
   - [[tokei][tokei]]
   - [[onefetch][onefetch]]
   - [[scc][scc]]
   - [[git-sizer][git-sizer]]
+  - [[gh][gh]]
   - [[gource][gource]]
   - [[tree][tree]]
   - [[enca][enca]]
@@ -60,6 +78,9 @@ using it right away.
   - [[yt-dlp][yt-dlp]]
   - [[ffmpeg][ffmpeg]]
   - [[graphviz][graphviz]]
+  - [[mermaid-cli][mermaid-cli]]
+  - [[inxi][inxi]]
+  - [[lsof][lsof]]
   - [[pandoc][pandoc]]
 - [[IaC / Cloud][IaC / Cloud]]
   - [[awscli2][awscli2]]
@@ -68,8 +89,11 @@ using it right away.
   - [[ssm-session-manager-plugin][ssm-session-manager-plugin]]
   - [[sops][sops]]
   - [[age][age]]
-  - [[tenv][tenv]]
-  - [[terraform-ls / terraform-lsp][terraform-ls / terraform-lsp]]
+  - [[opentofu][opentofu]]
+  - [[terraform-mcp-server][terraform-mcp-server]]
+  - [[infracost][infracost]]
+  - [[tflint][tflint]]
+  - [[terraform-docs][terraform-docs]]
   - [[terraform-landscape][terraform-landscape]]
   - [[podman][podman]]
 - [[CloudFormation][CloudFormation]]
@@ -80,27 +104,23 @@ using it right away.
   - [[vegeta][vegeta]]
   - [[hey][hey]]
 - [[LaTeX][LaTeX]]
-  - [[texliveFull][texliveFull]]
-  - [[tectonic][tectonic]]
+  - [[TeX Live][TeX Live]]
   - [[texlab][texlab]]
-  - [[texstudio (nixOS only)][texstudio (nixOS only)]]
+  - [[engrave-faces][engrave-faces]]
 - [[Music & audio][Music & audio]]
   - [[picard][picard]]
-  - [[lilypond (nixOS only)][lilypond (nixOS only)]]
-  - [[frescobaldi (nixOS only)][frescobaldi (nixOS only)]]
-  - [[timidity (nixOS only)][timidity (nixOS only)]]
-  - [[audacity (nixOS only)][audacity (nixOS only)]]
-  - [[vlc (nixOS only)][vlc (nixOS only)]]
+  - [[lilypond (linux-laptop only)][lilypond (linux-laptop only)]]
+  - [[frescobaldi (linux-laptop only)][frescobaldi (linux-laptop only)]]
+  - [[timidity (linux-laptop only)][timidity (linux-laptop only)]]
+  - [[audacity (linux-laptop only)][audacity (linux-laptop only)]]
+  - [[vlc (linux-laptop only)][vlc (linux-laptop only)]]
 - [[Profiling & flamegraphs][Profiling & flamegraphs]]
   - [[visualvm][visualvm]]
   - [[async-profiler][async-profiler]]
   - [[flamegraph][flamegraph]]
-- [[AI / ML][AI / ML]]
-  - [[llama-cpp][llama-cpp]]
-  - [[ollama][ollama]]
-  - [[openai-whisper][openai-whisper]]
-  - [[opencode][opencode]]
-  - [[open-webui][open-webui]]
+- [[AI coding][AI coding]]
+  - [[pi-coding-agent][pi-coding-agent]]
+  - [[codex-desktop-linux (linux-laptop only)][codex-desktop-linux (linux-laptop only)]]
 - [[Email][Email]]
   - [[mu / mu4e][mu / mu4e]]
   - [[isync (mbsync)][isync (mbsync)]]
@@ -114,8 +134,8 @@ using it right away.
   - [[gpg][gpg]]
   - [[age][age]]
   - [[sops][sops]]
-  - [[firejail (nixOS only)][firejail (nixOS only)]]
-  - [[auditd (nixOS only)][auditd (nixOS only)]]
+  - [[firejail (linux-laptop only)][firejail (linux-laptop only)]]
+  - [[auditd (linux-laptop only)][auditd (linux-laptop only)]]
 - [[Shell & prompt][Shell & prompt]]
   - [[nh][nh]]
   - [[zsh][zsh]]
@@ -126,40 +146,44 @@ using it right away.
   - [[btop / htop][btop / htop]]
   - [[tealdeer][tealdeer]]
   - [[tmux][tmux]]
-- [[nixOS-only packages][nixOS-only packages]]
-  - [[emacs][emacs]]
-  - [[neomacs][neomacs]]
+- [[linux-laptop-only packages][linux-laptop-only packages]]
+  - [[Emacs][Emacs]]
   - [[firefox-devedition][firefox-devedition]]
   - [[vscode][vscode]]
   - [[maestral / maestral-gui][maestral / maestral-gui]]
   - [[signal-desktop][signal-desktop]]
-  - [[mermaid-cli][mermaid-cli]]
   - [[difftastic][difftastic]]
+  - [[bubblewrap (linux-laptop only)][bubblewrap (linux-laptop only)]]
   - [[dust / duf][dust / duf]]
   - [[compsize][compsize]]
-  - [[bees (nixOS only)][bees (nixOS only)]]
+  - [[bees (linux-laptop only)][bees (linux-laptop only)]]
   - [[bluez (Bluetooth)][bluez (Bluetooth)]]
   - [[USB-C monitor hotplug stabilisation][USB-C monitor hotplug stabilisation]]
-  - [[touchpad-watchdog (nixOS only)][touchpad-watchdog (nixOS only)]]
-  - [[date-menu-formatter (nixOS only)][date-menu-formatter (nixOS only)]]
-  - [[emoji-copy (nixOS only)][emoji-copy (nixOS only)]]
-  - [[grand-theft-focus (nixOS only)][grand-theft-focus (nixOS only)]]
-  - [[appindicator (nixOS only)][appindicator (nixOS only)]]
-  - [[night-theme-switcher (nixOS only)][night-theme-switcher (nixOS only)]]
-  - [[clipboard-history (nixOS only)][clipboard-history (nixOS only)]]
-  - [[auto-power-profile (nixOS only)][auto-power-profile (nixOS only)]]
-  - [[libreoffice (nixOS only)][libreoffice (nixOS only)]]
-  - [[authenticator (nixOS only)][authenticator (nixOS only)]]
-  - [[localsend (nixOS only)][localsend (nixOS only)]]
-  - [[android-tools (nixOS only)][android-tools (nixOS only)]]
-  - [[scrcpy (nixOS only)][scrcpy (nixOS only)]]
-  - [[discord (nixOS only)][discord (nixOS only)]]
-- [[Tor and transparent proxy (nixOS only)][Tor and transparent proxy (nixOS only)]]
+  - [[touchpad-watchdog (linux-laptop only)][touchpad-watchdog (linux-laptop only)]]
+  - [[date-menu-formatter (linux-laptop only)][date-menu-formatter (linux-laptop only)]]
+  - [[emoji-copy (linux-laptop only)][emoji-copy (linux-laptop only)]]
+  - [[grand-theft-focus (linux-laptop only)][grand-theft-focus (linux-laptop only)]]
+  - [[appindicator (linux-laptop only)][appindicator (linux-laptop only)]]
+  - [[night-theme-switcher (linux-laptop only)][night-theme-switcher (linux-laptop only)]]
+  - [[clipboard-history (linux-laptop only)][clipboard-history (linux-laptop only)]]
+  - [[auto-power-profile (linux-laptop only)][auto-power-profile (linux-laptop only)]]
+  - [[libreoffice (linux-laptop only)][libreoffice (linux-laptop only)]]
+  - [[authenticator (linux-laptop only)][authenticator (linux-laptop only)]]
+  - [[localsend (linux-laptop only)][localsend (linux-laptop only)]]
+  - [[android-tools (linux-laptop only)][android-tools (linux-laptop only)]]
+  - [[scrcpy (linux-laptop only)][scrcpy (linux-laptop only)]]
+  - [[google-chrome (linux-laptop only)][google-chrome (linux-laptop only)]]
+  - [[ungoogled-chromium (linux-laptop only)][ungoogled-chromium (linux-laptop only)]]
+  - [[tuba (linux-laptop only)][tuba (linux-laptop only)]]
+  - [[wget (linux-laptop only)][wget (linux-laptop only)]]
+  - [[thunderbird (linux-laptop only)][thunderbird (linux-laptop only)]]
+  - [[discord (linux-laptop only)][discord (linux-laptop only)]]
+- [[Tor and transparent proxy (linux-laptop only)][Tor and transparent proxy (linux-laptop only)]]
   - [[tor][tor]]
   - [[torsocks][torsocks]]
   - [[tor-transparent-proxy][tor-transparent-proxy]]
-- [[ProtonVPN via NetworkManager (nixOS only)][ProtonVPN via NetworkManager (nixOS only)]]
-- [[Virtualisation (nixOS only)][Virtualisation (nixOS only)]]
+- [[ProtonVPN via NetworkManager (linux-laptop only)][ProtonVPN via NetworkManager (linux-laptop only)]]
+- [[Virtualisation (linux-laptop only)][Virtualisation (linux-laptop only)]]
   - [[qemu_kvm][qemu_kvm]]
   - [[virt-manager][virt-manager]]
   - [[libvirtd][libvirtd]]
@@ -172,9 +196,14 @@ using it right away.
   - [[gitlab-runner][gitlab-runner]]
   - [[ghostty (macOS only)][ghostty (macOS only)]]
   - [[duti (macOS only)][duti (macOS only)]]
-  - [[mysides (macOS only)][mysides (macOS only)]]
   - [[goldenpassport (macOS only)][goldenpassport (macOS only)]]
+  - [[luarocks (macOS only)][luarocks (macOS only)]]
+  - [[pipenv (macOS only)][pipenv (macOS only)]]
+  - [[poetry (macOS only)][poetry (macOS only)]]
+  - [[gnugrep (macOS only)][gnugrep (macOS only)]]
+  - [[gnused (macOS only)][gnused (macOS only)]]
   - [[localsend (macOS only)][localsend (macOS only)]]
+  - [[middleclick (macOS only)][middleclick (macOS only)]]
 
 * Build toolchain
 
@@ -209,12 +238,32 @@ meson setup builddir
 ninja -C builddir
 #+end_src
 
+** esbuild
+Fast JavaScript and TypeScript bundler installed as a cross-platform fallback.
+Projects should invoke the version locked by their package manager rather than
+silently substituting this global executable in builds or CI.
+#+begin_src sh
+esbuild src/index.ts --bundle --outfile=dist/index.js
+esbuild --version
+#+end_src
+
 * Languages & runtimes
 
 ** python3
 #+begin_src sh
 python3 -c "print('hello')"
 python3 -m venv .venv && source .venv/bin/activate   # virtual environment
+#+end_src
+
+** uv
+Python version, environment, dependency, and command manager.  Home Manager
+supplies the executable while each project owns its =.python-version=,
+=pyproject.toml=, and =uv.lock=.
+#+begin_src sh
+uv sync --locked               # create or update the project environment
+uv run pytest                  # run a command in the locked environment
+uv add requests                # add and lock a dependency
+uv python install 3.14         # install a requested Python version
 #+end_src
 
 ** nodejs
@@ -224,11 +273,30 @@ node -e "console.log(42)"
 npm init -y && npm install express
 #+end_src
 
-** rustup
-Rust toolchain manager.  First run installs a default toolchain.
+** bun
+All-in-one JavaScript/TypeScript runtime, package manager, bundler,
+and test runner.  Drop-in faster alternative to =node=/=npm= for many
+projects, with native TypeScript and JSX execution.  Installed
+cross-platform via =home/base.nix=.
+
 #+begin_src sh
-rustup default stable          # install the stable toolchain
-cargo new hello && cd hello && cargo run
+bun --version                  # check installed version
+bun run script.ts              # run a TypeScript file directly
+bun init                       # scaffold a new project
+bun install                    # install dependencies (reads package.json)
+bun add express                # add a runtime dependency
+bun test                       # run the built-in test runner
+bun build ./entry.ts --outdir ./dist   # bundle for production
+#+end_src
+
+** Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)
+Individual Rust components installed via Nix (=unstable.cargo=,
+=unstable.rustc=, =unstable.rustfmt=, =unstable.rust-analyzer=) in
+=home/base.nix=.  No =rustup= is used.
+#+begin_src sh
+cargo new hello && cd hello && cargo run   # create and run a project
+cargo build --release                      # optimised build
+rustfmt src/main.rs                        # format Rust code
 #+end_src
 
 ** go
@@ -240,8 +308,9 @@ go build -o app .
 
 * Clojure ecosystem
 
-** clojure (nixOS only)
-Clojure CLI (=clj= / =clojure=) with tools.deps.
+** clojure
+Clojure CLI (=clj= / =clojure=) with tools.deps.  Installed
+cross-platform via =home/base.nix=.
 #+begin_src sh
 clj                            # start a REPL
 clj -X:deps tree               # show dependency tree
@@ -297,29 +366,124 @@ Run =clj -A:deps -Stree= to see everything available.
 All of these are used through Emacs Eglot (or VS Code).  You generally
 don't invoke them manually.
 
-| Server                       | Language         | Trigger              |
-|------------------------------+------------------+----------------------|
-| =clojure-lsp=               | Clojure          | =.clj=, =.edn=      |
-| =pyright=                    | Python           | =.py=                |
-| =typescript-language-server= | TypeScript / JS  | =.ts=, =.tsx=, =.js= |
-| =ltex-ls=                    | LaTeX / Markdown | =.tex=, =.md=        |
-| =texlab=                     | LaTeX            | =.tex=, =.bib=       |
-| =jdt-language-server=        | Java             | =.java=              |
-| =bash-language-server=       | Shell            | =.sh=, =.bash=       |
-| =dockerfile-language-server= | Dockerfile       | =Dockerfile=         |
-| =sqls=                       | SQL              | =.sql=               |
-| =yaml-language-server=       | YAML             | =.yaml=, =.yml=      |
-| =nixd= (nixOS only)        | Nix              | =.nix=               |
+| Server                        | Language                 | Trigger                          |
+|-------------------------------+--------------------------+----------------------------------|
+| =clojure-lsp=                   | Clojure                  | =.clj=, =.edn=                       |
+| =basedpyright=                  | Python                   | =.py=                              |
+| =typescript-language-server=    | TypeScript / JS          | =.ts=, =.tsx=, =.js=                   |
+| =ltex-ls=                       | LaTeX / Markdown         | =.tex=, =.md=                        |
+| =texlab=                        | LaTeX                    | =.tex=, =.bib=                       |
+| =jdt-language-server=           | Java                     | =.java=                            |
+| =bash-language-server=          | Shell                    | =.sh=, =.bash=                       |
+| =dockerfile-language-server=    | Dockerfile               | =Dockerfile=                       |
+| =sqls=                          | SQL                      | =.sql=                             |
+| =yaml-language-server=          | YAML                     | =.yaml=, =.yml=                      |
+| =nixd=                          | Nix                      | =.nix=                             |
+| =rust-analyzer=                 | Rust                     | =.rs=                              |
+| =gopls=                         | Go                       | =.go=                              |
+| =lua-language-server=           | Lua                      | =.lua=                             |
+| =tailwindcss-language-server=   | Tailwind CSS class names | =.html=, =.tsx=, =.jsx=                |
+| =htmx-lsp=                      | htmx attributes          | =.html=                            |
+| =docker-compose-langserver=     | Docker Compose           | =compose.yaml=, =docker-compose.yml= |
+| =marksman=                      | Markdown                 | =.md=                              |
+| =vscode-html-language-server=   | HTML                     | =.html=                            |
+| =vscode-css-language-server=    | CSS / SCSS / LESS        | =.css=, =.scss=, =.less=               |
+| =vscode-json-language-server=   | JSON                     | =.json=                            |
+| =vscode-eslint-language-server= | ESLint                   | =.js=, =.ts=, =.jsx=, =.tsx=             |
+| =tofu-ls=                       | OpenTofu                 | =.tf=, =.tfvars=                     |
 
-* Formatters
+** tailwindcss-language-server
+Tailwind CSS class-name completion, hover docs and diagnostics.
+Triggers in HTML, JSX/TSX, Vue and Svelte buffers when a Tailwind
+config is detected up the directory tree.
+
+** htmx-lsp
+Completion and hover documentation for [[https://htmx.org][htmx]]
+=hx-*= attributes inside HTML.  Tiny scope; expects to run alongside
+=vscode-html-language-server= rather than replace it.
+
+** docker-compose-language-service
+Compose-file LSP shipped as the binary =docker-compose-langserver=.
+Provides schema validation, completion and hover for service keys in
+=compose.yaml= / =docker-compose.yml=.  Distinct from
+=dockerfile-language-server= (which targets =Dockerfile= syntax) and
+they coexist without conflict.
+
+** marksman
+Structural Markdown LSP: heading completion, =[[wiki-link]]= follow,
+section rename across files, diagnostics for broken references.
+Complementary to =ltex-ls=, which focuses on prose grammar and
+spelling rather than document structure.
+
+** vscode-langservers-extracted
+The HTML, CSS, JSON, ESLint and Markdown servers extracted from VS
+Code's source tree, packaged as a single Nix derivation that exposes
+five binaries:
+=vscode-html-language-server=, =vscode-css-language-server=,
+=vscode-json-language-server=, =vscode-eslint-language-server= and
+=vscode-markdown-language-server=.  Eglot / =lsp-mode= keys server
+selection off the major mode, so each binary is picked up
+independently.
+
+** tofu-ls
+The official OpenTofu language server.  It provides completion, hover,
+diagnostics, formatting, symbols, and navigation for OpenTofu modules through
+Emacs Eglot or =lsp-mode=.  It replaces the Terraform-specific language
+servers because this fleet has no Terraform-only projects.
+
+* Formatters and linters
+
+** alejandra / statix / deadnix
+The Nix formatting and static-analysis toolchain, installed cross-platform via
+=home/base.nix=.  The tools have deliberately separate jobs: =alejandra=
+formats source, =statix= reports Nix anti-patterns, and =deadnix= reports unused
+bindings and arguments.
+
+#+begin_src sh
+alejandra .                     # format every Nix file below this directory
+statix check                    # report Nix anti-patterns without changing files
+deadnix                         # report unused Nix code without changing files
+#+end_src
 
 ** black / isort / ruff
-Python formatters and linter.
+
+Python formatters and linter. Home Manager gives Ruff an =ALL=
+stable-rule user fallback. Preview rules and unsafe fix-all remain
+opt-in. A project's =pyproject.toml= (with =[tool.ruff]=), =ruff.toml=, or
+=.ruff.toml= replaces the fallback; Ruff does not implicitly merge these
+files. Use =extend= when inheritance is intentional. New stable rules
+can appear after upgrades.
+
+The fallback ignores contradictory docstring choices (=D203= and =D213=)
+and formatter-owned indentation, quoting, and trailing-comma rules. It
+retains annotation, security, correctness, complexity, modernization,
+unused-code, and import-order checks. See [[https://docs.astral.sh/ruff/configuration/][Ruff configuration discovery]]
+and [[https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules][formatter rule conflicts]].
+
+Emacs keeps isort followed by Black on save (=C-c r= on demand). Ruff
+provides explicit import organization (=C-c l r o=), lint fixes, and
+safe fix-all (=C-c l a a=). Organizing sorts imports; removing unused
+imports is a separate fix. Ruff does not read =[tool.isort]= or
+=[tool.black]=: projects that customize those tools should align their
+Ruff options to avoid alternating changes. Overlapping unused-import
+diagnostics from BasedPyright and Ruff are intentional; their
+rule-specific suppressions are different (=pyright: ignore[...]= versus
+=noqa: ...=).
+
 #+begin_src sh
 black myfile.py                # reformat Python
 isort myfile.py                # sort imports
 ruff check src/                # lint Python (very fast)
+ruff check --fix src/          # apply safe lint fixes
+ruff check --show-settings myfile.py # inspect effective rules and config
 ruff format src/               # format Python (alternative to black)
+#+end_src
+
+** cljfmt
+Clojure code formatter installed cross-platform through Home Manager.
+#+begin_src sh
+cljfmt fix src/                # format Clojure files in place
+cljfmt check src/              # check without modifying
 #+end_src
 
 ** yamlfmt / yamllint
@@ -360,8 +524,9 @@ rg -t py "import os"           # search only Python files
 rg -l "fixme"                  # list filenames only
 #+end_src
 
-** silver-searcher (ag)
-Similar to ripgrep, older but still fast.
+** silver-searcher-ng (ag)
+Maintained fork of Silver Searcher with PCRE2 support.  It provides the =ag=
+command alongside ripgrep's =rg= command so programs can depend on either.
 #+begin_src sh
 ag "pattern" .
 ag --clojure "defn"            # search only Clojure files
@@ -477,6 +642,12 @@ curl -sL https://example.com
 curl -X POST -H "Content-Type: application/json" -d '{"key":"val"}' https://api.example.com/data
 #+end_src
 
+** socat
+Bidirectional relay for local stream and socket diagnostics.
+#+begin_src sh
+socat --version
+#+end_src
+
 ** tokei
 Count lines of code by language.
 #+begin_src sh
@@ -506,6 +677,37 @@ Compute size metrics for a Git repository and flag potential problems.
 #+begin_src sh
 git-sizer --verbose            # human-readable report with warnings
 git-sizer --json               # machine-readable JSON output
+#+end_src
+
+** gh
+Official GitHub command-line tool.  Installed cross-platform via the
+Home Manager =programs.gh= module: =~/.config/gh/config.yml= is
+managed declaratively, the gh git credential helper is wired into
+=programs.git= for HTTPS remotes, and =git_protocol = "ssh"= matches
+the per-host SSH config for =github.com= so =gh repo clone= and
+=gh pr checkout= use SSH out of the box.
+
+Authentication itself is interactive and stays outside Nix:
+#+begin_src sh
+gh auth login                                # one-shot OAuth/SSH key setup
+gh auth status                               # show current session
+#+end_src
+
+Day-to-day:
+#+begin_src sh
+gh repo clone owner/repo                     # clone via SSH (default protocol)
+gh repo view --web                           # open the current repo on github.com
+
+gh pr create --fill --web                    # create a PR from the current branch
+gh pr list --state open                      # list open PRs in this repo
+gh pr checkout 123                           # check out PR #123 locally
+gh pr review 123 --approve --body "LGTM"
+
+gh issue list --label bug --state open
+gh issue create --title "Crash on launch" --body-file BUG.md
+
+gh run list --limit 5                        # recent workflow runs
+gh run watch                                 # live tail the latest run
 #+end_src
 
 ** gource
@@ -595,6 +797,33 @@ dot -Tpng graph.dot -o graph.png
 echo "digraph { A -> B -> C }" | dot -Tsvg > graph.svg
 #+end_src
 
+** mermaid-cli
+Render Mermaid diagrams to PNG/SVG/PDF.  Installed cross-platform via
+=home/base.nix= so =mmdc= is on =PATH= on both NixOS and macOS, which
+is what =ob-mermaid= picks up when it falls through to the bare
+=mmdc= command (see =~/.emacs.d/init.el=).  Mermaid CLI bundles
+Puppeteer and downloads its own headless Chromium on first run.
+#+begin_src sh
+mmdc -i diagram.mmd -o diagram.png
+mmdc -i diagram.mmd -o diagram.svg -t dark
+#+end_src
+
+** inxi
+System information tool.  Prints a summary of hardware, drivers, and
+kernel details.  Installed cross-platform via =home/base.nix=.
+#+begin_src sh
+inxi -Fxz                     # full system report (anonymised IPs)
+inxi -G                       # graphics card / driver info
+#+end_src
+
+** lsof
+List open files and the processes that opened them.  Installed
+cross-platform via =home/base.nix=.
+#+begin_src sh
+lsof -i :8080                  # find what is listening on port 8080
+lsof +D /tmp                   # list all open files under /tmp
+#+end_src
+
 ** pandoc
 Universal document converter.  Installed cross-platform via
 =home/base.nix= (=programs.pandoc.enable=).
@@ -652,21 +881,58 @@ age -r age1... -o secret.enc secret.txt        # encrypt to a recipient
 age -d -i key.txt secret.enc                   # decrypt with your key
 #+end_src
 
-** tenv
-Terraform version manager (like tfenv but multi-tool).
+** opentofu
+Open-source infrastructure-as-code engine.  Nix supplies one reproducible
+version for both hosts, so no mutable version-manager installation is needed.
 #+begin_src sh
-tenv tf install 1.9.0                          # install a Terraform version
-tenv tf use 1.9.0                              # switch to it
-tenv tofu install latest                       # also manages OpenTofu
+tofu fmt -recursive                            # format all modules
+tofu init                                      # install locked providers
+tofu validate                                  # validate the configuration
+tofu test                                      # run OpenTofu tests
 #+end_src
 
-** terraform-ls / terraform-lsp
-Language servers for Terraform (=.tf= files).  Used by Eglot / VS Code.
+** terraform-mcp-server
+HashiCorp's MCP server exposes current public Terraform Registry provider,
+module, and policy documentation to MCP clients.  Nix manages the executable,
+while clients such as Codex may keep their server registration mutable.
+#+begin_src sh
+terraform-mcp-server --version
+terraform-mcp-server --toolsets=registry stdio
+codex mcp add terraform -- terraform-mcp-server --toolsets=registry stdio
+#+end_src
+
+The =registry= toolset omits HCP Terraform and Terraform Enterprise operations.
+
+** infracost
+Estimates infrastructure costs and compares a proposed change with a baseline.
+It reads OpenTofu-compatible configuration and plan JSON without applying it.
+#+begin_src sh
+infracost breakdown --path .                   # estimate the current module
+infracost diff --path . --compare-to baseline.json
+#+end_src
+
+** tflint
+Static analysis for Terraform-compatible configuration, including OpenTofu
+modules.  Provider plugins add rules for services such as AWS.
+#+begin_src sh
+tflint --init                                  # install configured plugins
+tflint --recursive                             # lint all modules
+#+end_src
+
+** terraform-docs
+Generates Markdown, AsciiDoc, JSON, and other documentation from module inputs
+and outputs.  No OpenTofu-specific documentation generator exists in the
+locked nixpkgs revision.  This tool supports the shared =.tf= syntax, but
+OpenTofu-only language extensions may require manual documentation.
+#+begin_src sh
+terraform-docs markdown table .                # print a Markdown table
+terraform-docs markdown table --output-file README.md --output-mode inject .
+#+end_src
 
 ** terraform-landscape
-Reformats =terraform plan= output for readability.
+Reformats OpenTofu plan output for readability.
 #+begin_src sh
-terraform plan | landscape
+tofu plan | landscape
 #+end_src
 
 ** podman
@@ -733,9 +999,12 @@ hey -m POST -d '{"key":"val"}' -T "application/json" https://api.example.com/
 
 * LaTeX
 
-** texliveFull
-Full TeX Live distribution.  Includes XeLaTeX, LuaLaTeX, pdfLaTeX,
-latexmk, and all CTAN packages.
+** TeX Live
+linux-laptop installs =unstable.texliveFull= through Home Manager. macOS installs the
+Homebrew =texlive= formula because it integrates fonts and paths more reliably
+with native applications. Each host therefore has exactly one TeX Live
+provider. Both distributions include XeLaTeX, LuaLaTeX, pdfLaTeX, latexmk, and
+the CTAN package collection.
 #+begin_src sh
 xelatex document.tex           # compile with XeLaTeX (for system fonts)
 lualatex document.tex          # compile with LuaLaTeX (for advanced font features)
@@ -743,20 +1012,15 @@ latexmk -xelatex document.tex # auto-build with latexmk (watches dependencies)
 latexmk -c                     # clean auxiliary files
 #+end_src
 
-** tectonic
-Self-contained TeX engine that downloads packages on demand.
-#+begin_src sh
-tectonic document.tex          # compile (fetches missing packages automatically)
-tectonic -X build              # build a Tectonic.toml project
-#+end_src
-
 ** texlab
 LaTeX language server.  Used by Eglot / VS Code for completion,
 diagnostics, and forward/inverse search.  Installed cross-platform via
 =home/base.nix=.
 
-** texstudio (nixOS only)
-LaTeX IDE with integrated PDF viewer, build system, and symbol tables.
+** engrave-faces
+Emacs package that converts font-lock faces into LaTeX colour commands
+for syntax-highlighted Org source blocks.  It runs inside Emacs, so
+exports do not need Pygments or LaTeX shell escape.
 
 * Music & audio
 
@@ -768,27 +1032,27 @@ picard /path/to/album/         # open a directory directly
 #+end_src
 Drag files into the left pane, click "Scan" or "Lookup", then "Save".
 
-** lilypond (nixOS only)
+** lilypond (linux-laptop only)
 Music engraving: write scores in text and produce publication-quality PDFs.
 #+begin_src sh
 lilypond score.ly              # compile to PDF + MIDI
 lilypond -o output score.ly    # specify output prefix
 #+end_src
 
-** frescobaldi (nixOS only)
+** frescobaldi (linux-laptop only)
 GUI editor for LilyPond with live score preview, MIDI playback, syntax
 highlighting.
 
-** timidity (nixOS only)
+** timidity (linux-laptop only)
 MIDI playback used by Frescobaldi for score preview audio.
 #+begin_src sh
 timidity output.midi           # play a MIDI file
 #+end_src
 
-** audacity (nixOS only)
+** audacity (linux-laptop only)
 Audio editor for recording, cutting, filtering, and mixing.
 
-** vlc (nixOS only)
+** vlc (linux-laptop only)
 Media player that handles virtually any audio/video format.
 #+begin_src sh
 vlc file.mp4
@@ -798,13 +1062,19 @@ cvlc --play-and-exit file.mp3  # headless playback
 VA-API hardware decoding is disabled because of recurring VCN v4.0
 ring timeouts on the Radeon 780M (Phoenix) iGPU that cause Mesa to
 abort the process.  The setting =avcodec-hw=none= is managed by Home
-Manager in =home/nixOS.nix= via =config/vlc/vlcrc=.
+Manager in =home/linux-laptop.nix= via =config/vlc/vlcrc=.
 
 * Profiling & flamegraphs
 
 ** visualvm
 JVM monitoring and profiling GUI.  Attach to running JVM processes,
 inspect heap, threads, CPU sampling.
+
+Installed via the Homebrew cask (=config/Brewfile=) on macOS, via
+nixpkgs (=home/linux-laptop.nix=) on linux-laptop.  The cask ships only
+=VisualVM.app=, so on macOS launch it from Spotlight or with
+=open -a VisualVM=; the =visualvm= command-line entry point shown below
+exists on linux-laptop (Nix) only.
 #+begin_src sh
 visualvm                       # launch GUI that auto-detects local JVMs
 visualvm --openjmx jmx://host:port   # connect to a remote JVM
@@ -826,84 +1096,27 @@ perf record -g -p <PID> -- sleep 10
 perf script | stackcollapse-perf.pl | flamegraph.pl > flame.svg
 #+end_src
 
-* AI / ML
+* AI coding
 
-** llama-cpp
-llama.cpp HTTP server with Vulkan GPU acceleration and speculative
-decoding.  Built with =vulkanSupport = true= for the Radeon 780M
-iGPU (=hosts/nixOS.nix=).  Reuses GGUF model blobs downloaded by
-Ollama, so =ollama pull= is the only model management needed.  The
-service exposes an OpenAI-compatible API on port 8081, separate from
-Ollama on 11434.  The service is not started at boot.
+** pi-coding-agent
+Pi is the cross-platform terminal coding agent.  It keeps the core
+small and discovers global extensions under =~/.pi/agent/extensions/=
+without requiring its mutable =settings.json= to be generated by Home
+Manager. No global extensions or MCP servers are configured automatically.
 #+begin_src sh
-# Ensure models are downloaded first
-ollama pull qwen3.5:35b
-ollama pull qwen3.5:0.8b
-
-# NixOS (systemd service)
-sudo systemctl start llama-server   # start the server
-sudo systemctl stop llama-server    # stop the server
-systemctl status llama-server       # check whether it is running
-
-# Test the API
-curl http://127.0.0.1:8081/v1/models
-curl http://127.0.0.1:8081/v1/chat/completions \
-  -d '{"model":"qwen3.5:35b","messages":[{"role":"user","content":"Hello"}]}'
+pi                              # start an interactive session
+pi -c                           # continue the latest session
+pi --list-models                # inspect available models
 #+end_src
 
-** ollama
-Run LLMs locally. Installed as a cross-platform CLI package
-(=home/base.nix=). On NixOS the =services.ollama= module adds a
-systemd service with ROCm GPU acceleration (=hosts/nixOS.nix=); the
-service is not started at boot.
+** codex-desktop-linux (linux-laptop only)
+The ChatGPT Community desktop application is an unofficial,
+community-maintained Nix repackaging of OpenAI's signed Linux desktop
+payload.  It is installed system-wide through the upstream NixOS module
+and keeps its default feature set.  This graphical application is separate
+from the terminal-based Pi coding agent.
 #+begin_src sh
-# NixOS (systemd service)
-sudo systemctl start ollama      # start the server
-sudo systemctl stop ollama       # stop the server
-systemctl status ollama          # check whether it is running
-
-# macOS (manual)
-ollama serve                     # start the API server (port 11434)
-
-# Common (both platforms)
-ollama pull llama3               # download a model
-ollama run llama3 "Explain monads in one paragraph"
-ollama list                      # show installed models
-#+end_src
-
-** openai-whisper
-Speech-to-text transcription.
-#+begin_src sh
-whisper audio.mp3 --model medium --language fr   # transcribe French audio
-whisper recording.wav --model small --output_format srt   # produce subtitles
-#+end_src
-
-** opencode
-AI coding agent for the terminal. Configured with a local Ollama
-provider so you can use locally pulled models (use =/models= to
-switch).
-#+begin_src sh
-opencode                       # launch the TUI
-opencode "refactor this function to use pattern matching"   # one-shot prompt
-#+end_src
-
-** open-webui
-Browser-based chat interface for Ollama and OpenAI-compatible APIs.
-Installed as a cross-platform CLI package (=home/base.nix=). On NixOS
-the =services.open-webui= module adds a systemd service
-(=hosts/nixOS.nix=); the service is not started at boot.
-Authentication is disabled (=WEBUI_AUTH=false=) so the UI is
-accessible without login on localhost.
-#+begin_src sh
-# NixOS (systemd service)
-sudo systemctl start open-webui  # start the server
-sudo systemctl stop open-webui   # stop the server
-systemctl status open-webui      # check whether it is running
-
-# macOS (manual)
-open-webui serve                 # start on http://localhost:8080
-
-# Then open http://localhost:8080 in a browser.
+codex-desktop                  # launch the desktop application
 #+end_src
 
 * Email
@@ -991,10 +1204,12 @@ age -d -i key.txt secret.enc > secret.txt
 ** sops
 See [[*sops][IaC / Cloud § sops]] above.
 
-** firejail (nixOS only)
+** firejail (linux-laptop only)
 Filesystem sandboxing for GUI applications.  Firefox Developer Edition,
-VSCode, Signal, VLC, and Discord all run through firejail with profiles
-restricting filesystem access and blocking secrets.
+VS Code, Signal, VLC, Discord, and Transmission all run through
+Firejail. Firefox and Signal retain the upstream application-directory
+whitelists and sensitive-state blacklists. The remaining applications use
+their respective filesystem profiles.
 #+begin_src sh
 firejail --list                # show running sandboxed processes
 firejail --tree                # sandbox hierarchy
@@ -1019,7 +1234,22 @@ upstream directives that are incompatible with NixOS:
   continue to work.  Disabling this directive lets Firefox read the
   live =/etc/resolv.conf= directly.
 
-** auditd (nixOS only)
+Firefox relies on its own remote-instance mechanism for subsequent host-side
+launches.  Firejail's =join-or-start= profile directive is intentionally not
+used because it aborts before executing Firefox when the generated NixOS
+wrapper supplies the executable after =--=.  Signal's =xdg-open= is replaced on
+Signal's private =PATH= by an HTTP and HTTPS-only client for the desktop
+=OpenURI= portal.  The portal launches the configured host browser, which
+prevents a link click from starting Firefox inside the Signal sandbox or
+bypassing the Firefox wrapper.
+
+VS Code can write only to its configuration, extension directories,
+=~/OSX-KVM=, =~/src=, and the canonical
+=~/Dropbox (Maestral)/Example/src= path.  It also enables Firejail's packaged
+hardened Electron include, which drops capabilities and adds =nonewprivs=,
+protocol filtering, and seccomp while leaving development tools available.
+
+** auditd (linux-laptop only)
 Linux kernel audit daemon.  Logs execve calls, password file changes,
 and Secure Boot key modifications to =/var/log/audit/audit.log=.
 #+begin_src sh
@@ -1036,15 +1266,15 @@ Nix CLI helper that wraps =nixos-rebuild=, =darwin-rebuild=, and
 =nix-output-monitor=, a coloured diff of what is about to change via
 =dix=, and an interactive confirmation prompt before activation.
 
-Installed fleet-wide via =home/base.nix=.  On nixOS the NixOS module
-(=programs.nh= in =hosts/nixOS.nix=) also enables a weekly =nh clean=
+Installed fleet-wide via =home/base.nix=.  On linux-laptop the NixOS module
+(=programs.nh= in =hosts/linux-laptop.nix=) also enables a weekly =nh clean=
 systemd timer that prunes old generations (keeps 5, anything newer than
 7 days).  On macOS an equivalent launchd user agent runs on the same
 schedule (Sunday 03:00) via =hosts/macOS.nix=.
 
 The =NH_FLAKE= session variable is intentionally unset: the flake path
 is user-specific and must be supplied at the call site or via a personal
-shell alias.  On nixOS, =NH_OS_FLAKE= is set automatically by the NixOS
+shell alias.  On linux-laptop, =NH_OS_FLAKE= is set automatically by the NixOS
 module (=programs.nh.flake=) and takes precedence over =NH_FLAKE= for
 =nh os= commands.
 
@@ -1054,10 +1284,10 @@ This is the key workflow: build the new configuration, show you exactly
 what derivations and closures are added, changed, or removed, then ask
 for confirmation before touching the running system.
 
-On NixOS (nixOS):
+On NixOS (linux-laptop):
 #+begin_src sh
 nh os switch          # reads NH_OS_FLAKE; auto-detects hostname
-nh os switch -H nixOS   # explicit host
+nh os switch -H linux-laptop   # explicit host
 #+end_src
 
 On macOS:
@@ -1091,7 +1321,7 @@ nh clean all                           # remove old generations + collect garbag
 nh clean all --keep 5 --keep-since 7d # keep 5 gens and anything < 7 days old
 nh clean user                          # clean current-user profile only
 #+end_src
-On nixOS =nh clean= runs automatically every week via a systemd timer.
+On linux-laptop =nh clean= runs automatically every week via a systemd timer.
 
 *** Package search
 #+begin_src sh
@@ -1161,20 +1391,14 @@ C-b |                          # split pane vertically
 C-b -                          # split pane horizontally
 #+end_src
 
-* nixOS-only packages
+* linux-laptop-only packages
 
-** emacs
-Text editor and Lisp environment.  The flagship editor in this config.
-
-** neomacs
-GPU-accelerated Emacs rewritten in Rust.  Uses =wgpu= for hardware
-accelerated rendering (Vulkan/Metal/DX12/OpenGL), inline 4K
-images/video, and smooth animations.  Pre-built WPE WebKit dependency
-is fetched via Cachix (=nix-wpe-webkit.cachix.org=).  Installed on
-both nixOS and macOS (experimental on macOS).
-#+begin_src sh
-neomacs                        # launch Neomacs
-#+end_src
+** Emacs
+Text editor and Lisp environment. The flagship editor in this config.
+linux-laptop uses the PGTK build so graphical frames connect directly to the
+GNOME Wayland session. This avoids keeping a second XWayland cursor
+and display-scaling path. Terminal Emacs remains available through the
+explicit =emacs -nw= fallback.
 
 ** firefox-devedition
 Firefox with developer tools enabled by default.
@@ -1193,17 +1417,18 @@ maestral ls /                  # list Dropbox root
 ** signal-desktop
 Encrypted messaging.
 
-** mermaid-cli
-Render Mermaid diagrams to PNG/SVG (used by =ob-mermaid= in Emacs).
-#+begin_src sh
-mmdc -i diagram.mmd -o diagram.png
-#+end_src
-
 ** difftastic
 Structural diff that understands syntax, not just lines.
 #+begin_src sh
 difft old.py new.py
 GIT_EXTERNAL_DIFF=difft git diff HEAD~1      # use with git
+#+end_src
+
+** bubblewrap (linux-laptop only)
+Unprivileged sandboxing tool that provides the =bwrap= executable.  It creates
+isolated mount, user, PID, and network namespaces for applications.
+#+begin_src sh
+bwrap --version                 # check the installed version
 #+end_src
 
 ** dust / duf
@@ -1220,11 +1445,11 @@ sudo compsize /                # whole filesystem compression stats
 sudo compsize /nix/store       # compression ratio for /nix/store
 #+end_src
 
-** bees (nixOS only)
+** bees (linux-laptop only)
 Block-level deduplication daemon for btrfs.  Runs in the background
 and transparently merges identical extents across all subvolumes.
 Works well with zstd compression already enabled on lv-btrfs.
-Configured as a NixOS service in =hosts/nixOS.nix=.
+Configured as a NixOS service in =hosts/linux-laptop.nix=.
 #+begin_src sh
 systemctl status beesd@root          # check the daemon status
 journalctl -u beesd@root -f          # follow dedup activity
@@ -1233,11 +1458,13 @@ sudo bees-status /run/bees/root.status  # live progress (if available)
 
 ** bluez (Bluetooth)
 Bluetooth protocol stack.  Enabled via =hardware.bluetooth.enable= and
-managed by the declarative whitelist in =hosts/nixOS/bluetooth-devices.nix=.
-Only whitelisted devices survive a rebuild; unknown peripherals are forgotten.
+managed by the declarative whitelist in =hosts/linux-laptop/bluetooth-devices.nix=.
+The example leaves whitelist activation disabled (=adapterAddress = null=).
+After opting in with your own adapter and device list, only whitelisted devices
+survive a rebuild; unknown peripherals are forgotten.
 #+begin_src sh
 bluetoothctl devices            # list known devices
-bluetoothctl info AA:BB:CC:DD:EE:01   # inspect a specific device
+bluetoothctl info 02:00:00:00:00:02   # inspect a specific device
 bluetoothctl pair <address>     # interactively pair a new device
 #+end_src
 
@@ -1246,7 +1473,7 @@ Workaround for a known Infineon PD controller firmware race on
 Framework AMD laptops that causes the Iiyama PL3494WQ's built-in
 Realtek USB hub to enter a rapid connect/disconnect cycle.  No
 upstream kernel patch or firmware update exists (as of March 2026).
-Configured in =hosts/nixOS.nix=.
+Configured in =hosts/linux-laptop.nix=.
 
 References:
 - https://community.frame.work/t/tracking-usb-c-error-on-boot/52012
@@ -1264,7 +1491,7 @@ cat /sys/bus/pci/devices/0000:c3:00.3/power/control   # should be on
 cat /sys/bus/pci/devices/0000:c3:00.3/d3cold_allowed   # should be 0
 #+end_src
 
-** touchpad-watchdog (nixOS only)
+** touchpad-watchdog (linux-laptop only)
 The PixArt PIXA3854 I2C HID touchpad on the Framework 16 AMD 7040
 sometimes enters a stuck state where the firmware sends only
 =MSC_TIMESTAMP= heartbeat events with no position data.  This happens
@@ -1273,46 +1500,46 @@ both after suspend/resume and spontaneously during normal use.
 The watchdog service (=touchpad-watchdog=) samples raw evdev events
 every few seconds.  When it detects the stuck signature (timestamps
 flowing, no position data), it reloads the =i2c_hid_acpi= kernel
-module to reinitialise the firmware.  Configured in =hosts/nixOS.nix=,
+module to reinitialise the firmware.  Configured in =hosts/linux-laptop.nix=,
 scripts in =scripts/touchpad_watchdog.py= and =scripts/touchpad-watchdog.zsh=.
 #+begin_src sh
 systemctl status touchpad-watchdog     # watchdog running
 journalctl -u touchpad-watchdog -f     # watch for recovery events
 #+end_src
 
-** date-menu-formatter (nixOS only)
+** date-menu-formatter (linux-laptop only)
 GNOME Shell extension that replaces the panel clock with a custom
-Luxon format string.  Configured via dconf in =home/nixOS.nix=.
+Luxon format string.  Configured via dconf in =home/linux-laptop.nix=.
 
-** emoji-copy (nixOS only)
+** emoji-copy (linux-laptop only)
 GNOME Shell extension providing a searchable emoji picker.  Click the
 panel icon or press the keyboard shortcut to open it, search by name,
 and copy an emoji to the clipboard.
 
-** grand-theft-focus (nixOS only)
+** grand-theft-focus (linux-laptop only)
 GNOME Shell extension that suppresses the annoying "… is ready"
 notification banner and immediately focuses the requesting window.
 
-** appindicator (nixOS only)
+** appindicator (linux-laptop only)
 GNOME Shell extension that adds a system tray to the top panel for
 apps using legacy StatusNotifierItem or libappindicator icons (Maestral,
 VLC, Signal, etc.).
 
-** night-theme-switcher (nixOS only)
+** night-theme-switcher (linux-laptop only)
 GNOME Shell extension that automatically switches between light and
 dark GTK/Shell themes based on a manual schedule or sunrise/sunset at
 your location.
 
-** clipboard-history (nixOS only)
+** clipboard-history (linux-laptop only)
 GNOME Shell extension that keeps a persistent clipboard ring
 accessible from the panel, with search and pinned entries.
 
-** auto-power-profile (nixOS only)
+** auto-power-profile (linux-laptop only)
 GNOME Shell extension that automatically switches between power saver,
 balanced, and performance power profiles based on battery state and
 AC/battery connection.
 
-** libreoffice (nixOS only)
+** libreoffice (linux-laptop only)
 Full office suite.  Hunspell dictionaries (en_GB, en_US, fr-classique,
 pl_PL, es_ES, de_DE) are picked up from =DICPATH=.  A LanguageTool
 HTTP server runs locally on port 47193; configure it in
@@ -1325,7 +1552,7 @@ soffice --writer                             # launch Writer directly
 systemctl --user status languagetool         # check LanguageTool server
 #+end_src
 
-** authenticator (nixOS only)
+** authenticator (linux-laptop only)
 GNOME Authenticator: two-factor authentication code generator for
 GNOME.  Supports TOTP and HOTP tokens, encrypted storage via GNOME
 Keyring, QR code scanning, and import/export.
@@ -1333,15 +1560,17 @@ Keyring, QR code scanning, and import/export.
 authenticator                                # launch the GUI
 #+end_src
 
-** localsend (nixOS only)
+** localsend (linux-laptop only)
 Open source, cross-platform alternative to AirDrop.  Share files and
 messages to nearby devices over the local network without an internet
-connection.  Uses a REST API and HTTPS encryption.
+connection. Uses a REST API and HTTPS encryption. The Linux module leaves
+inbound firewall ports closed; explicitly scope any receiving exception to
+a trusted network or interface.
 #+begin_src sh
 localsend                                    # launch the GUI
 #+end_src
 
-** android-tools (nixOS only)
+** android-tools (linux-laptop only)
 Android platform tools: =adb= (Android Debug Bridge), =fastboot=, and
 =mkbootimg=.  Requires USB debugging enabled on the device (Settings >
 Developer options > USB debugging).
@@ -1356,7 +1585,7 @@ fastboot devices                     # list devices in fastboot mode
 fastboot reboot                      # reboot device from fastboot
 #+end_src
 
-** scrcpy (nixOS only)
+** scrcpy (linux-laptop only)
 Display and control Android devices over USB or TCP/IP.  Mirrors the
 device screen in a window with low latency and allows keyboard/mouse
 input.  Requires USB debugging enabled on the Android device.
@@ -1367,7 +1596,38 @@ scrcpy --no-audio --max-fps 30               # video only, capped at 30 fps
 scrcpy --record file.mp4                     # mirror and record to file
 #+end_src
 
-** discord (nixOS only)
+** google-chrome (linux-laptop only)
+Google Chrome browser.
+#+begin_src sh
+google-chrome-stable                         # launch Chrome
+#+end_src
+
+** ungoogled-chromium (linux-laptop only)
+Chromium browser with Google services removed.
+#+begin_src sh
+chromium                                     # launch Chromium
+#+end_src
+
+** tuba (linux-laptop only)
+GNOME Mastodon/Fediverse client.
+#+begin_src sh
+tuba                                         # launch the client
+#+end_src
+
+** wget (linux-laptop only)
+Network downloader.
+#+begin_src sh
+wget https://example.com/file.tar.gz         # download a file
+wget -r -l 2 https://example.com/            # recursive download (depth 2)
+#+end_src
+
+** thunderbird (linux-laptop only)
+Email client.
+#+begin_src sh
+thunderbird                                  # launch Thunderbird
+#+end_src
+
+** discord (linux-laptop only)
 Voice, video, and text chat.  Sandboxed via Firejail with a custom
 profile granting DBus portal access for desktop integration (dark/light
 theme, screen sharing).
@@ -1376,11 +1636,11 @@ Discord                                      # launch (runs inside firejail)
 firejail --list                              # verify it is sandboxed
 #+end_src
 
-* Tor and transparent proxy (nixOS only)
+* Tor and transparent proxy (linux-laptop only)
 
 ** tor
 Anonymous communication network.  Runs as a system service
-(=services.tor=) on nixOS with TransPort (9040), DNSPort (5353), and
+(=services.tor=) on linux-laptop with TransPort (9040), DNSPort (5353), and
 the default SOCKSPort (9050).  The daemon starts at boot and maintains
 circuits so the transparent proxy can be toggled on without bootstrap
 delay.
@@ -1421,9 +1681,9 @@ curl https://check.torproject.org/api/ip
 sudo nft list tables
 #+end_src
 
-* ProtonVPN via NetworkManager (nixOS only)
+* ProtonVPN via NetworkManager (linux-laptop only)
 
-nixOS uses NetworkManager (=networking.networkmanager.enable = true= in
+linux-laptop uses NetworkManager (=networking.networkmanager.enable = true= in
 =flake.nix=), which has native WireGuard support.  ProtonVPN connections
 are imported at runtime as NetworkManager profiles rather than declared
 in Nix.  Once imported, they appear in GNOME Settings > Network > VPN
@@ -1471,7 +1731,7 @@ resolvectl status           # check which DNS server is active per interface
 resolvectl query example.com  # confirm resolution goes through the VPN DNS
 #+end_src
 
-If =systemd-resolved= is active (it is on nixOS), NetworkManager
+If =systemd-resolved= is active (it is on linux-laptop), NetworkManager
 routes DNS through the tunnel interface by default when the VPN
 connection has =ipv4.dns-priority= set lower (more negative) than other
 connections.  ProtonVPN configs ship with their own DNS servers so this
@@ -1502,7 +1762,7 @@ nmcli connection down protonvpn-nl-42
 sudo systemctl start tor-transparent-proxy
 #+end_src
 
-* Virtualisation (nixOS only)
+* Virtualisation (linux-laptop only)
 
 QEMU/KVM stack for running macOS guests via [[https://github.com/kholia/OSX-KVM][OSX-KVM]].
 See =scripts/osx-kvm-setup.sh= for the initial setup workflow.
@@ -1592,20 +1852,6 @@ duti -x http
 duti -s org.gnu.Emacs public.json all
 #+end_src
 
-** mysides (macOS only)
-Manages Finder sidebar favourite locations.
-Installed via Homebrew (=brew "mysides"=); invoked automatically during
-=home-manager switch= (=home.activation.finderFavorites= in =home/macOS.nix=)
-using =scripts/finder-favorites-macOS.sh=.
-#+begin_src sh
-# List current sidebar locations.
-mysides list
-# Add a directory.
-mysides add "name" "file:///path/to/dir/"
-# Remove a sidebar entry.
-mysides remove "name"
-#+end_src
-
 ** goldenpassport (macOS only)
 Native macOS implementation of Google Authenticator built with Swift.
 Provides TOTP two-factor authentication code generation from the menu
@@ -1615,11 +1861,88 @@ bar.
 open -a GoldenPassport
 #+end_src
 
+** luarocks (macOS only)
+Lua package manager.
+#+begin_src sh
+luarocks install luasocket                   # install a Lua module
+luarocks list                                # list installed modules
+#+end_src
+
+** pipenv (macOS only)
+Python virtual environment manager.
+#+begin_src sh
+pipenv install requests                      # add a dependency
+pipenv shell                                 # activate the virtual env
+#+end_src
+
+** poetry (macOS only)
+Python dependency management and packaging.
+#+begin_src sh
+poetry new my-project                        # scaffold a project
+poetry add requests                          # add a dependency
+poetry install                               # install from lock file
+#+end_src
+
+** gnugrep (macOS only)
+GNU grep (macOS uses BSD grep by default).
+#+begin_src sh
+ggrep -rn "pattern" .                        # recursive search with line numbers
+#+end_src
+
+** gnused (macOS only)
+GNU sed (macOS uses BSD sed by default).
+#+begin_src sh
+gsed -i 's/old/new/g' file.txt               # in-place substitution
+#+end_src
+
 ** localsend (macOS only)
-Open source, cross-platform alternative to AirDrop.  Share files and
-messages to nearby devices over the local network without an internet
-connection.  Uses a REST API and HTTPS encryption.  Installed via
-Homebrew cask on macOS, via nixpkgs on nixOS.
+Open source, cross-platform file sharing over the local network. Installed
+through Homebrew. Review receiving permissions against the macOS application
+firewall before use; the configuration does not grant an inbound exception.
 #+begin_src sh
 open -a LocalSend
 #+end_src
+
+** middleclick (macOS only)
+Synthesises a middle-click from a multi-finger trackpad tap so that
+Firefox closes a tab on tap, Safari opens links in a background tab,
+Terminal pastes the selection, etc.  macOS itself does not expose
+three-finger tap as button 2, so a userland helper is required to get
+the behaviour that NixOS gives for free via libinput.
+
+Installed via Homebrew cask (=config/Brewfile=).  Configured to use a
+*four*-finger tap rather than the upstream default of three, because
+=system.defaults.trackpad.TrackpadThreeFingerDrag= is enabled in
+=hosts/macOS.nix= and a three-finger tap would conflict with
+three-finger drag.  The =fingers = 4= preference is written to
+=art.ginzburg.MiddleClick= via =system.defaults.CustomUserPreferences=
+in =hosts/macOS.nix=.
+
+Autostart and menu bar visibility are handled through MiddleClick's
+own UI rather than from Nix.  Both rely on macOS APIs (=SMAppService=
+for login items and the status item autosave key for icon visibility)
+that are not safely expressible as =defaults= writes, so the in-app
+controls are the source of truth and persist across rebuilds.
+
+One-time manual steps after the first =darwin-rebuild switch=:
+
+1. Launch =/Applications/MiddleClick.app= once and grant
+   Accessibility permission in System Settings → Privacy & Security
+   → Accessibility.
+2. From the MiddleClick menu, tick "Launch at login".  This
+   registers a LaunchAgent under =~/Library/LaunchAgents/= via
+   =SMAppService=.
+3. Hide the menu bar icon: hold =⌘= and drag it off the menu bar
+   until the ✖️ appears, then release.  The icon stays hidden across
+   restarts.  To bring it back, open the app again while it is
+   already running.
+
+Other tunables (set with =defaults write art.ginzburg.MiddleClick …=
+and restart the app):
+
+| Key                | Default | Effect                                     |
+|--------------------+---------+--------------------------------------------|
+| =fingers=          | 3       | Number of fingers for the tap (we use 4)   |
+| =allowMoreFingers= | false   | Accept taps with at least =fingers= fingers |
+| =maxDistanceDelta= | 0.05    | Max cursor travel during the tap (0..1)    |
+| =maxTimeDelta=     | 300     | Max touch-to-release interval, in ms       |

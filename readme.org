@@ -3,7 +3,7 @@
 #+language: en
 
 Declarative system configuration for a *Framework 16 AMD 7040* (NixOS,
-=nixOS=) and a *macOS work laptop* (nix-darwin, =macOS-arm64=).
+=linux-laptop=) and an *Apple macOS laptop* (nix-darwin, =macOS=).
 
 Both machines share a common base of CLI tools, fonts, Zsh, Git, GPG,
 and Emacs tooling via Home Manager.  Platform-specific layers sit on
@@ -12,6 +12,12 @@ top.
 This file might be most readable in an org-mode buffer directly.  You
 can also read it from GitHub, but it won't render source block options
 like =:name= or =:tangle=.
+
+The host and user names are examples. Before installation, adapt the disk
+layout, hardware, account settings, and paths. Keep passwords and keys outside
+version control and the Nix store. Bluetooth device management is opt-in;
+LocalSend does not open inbound firewall ports automatically. Build and review
+the configuration before activating it.
 
 * Table of contents                                         :TOC_2_org:readme:
 - [[Goals][Goals]]
@@ -251,15 +257,15 @@ than the ones this repository addresses.
 
 #+begin_example
 flake.nix                 # Flake entry-point — defines both hosts
-disko-config.nix          # LUKS + LVM + Btrfs partitioning (nixOS)
+disko-config.nix          # LUKS + LVM + Btrfs partitioning (linux-laptop)
 hardware-configuration.nix
 fonts.nix                 # Font packages shared across hosts
 hosts/
-  nixOS.nix              # NixOS system config (GNOME, Secure Boot, …)
+  linux-laptop.nix         # NixOS system config (GNOME, Secure Boot, …)
   macOS.nix                # nix-darwin system config (macOS defaults, …)
 home/
   base.nix                # Cross-platform Home Manager (Zsh, Git, GPG, …)
-  nixOS.nix              # HM overrides for NixOS (Emacs, GUI apps, …)
+  linux-laptop.nix         # HM overrides for NixOS (Emacs, GUI apps, …)
   macOS.nix                # HM overrides for macOS (Go, GitLab, Brewfile, …)
 config/                   # Dotfiles and config snippets
   Brewfile                # Homebrew casks & formulae (macOS only)
@@ -277,40 +283,38 @@ docs/
 
 The flake defines two top-level outputs:
 
-- =nixosConfigurations.nixOS=: full NixOS system (kernel, GNOME, Secure
+- =nixosConfigurations.linux-laptop=: full NixOS system (kernel, GNOME, Secure
   Boot via Lanzaboote, LUKS via Disko, hardware tweaks from
   =nixos-hardware=). Home Manager is loaded as a NixOS module.
-- =darwinConfigurations.macOS-arm64= / =darwinConfigurations.macOS-x86_64=:
-  nix-darwin system (macOS defaults, Nix
-  daemon, shell registration). Home Manager is loaded as a darwin
-  module. Both are produced by a single =mkDarwinHost= helper
-  parameterised on the architecture.
+- =darwinConfigurations.macOS=:
+  nix-darwin system (macOS defaults, Nix daemon, shell registration).
+  Home Manager is loaded as a darwin module. The configuration is
+  produced by the =mkDarwinHost= helper.
 
 Both hosts import =home/base.nix= (cross-platform CLI tools, Zsh, Git,
 GPG, Starship, direnv, etc.) plus a host-specific overlay
-(=home/nixOS.nix= or =home/macOS.nix=).
+(=home/linux-laptop.nix= or =home/macOS.nix=).
 
 The flake pins two channels:
-- =nixpkgs= (stable =nixos-25.11=): system foundation.
+- =nixpkgs= (stable =nixos-26.05=): system foundation.
 - =nixpkgs-unstable=: bleeding-edge packages passed as =unstable= via
   =extraSpecialArgs=.
 
 On macOS, GUI apps are managed through Homebrew (=config/Brewfile=): the
 Home Manager activation runs =brew bundle install= automatically.
 
-Disk layout on nixOS (=disko-config.nix=):
+Disk layout on linux-laptop (=disko-config.nix=):
 
 #+begin_example
 /dev/nvme0n1
 ├── ESP (1 GB, vfat)  → /boot
 └── LUKS (cryptroot)
-    └── LVM vg-nixOS
+    └── LVM vg-linux-laptop
         ├── lv-swap (72 GB, swap, resume device for hibernate)
         └── lv-btrfs (rest)
             ├── @root         →  /
             ├── @example       →  /home/example
             ├── @example-cache →  /home/example/.cache
-            ├── @example-trash →  /home/example/.local/share/Trash
             └── @.snapshots   →  /.snapshots
 #+end_example
 
@@ -346,7 +350,7 @@ Pick the guide that matches your situation:
   ├── pkg/
   ├── pvt -> Documents
   │   └── todo/ (related notes and documents)
-  │       └── private-org-sync/
+  │       └── example-project/
   │           ├── library.org
   │           └── todo.org
   ├── snd -> Music/
@@ -374,10 +378,10 @@ These file names are inspired from what [[Go language][golang]] expects.
 
 #+begin_src zsh
 # NixOS
-sudo nixos-rebuild switch --flake .#nixOS
+sudo nixos-rebuild switch --flake .#linux-laptop
 
 # macOS
-darwin-rebuild switch --flake .#macOS-arm64
+darwin-rebuild switch --flake .#macOS
 #+end_src
 
 ** Update flake inputs
@@ -401,7 +405,7 @@ days). To trigger it manually:
 sudo nix-collect-garbage --delete-older-than 14d
 
 # Also remove old boot entries (NixOS only) sudo nixos-rebuild boot
---flake .#nixOS
+--flake .#linux-laptop
 #+end_src
 
 ** List generations
@@ -438,10 +442,10 @@ the latest generation fails to boot.
 
 #+begin_src zsh
 # NixOS — build only
-sudo nixos-rebuild build --flake .#nixOS
+sudo nixos-rebuild build --flake .#linux-laptop
 
 # macOS — build only
-darwin-rebuild build --flake .#macOS-arm64
+darwin-rebuild build --flake .#macOS
 #+end_src
 
 ** Diff before switching
@@ -469,7 +473,7 @@ quickest way to audit what a rebuild will change before committing to
 ** Test in a VM (NixOS only)
 
 #+begin_src zsh
-nixos-rebuild build-vm --flake .#nixOS
+nixos-rebuild build-vm --flake .#linux-laptop
 ./result/bin/run-*-vm
 #+end_src
 
@@ -491,7 +495,7 @@ Home Manager activation scripts in =scripts/=:
 | File | Covers |
 |------+--------|
 | =tests/home-layout.bats= | =scripts/home-layout.sh= (cross-platform symlinks and directories) |
-| =tests/nixOS/home-layout-nixOS.bats= | =scripts/home-layout-nixOS.sh= (Dropbox redirects, Linux =mov= alias) |
+| =tests/linux-laptop/home-layout-linux-laptop.bats= | =scripts/home-layout-linux-laptop.sh= (Dropbox redirects, Linux =mov= alias) |
 | =tests/macOS/home-layout-macOS.bats= | =scripts/home-layout-macOS.sh= (macOS =mov= alias, Finder =chflags=) |
 
 Each test runs in an isolated =mktemp -d= sandbox; =teardown()= uses
@@ -547,7 +551,7 @@ echo 'experimental-features = nix-command flakes' >> ~/.config/nix/nix.conf
 Rebuild and reboot:
 
 #+begin_src zsh
-sudo nixos-rebuild boot --flake .#nixOS && sudo reboot
+sudo nixos-rebuild boot --flake .#linux-laptop && sudo reboot
 #+end_src
 
 *** How the keyboard layout reaches the initrd
@@ -619,12 +623,16 @@ password file and rebuild:
 #+begin_src zsh
 echo "new-password" | mkpasswd -m sha-512 -s \
   | sudo tee /etc/secrets/example-password > /dev/null
-sudo nixos-rebuild switch --flake .#nixOS
+sudo nixos-rebuild switch --flake .#linux-laptop
 #+end_src
 
 ** Fonts not showing up
 
 #+begin_src zsh
+fc-cache -rf
+luaotfload-tool --cache=erase
+luaotfload-tool --update
+
 fc-list | grep -i iosevka
 #+end_src
 

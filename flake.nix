@@ -1,9 +1,9 @@
 {
-  description = "NixOS fleet: nixOS and future machines";
+  description = "Public NixOS and Apple Silicon macOS configuration examples";
 
   inputs = {
     # Stable channel: system foundation
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     # Unstable channel: bleeding-edge CLI tools
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -20,27 +20,25 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Hardware-specific tweaks for known machines
-    # nixos-hardware has no nixpkgs input of its own, so do NOT add
-    # inputs.nixpkgs.follows here, it will produce a warning.
-    nixos-hardware.url = "github:NixOS/nixos-hardware";
+    # Hardware-specific tweaks for known machines.
+    # As of its 26.05-era revision nixos-hardware declares its own
+    # nixpkgs input, so point it at ours to keep a single nixpkgs in the
+    # lock (previously it had none and `follows` would have warned).
+    nixos-hardware = {
+      url = "github:NixOS/nixos-hardware";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     # Home Manager: user environment managed declaratively.
     home-manager = {
-      url = "github:nix-community/home-manager/release-25.11";
+      url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     # nix-darwin: declarative macOS system configuration.
     nix-darwin = {
-      url = "github:nix-darwin/nix-darwin/nix-darwin-25.11";
+      url = "github:nix-darwin/nix-darwin/nix-darwin-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    # Neomacs: GPU-accelerated Emacs rewritten in Rust.
-    # Pre-built binaries for WPE WebKit via nix-wpe-webkit Cachix.
-    neomacs = {
-      url = "github:eval-exec/neomacs/v0.0.2";
     };
 
     # Starship gruvbox-rainbow preset (raw TOML, not a flake).
@@ -56,6 +54,12 @@
       url = "github:practicalli/clojure-deps-edn";
       flake = false;
     };
+
+    # Community Linux packaging for OpenAI's official desktop application.
+    codex-desktop-linux = {
+      url = "github:ilysenko/codex-desktop-linux";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
+    };
   };
 
   outputs = {
@@ -67,12 +71,12 @@
     nixos-hardware,
     home-manager,
     nix-darwin,
-    neomacs,
     starship-gruvbox-rainbow,
     practicalli-clojure-deps-edn,
+    codex-desktop-linux,
     ...
   }: let
-    # Unstable package set for x86_64-linux (nixOS)
+    # Unstable package set for x86_64-linux (linux-laptop)
     unstable = import nixpkgs-unstable {
       system = "x86_64-linux";
       config.allowUnfree = true;
@@ -96,11 +100,9 @@
           # substituters entry is ever added without a matching key here.
           trusted-public-keys = [
             "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-            "nix-wpe-webkit.cachix.org-1:ItCjHkz1Y5QcwqI9cTGNWHzcox4EqcXqKvOygxpwYHE="
           ];
           substituters = [
             "https://cache.nixos.org"
-            "https://nix-wpe-webkit.cachix.org"
           ];
         };
         gc = {
@@ -138,9 +140,8 @@
       # Nix daemon access
       # Only wheel users may talk to the Nix daemon (build, fetch, etc.).
       nix.settings.allowed-users = ["@wheel"];
-      # Scoped to example rather than @wheel so that future non-owner
-      # accounts cannot push arbitrary store paths bypassing signatures.
-      nix.settings.trusted-users = ["root" "example"];
+      # Regular users may build, but only root can override daemon trust settings.
+      nix.settings.trusted-users = ["root"];
 
       # sudo: restrict the binary to wheel group members
       security.sudo.execWheelOnly = true;
@@ -169,22 +170,21 @@
     # Wires Home Manager for user example on NixOS hosts.
     # Per-host HM overrides live in home/<host>.nix; shared config in
     # home/base.nix uses the same pattern as the standalone macOS config.
-    homeManagerModule = {...}: {
+    homeManagerModule = _: {
       home-manager = {
         useGlobalPkgs = true; # reuse the system nixpkgs instance
         useUserPackages = true; # install into /etc/profiles/per-user
         backupFileExtension = "hm-backup";
         extraSpecialArgs = {
           inherit unstable starship-gruvbox-rainbow practicalli-clojure-deps-edn;
-          neomacs = neomacs.packages.x86_64-linux.default;
         };
 
         users.example = {
           imports =
             [./home/base.nix]
             ++ (
-              if builtins.pathExists ./home/nixOS.nix
-              then [./home/nixOS.nix]
+              if builtins.pathExists ./home/linux-laptop.nix
+              then [./home/linux-laptop.nix]
               else []
             );
           home.username = "example";
@@ -194,12 +194,17 @@
       };
     };
   in {
+    checks.x86_64-linux.security-policy = import ./tests/security-policy.nix {
+      inherit self;
+      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+    };
+
     nixosConfigurations =
       {}
       // (
-        if builtins.pathExists ./hosts/nixOS.nix
+        if builtins.pathExists ./hosts/linux-laptop.nix
         then {
-          nixOS = nixpkgs.lib.nixosSystem {
+          linux-laptop = nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = {inherit self unstable;};
             modules = [
@@ -212,11 +217,13 @@
               # Framework 16 AMD 7040 hardware profile
               nixos-hardware.nixosModules.framework-16-7040-amd
 
-              # Home Manager: user example (home/shared.nix + home/nixOS.nix)
+              codex-desktop-linux.nixosModules.default
+
+              # Home Manager: user example (home/shared.nix + home/linux-laptop.nix)
               home-manager.nixosModules.home-manager
               homeManagerModule
 
-              ./hosts/nixOS.nix
+              ./hosts/linux-laptop.nix
           ];
           };
         }
@@ -224,8 +231,7 @@
       );
 
     # macOS machines (nix-darwin)
-    # Usage: sudo darwin-rebuild switch --flake .#macOS-arm64 --impure
-    #    or: sudo darwin-rebuild switch --flake .#macOS-x86_64 --impure
+    # Usage: sudo darwin-rebuild switch --flake .#macOS
     darwinConfigurations = let
       mkDarwinHost = {
         system,
@@ -237,16 +243,8 @@
           config.allowUnfree = true;
         };
 
-        # Read the current macOS username at eval time.
-        envUser = builtins.getEnv "USER";
-        # Require `--impure` so Nix can access environment variables.
-        # Used by Github Actions so it can validate the build for the
-        # runner user on macOS. Falls back to "nobody" or the actual
-        # user so no `impure`.
-        darwinUser =
-          if envUser != ""
-          then envUser
-          else "example"; # TODO Update to actual user.
+        # Example account: replace before activating on your own Mac.
+        darwinUser = "example";
         darwinHome = "/Users/${darwinUser}";
       in
         nix-darwin.lib.darwinSystem {
@@ -258,6 +256,15 @@
             home-manager.darwinModules.home-manager
             {
               nixpkgs.config.allowUnfree = true;
+              nixpkgs.overlays = [
+                (_: prev: {
+                  direnv = prev.direnv.overrideAttrs (_:
+                    if      prev.stdenv.hostPlatform.isDarwin then { doCheck = false; }
+                    else if prev.stdenv.hostPlatform.isLinux  then {}
+                    else throw "direnv overlay: unsupported platform"
+                  );
+                })
+              ];
 
               # Declare the user so nix-darwin and Home Manager can
               # derive home directory and shell automatically.
@@ -282,8 +289,7 @@
           ] ++ extraHostModules;
         };
     in {
-      macOS-arm64 = mkDarwinHost { system = "aarch64-darwin"; };
-      macOS-x86_64 = mkDarwinHost { system = "x86_64-darwin"; };
+      macOS = mkDarwinHost { system = "aarch64-darwin"; };
     };
   };
 }

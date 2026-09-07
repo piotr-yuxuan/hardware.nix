@@ -1,7 +1,7 @@
 # Home Manager base module (cross-platform).
 #
-# Imported by both nixOS (NixOS) and macOS (standalone macOS).
-# Per-host overrides live in home/nixOS.nix and home/macOS.nix.
+# Imported by both linux-laptop (NixOS) and macOS (standalone macOS).
+# Per-host overrides live in home/linux-laptop.nix and home/macOS.nix.
 #
 # RULE: Only settings that are picked up and applied on *both*
 #       NixOS and macOS belong here.  Platform-specific config
@@ -9,7 +9,6 @@
 #
 # `unstable` is passed via extraSpecialArgs from the flake.
 {
-  pkgs,
   lib,
   config,
   unstable,
@@ -17,35 +16,49 @@
   practicalli-clojure-deps-edn,
   ...
 }: let
-  inherit (import ./lib.nix) filterAvailable;
-  ollamaModels = import ../config/ollama-models.nix;
+  engraveFaces = unstable.emacsPackages.engrave-faces;
 in {
   # Let Home Manager manage itself.
   programs.home-manager.enable = true;
 
   #  Packages: cross-platform CLI tools (both hosts)
-  home.packages = filterAvailable [
+  home.packages = [
     # Build toolchain
     unstable.cmake
     unstable.pkg-config
     unstable.enchant # libenchant for jinx / spell compile-time dep
+    unstable.maven
+    unstable.esbuild # fallback only; projects invoke their locked esbuild
 
     # Languages & runtimes
     unstable.python3
     unstable.nodejs
+    unstable.bun # JavaScript runtime, package manager, and bundler
     unstable.go
-    unstable.rustup # provides cargo, rustc, rustfmt, rust-analyzer
+
+    # Rust toolchain
+    unstable.cargo
+    unstable.rustc
+    unstable.rustfmt
+    unstable.rust-analyzer
+
+    # Java runtime (required by Clojure CLI / deps.edn).
+    # temurin-bin-26 is non-LTS (supported until JDK 27, ~Sep 2026); bump then.
+    unstable.temurin-bin-26
+    unstable.zig # used by emacs-libgterm (gterm) to compile its dynamic module
 
     # Clojure ecosystem
     unstable.babashka # fast Clojure scripting (no JVM startup)
     unstable.clj-kondo # Clojure linter / static analysis
+    unstable.clojure # Clojure CLI tools (clj / clojure)
     unstable.leiningen # Clojure project automation & build tool
     unstable.neil # manage deps.edn aliases & deps
+    unstable.rlwrap # optional: readline history for `clj`
 
-    # Language servers (eglot)
+    # Language servers (lsp-mode)
     unstable.clojure-lsp
     unstable.texlab # LaTeX language server
-    unstable.pyright
+    unstable.basedpyright
     unstable.typescript-language-server
     unstable.typescript
     unstable.ltex-ls
@@ -53,21 +66,34 @@ in {
     unstable.bash-language-server
     unstable.dockerfile-language-server
     unstable.yaml-language-server
-    unstable.terraform-ls
-    unstable.terraform-lsp
+    unstable.tofu-ls # OpenTofu language server
+    unstable.nixd
+    unstable.gopls
+    unstable.lua-language-server
+    unstable.tailwindcss-language-server # Tailwind CSS in HTML / JSX / TSX
+    unstable.htmx-lsp # htmx attribute completion in HTML
+    unstable.docker-compose-language-service # binary: docker-compose-langserver, for compose.yaml
+    unstable.marksman # Markdown structural LSP (headings, links, refs)
+    # Bundle of HTML, CSS, JSON, ESLint and Markdown servers extracted
+    # from VS Code.  One Nix package, five binaries:
+    # vscode-{html,css,json,eslint,markdown}-language-server.
+    unstable.vscode-langservers-extracted
 
     # Formatters
     unstable.alejandra # Nix formatter
     unstable.black
+    unstable.cljfmt
     unstable.isort
     unstable.yamlfmt
     unstable.shfmt
     unstable.prettier
 
     # Linters
+    unstable.statix # Nix anti-pattern linter
+    unstable.deadnix # unused Nix code detector
     unstable.shellcheck
     unstable.yamllint
-    pkgs.python3Packages.cfn-lint # CloudFormation template linter
+    unstable.python3Packages.cfn-lint # CloudFormation template linter
 
     # Testing
     unstable.bats # shell test framework (tests/ directory)
@@ -77,6 +103,7 @@ in {
     unstable.macchina
     unstable.yq-go
     unstable.curl
+    unstable.socat # socket and stream diagnostics
     unstable.tokei
     unstable.onefetch
     unstable.scc
@@ -87,56 +114,64 @@ in {
     unstable.enca
     unstable.fx
     unstable.qrencode
-    unstable.silver-searcher
+    unstable.silver-searcher-ng # maintained Silver Searcher fork; provides ag alongside rg
     unstable.tree
     unstable.poppler-utils # pdftotext, pdfinfo, etc. (xpdf is CVE-marked)
     unstable.ffmpeg # media processing (also used by yt-dlp)
     unstable.ispell
     unstable.age # modern file encryption
     unstable.graphviz
+    unstable.mermaid-cli # mmdc for ob-mermaid (Org Babel mermaid blocks)
+    engraveFaces # fast font-lock highlighting for Org LaTeX exports
     unstable.inxi
     unstable.lsof
+    unstable.difftastic
+    unstable.zola # static site generator (Rust); moved here from Homebrew
 
     # IaC / Cloud
     unstable.aws-vault # secure AWS credential management
     unstable.ssm-session-manager-plugin
     unstable.git-sizer # repository size metrics and health check
     unstable.podman
+    unstable.podman-compose
     unstable.sops
-    unstable.tenv
+    unstable.opentofu
+    unstable.terraform-mcp-server
+    unstable.infracost
+    unstable.tflint
+    unstable.terraform-docs
     unstable.terraform-landscape
 
+    unstable.jetbrains.pycharm
+
     # CloudFormation
-    pkgs.rain # CloudFormation deploy / diff CLI
+    unstable.rain # CloudFormation deploy / diff CLI
 
     # Load testing / monitoring
-    pkgs.k6 # modern load testing (scripted in JS)
-    pkgs.vegeta # HTTP load testing CLI
-    pkgs.hey # simple HTTP load generator
-
-    # LaTeX
-    pkgs.texliveFull # full TeX Live (XeLaTeX, LuaLaTeX, latexmk, …)
-    pkgs.tectonic # modern self-contained TeX engine
+    unstable.k6 # modern load testing (scripted in JS)
+    unstable.vegeta # HTTP load testing CLI
+    unstable.hey # simple HTTP load generator
 
     # Profiling / flamegraphs
-    pkgs.visualvm # JVM monitoring & profiling GUI
-    pkgs.async-profiler # low-overhead JVM sampling profiler
-    pkgs.flamegraph # Brendan Gregg's FlameGraph scripts
+    # visualvm is intentionally not in this shared list: on macOS it is
+    # installed via the Homebrew cask (config/Brewfile) for the native
+    # .app, and on linux-laptop via Nix (home/linux-laptop.nix). Listing it here
+    # would also put a (redundant) Nix copy on macOS.
+    unstable.async-profiler # low-overhead JVM sampling profiler
+    unstable.flamegraph # Brendan Gregg's FlameGraph scripts
 
     # System management
     unstable.nh # Nix CLI helper: human-friendly rebuild, diff, GC, and search
 
-    # AI / ML
-    unstable.ollama
-    unstable.open-webui
-    unstable.openai-whisper
+    # AI coding agent
+    unstable.pi-coding-agent
 
     # Build tools
     unstable.meson
     unstable.ninja
 
     # Email (mu, mu4e, and isync/mbsync managed via programs.mu and
-    # programs.mbsync; email account config lives in home/nixOS.nix)
+    # programs.mbsync; email account config lives in home/linux-laptop.nix)
 
     # Spell & grammar
     unstable.languagetool # grammar checker (EN, FR, PL, …)
@@ -163,6 +198,10 @@ in {
 
   programs.zsh = {
     enable = true;
+    # Opt into the upcoming Home Manager default: keep zsh dotfiles under
+    # XDG (~/.config/zsh) instead of $HOME. HM writes a bootstrap
+    # ~/.zshenv that sets ZDOTDIR. Silences the 26.05 dotDir warning.
+    dotDir = "${config.xdg.configHome}/zsh";
     autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
     enableCompletion = true;
@@ -170,16 +209,20 @@ in {
     plugins = [
       {
         name = "zsh-completions";
-        src = pkgs.zsh-completions;
+        src = unstable.zsh-completions;
       }
       {
         name = "nix-zsh-completions";
-        src = pkgs.nix-zsh-completions;
+        src = unstable.nix-zsh-completions;
       }
     ];
 
     # History (keep everything, delete nothing)
     history = {
+      # Pin HISTFILE explicitly (its default follows dotDir). History is
+      # mutable state, so it lives under XDG_STATE_HOME, not the config
+      # dir. The old ~/.zsh_history was merged + deduplicated into here.
+      path = "${config.xdg.stateHome}/zsh/history";
       size = 10000000;
       save = 10000000;
       extended = true; # :start:elapsed;command format
@@ -207,9 +250,30 @@ in {
   # pulls the latest version automatically.
   programs.starship = {
     enable = true;
+    package = unstable.starship;
     enableZshIntegration = true;
     settings = lib.recursiveUpdate (builtins.fromTOML (builtins.readFile starship-gruvbox-rainbow)) {
       os.symbols.NixOS = ""; # nf-linux-nixos
+      # Replace the gruvbox-rainbow preset's Nerd Font arrow prompt
+      # with a POSIX `$` for regular users and `#` for root.  The
+      # built-in `character` module has no root detection, so disable
+      # it and use two `custom` modules gated on $USER.  The format
+      # string lives in config/starship-format.txt: same content as
+      # the upstream preset, but ends with $custom instead of
+      # $character.
+      format = lib.mkForce (lib.fileContents ../config/starship-format.txt);
+
+      character.disabled = true;
+
+      custom.user_char = {
+        when = "test \"$USER\" != \"root\"";
+        format = "[\\$](bold fg:color_green) ";
+      };
+
+      custom.root_char = {
+        when = "test \"$USER\" = \"root\"";
+        format = "[#](bold fg:color_red) ";
+      };
     };
   };
 
@@ -220,7 +284,7 @@ in {
     settings = {
       user = {
         name = lib.mkDefault "example";
-        email = lib.mkDefault "piotr-yuxuan@users.noreply.github.com";
+        email = lib.mkDefault "example@example.invalid";
       };
 
       init.defaultBranch = "main";
@@ -253,6 +317,27 @@ in {
     };
 
     ignores = lib.splitString "\n" (lib.fileContents ../config/gitignore);
+  };
+
+  # GitHub CLI.  The Home Manager module is preferred over a plain
+  # `unstable.gh` in `home.packages`: it manages
+  # `~/.config/gh/config.yml` declaratively, wires `gh auth
+  # git-credential` into `programs.git` for HTTPS remotes, and runs
+  # the `migrateGhAccounts` activation required since gh 2.40.0.
+  #
+  # `package` is pinned to `unstable.gh` because `useGlobalPkgs =
+  # true` would otherwise bind it to the stable channel. The same
+  # selective override is used for other fast-moving user programs,
+  # while mature and foundational program defaults remain stable.
+  #
+  # `git_protocol = "ssh"` matches the per-host SSH setup in
+  # `home/macOS.nix` and `home/linux-laptop.nix`, both of which pin an
+  # `identityFile` for `github.com`.  `gh repo clone` and
+  # `gh pr checkout` therefore use SSH out of the box.
+  programs.gh = {
+    enable = true;
+    package = unstable.gh;
+    settings.git_protocol = "ssh";
   };
 
   programs.delta = {
@@ -330,6 +415,19 @@ in {
     baseIndex = 1;
     extraConfig = lib.fileContents ../config/tmux.conf;
   };
+
+  #  Ghostty terminal emulator
+  #
+  # Shared config deployed on both NixOS and macOS.  Platform overrides
+  # (package source, font-size) live in home/macOS.nix and the NixOS
+  # host file respectively.
+  programs.ghostty = {
+    enable = true;
+    # On Darwin pkgs.ghostty is broken; macOS.nix overrides package = null.
+    # On NixOS the default (pkgs.ghostty) works.
+    enableZshIntegration = true;
+  };
+
   programs.direnv = {
     enable = true;
     enableZshIntegration = true;
@@ -365,7 +463,7 @@ in {
     extraConfig = lib.fileContents ../config/gpg-agent.conf;
     pinentry.package =
       if unstable.stdenv.hostPlatform.isDarwin
-      then unstable.pinentry-curses
+      then unstable.pinentry_mac
       else if unstable.stdenv.hostPlatform.isLinux
       then unstable.pinentry-gnome3
       else throw "pinentry: unsupported platform";
@@ -378,14 +476,26 @@ in {
   # here: the flake path is user-specific and must be supplied at the call
   # site (e.g. `nh home switch /path/to/repo`) or via a shell alias.
 
-  # mu4e: prebuilt elisp on Emacs load-path
+  # Prebuilt Elisp on Emacs load-path
   # Append (not override): the trailing ":" tells Emacs to keep defaults.
-  home.sessionVariables.EMACSLOADPATH = "${config.programs.mu.package.mu4e}/share/emacs/site-lisp/mu4e:";
+  home.sessionVariables.EMACSLOADPATH = "${engraveFaces}/share/emacs/site-lisp/elpa/engrave-faces-${engraveFaces.version}:${config.programs.mu.package.mu4e}/share/emacs/site-lisp/mu4e:";
 
   # Native-module compilation (jinx, vterm, …)
   # NixOS has no /usr/include, so expose enchant (+ other lib) headers
   # and pkg-config metadata so `gcc` invoked from inside Emacs can
   # find them.
+  #
+  # NOTE (macOS): Emacs.app (jimeh/emacs-builds) hard-overrides
+  # LIBRARY_PATH at startup with its own GCC framework + Xcode SDK
+  # paths (for libgccjit native compilation).  This means the enchant
+  # LIBRARY_PATH set here is silently lost inside Emacs on macOS.
+  # pkg-config (PKG_CONFIG_PATH) already provides the -L flag to the
+  # compiler, so jinx still compiles.  However the Xcode SDK paths
+  # that Emacs injects into LIBRARY_PATH conflict with Nix GCC's
+  # --sysroot, causing link failures for tree-sitter grammar
+  # compilation.  The Emacs config works around this with :around
+  # advice on `treesit-install-language-grammar' that strips
+  # LIBRARY_PATH for the subprocess.
   home.sessionVariables.PKG_CONFIG_PATH = "${unstable.enchant.dev}/lib/pkgconfig";
   home.sessionVariables.C_INCLUDE_PATH = "${unstable.enchant.dev}/include";
   home.sessionVariables.LIBRARY_PATH = "${lib.getLib unstable.enchant}/lib";
@@ -403,35 +513,36 @@ in {
   xdg.configFile."enchant/enchant.ordering".text = lib.fileContents ../config/enchant.ordering;
   home.file.".aspell.conf".text = lib.fileContents ../config/aspell.conf;
 
-  home.activation.homeLayout = lib.hm.dag.entryAfter ["writeBoundary"] ''
-    ${lib.fileContents ../scripts/home-layout.sh}
-  '';
+  home.activation.homeLayout =
+    lib.hm.dag.entryAfter ["writeBoundary"]
+    (lib.fileContents ../scripts/home-layout.sh);
+
   programs.ssh = {
     enable = true;
     enableDefaultConfig = false;
-    matchBlocks."github.com" = {
-      hostname = "github.com";
-      identityFile = "~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519";
-    };
-    matchBlocks."*" = {
-      addKeysToAgent = "yes";
-      forwardAgent = false;
-      controlMaster = "auto";
-      controlPath = "~/.ssh/control-%C";
-      controlPersist = "10m";
-      serverAliveInterval = 60;
-      serverAliveCountMax = 3;
-      hashKnownHosts = true;
-      extraOptions = {
-        IdentitiesOnly = "yes";
-        PasswordAuthentication = "no";
-        StrictHostKeyChecking = "accept-new";
-      };
+    # 26.05: matchBlocks + extraOptions are deprecated in favour of
+    # settings, a freeform attrset keyed by host that uses upstream
+    # OpenSSH directive names. The "*" default block is emitted last.
+    settings."*" = {
+      AddKeysToAgent = "yes";
+      ForwardAgent = false;
+      ControlMaster = "auto";
+      ControlPath = "~/.ssh/control-%C";
+      ControlPersist = "10m";
+      ServerAliveInterval = 60;
+      ServerAliveCountMax = 3;
+      HashKnownHosts = true;
+      IdentitiesOnly = "yes";
+      PasswordAuthentication = "no";
+      StrictHostKeyChecking = "accept-new";
     };
   };
 
   programs.asciinema.enable = true;
-  programs.awscli.enable = true;
+  programs.awscli = {
+    enable = true;
+    package = unstable.awscli2;
+  };
   programs.fd = {
     enable = true;
     hidden = true;
@@ -439,38 +550,11 @@ in {
   programs.gcc.enable = true;
   programs.granted = {
     enable = true;
+    package = unstable.granted;
     enableZshIntegration = true;
   };
   programs.jq.enable = true;
   programs.mu.enable = true;
-  programs.opencode = {
-    enable = true;
-    settings = {
-      # https://opencode.ai/docs/providers/#ollama
-      # https://docs.ollama.com/integrations/opencode
-      "$schema" = "https://opencode.ai/config.json";
-      provider = {
-        ollama = {
-          npm = "@ai-sdk/openai-compatible";
-          name = "Ollama (local)";
-          options.baseURL = "http://localhost:11434/v1";
-          models = builtins.listToAttrs (builtins.map (m: {
-              name = m.model;
-              value = {name = "${m.name} (ollama)";};
-            })
-            ollamaModels);
-        };
-        llama-server = {
-          npm = "@ai-sdk/openai-compatible";
-          name = "llama-server (local, speculative decoding)";
-          options.baseURL = "http://localhost:8081/v1";
-          models = {
-            "qwen3.5:35b" = {name = "Qwen 3.5 35B (llama-server)";};
-          };
-        };
-      };
-    };
-  };
   programs.pandoc.enable = true;
   programs.ripgrep = {
     enable = true;
@@ -486,15 +570,59 @@ in {
   };
   programs.ruff = {
     enable = true;
+    package = unstable.ruff;
+    # User fallback only: a project's Ruff configuration takes
+    # precedence.
+    settings = {
+      lint.select = ["ALL"];
+      lint.ignore = [
+        "D203" # Prefer no blank line before a class docstring (D211).
+        "D213" # Prefer a summary on the first docstring line (D212).
+        # Leave indentation, quoting, and trailing commas to the
+        # formatter.
+        "W191"
+        "E111"
+        "E114"
+        "E117"
+        "D206"
+        "D300"
+        "Q000"
+        "Q001"
+        "Q002"
+        "Q003"
+        "Q004"
+        "COM812"
+        "COM819"
+      ];
+    };
+  };
+  programs.uv = {
+    enable = true;
+    package = unstable.uv;
+    settings = {};
+  };
+  programs.poetry = {
+    enable = true;
+    package = unstable.poetry;
     settings = {};
   };
   programs.sqls.enable = true;
   programs.tealdeer.enable = true;
-  programs.yt-dlp.enable = true;
+  programs.yt-dlp = {
+    enable = true;
+    package = unstable.yt-dlp;
+  };
 
   #  XDG base directories
   # Practicalli Clojure deps.edn
   # Community aliases for tools.deps.  Tracked as a flake input so
   # `nix flake update` always pulls the latest main commit.
   xdg.configFile."clojure/deps.edn".source = "${practicalli-clojure-deps-edn}/deps.edn";
+  xdg.configFile."clojure-lsp/config.edn".source = ../config/clojure-lsp/config.edn;
+
+  # Maven local user settings: download *-sources.jar for every
+  # dependency so clojure-lsp can navigate Java symbols to .java
+  # sources rather than CFR decompiled output.  Maven reads
+  # ~/.m2/settings.xml on every supported platform (NixOS, macOS).
+  home.file.".m2/settings.xml".source = ../config/maven/settings.xml;
 }

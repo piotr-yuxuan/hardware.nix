@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # shellcheck disable=SC2154
 # Variable nft_cmd is set by the Nix wrapper.
 

@@ -2,11 +2,12 @@
 #+AUTHOR: example
 #+STARTUP: overview
 
-Security hardening rationale and audit checklist for the macOS hosts
-(aarch64-darwin and x86_64-darwin).  All measures described here are
-implemented declaratively through nix-darwin (=hosts/macOS.nix=),
-Home Manager (=home/macOS.nix=, =home/base.nix=), and the
-post-activation script (=scripts/darwin-post-activation.sh=).
+Security settings and manual audit points for the Apple Silicon example.
+Declarative settings live in =hosts/macOS.nix=, =home/macOS.nix=, and
+=home/base.nix=. FileVault, SIP, Gatekeeper, and other manual checks below
+are not performed by the current post-activation script; that script only
+sets the login keyboard input-menu preference. Check native behaviour on the
+target Mac after reviewing the generated configuration.
 
 * Table of contents :TOC_2_org:
 - [[Full disk encryption (FileVault)][Full disk encryption (FileVault)]]
@@ -42,32 +43,29 @@ post-activation script (=scripts/darwin-post-activation.sh=).
 
 * Full disk encryption (FileVault)
 
-The post-activation script checks FileVault status on every
-=darwin-rebuild switch= and prints a warning to stderr if encryption
-is off.  FileVault must be enabled manually through System Settings
-because nix-darwin has no option to toggle it.
+FileVault is a manual machine setting. This configuration neither enables
+it nor checks it during activation.
 
-*Audit point:* run =fdesetup status= and verify "FileVault is On."
+*Audit point:* run =fdesetup status= and verify that encryption is on.
 
 * System Integrity Protection (SIP)
 
-The post-activation script verifies that SIP is enabled and warns if
-it is not.  SIP is a boot-time setting managed by the Recovery OS, so
-nix-darwin cannot enforce it, but the warning ensures it is not
-accidentally left disabled after troubleshooting.
+SIP is managed through macOS Recovery and is not enforced or checked by
+this configuration.
 
-*Audit point:* run =csrutil status= and verify "enabled."
+*Audit point:* run =csrutil status= and review the result.
 
 * Application Layer Firewall
 
 =networking.applicationFirewall= in =hosts/macOS.nix= configures the
 macOS Application Layer Firewall:
 
-| Setting              | Value  | Purpose                              |
-|----------------------+--------+--------------------------------------|
-| =enable=             | =true= | Firewall enabled                     |
-| =enableStealthMode=  | =true= | Stealth mode: drop unsolicited ICMP  |
-| =allowSignedApp=     | =false= | Block incoming for signed downloads |
+| Setting           | Value | Purpose                                 |
+|-------------------+-------+-----------------------------------------|
+| =enable=            | =true=  | Firewall enabled                        |
+| =enableStealthMode= | =true=  | Stealth mode: drop unsolicited ICMP     |
+| =allowSignedApp=    | =false= | No automatic allowance for signed apps  |
+| =blockAllIncoming=  | =true=  | Block non-essential inbound connections |
 
 *Audit point:* open System Settings > Network > Firewall and confirm
 it shows "Firewall is active."  Alternatively run
@@ -75,35 +73,28 @@ it shows "Firewall is active."  Alternatively run
 
 * ICMP redirect rejection
 
-The post-activation script sets =net.inet.icmp.drop_redirect=1= on
-every =darwin-rebuild switch=.  This prevents ICMP redirect injection
-attacks on untrusted Wi-Fi networks (coffee shops, conferences).
+The current activation script does not configure the ICMP redirect sysctl.
+Treat this as a manual audit point, not an automatically enforced setting.
 
-*Audit point:* run =sysctl net.inet.icmp.drop_redirect= and verify
-the value is 1.  This sysctl does not persist across reboots
-natively; it is reapplied on the next =darwin-rebuild switch=.
+*Audit point:* inspect =sysctl net.inet.icmp.drop_redirect= on the target Mac.
 
 * Gatekeeper verification
 
-The post-activation script checks whether Gatekeeper assessments are
-enabled and prints a warning to stderr if they are not.  Gatekeeper
-itself is a macOS boot-time policy and cannot be toggled by
-nix-darwin, so this acts as a detection measure.
+Gatekeeper status is not checked by the current activation script.
 
-*Audit point:* run =spctl --status= and verify "assessments enabled."
+*Audit point:* run =spctl --status= and review the assessments status.
 
 * Remote access lockdown
 
-The post-activation script disables several remote access vectors on
-every =darwin-rebuild switch=:
+Downloaded-application quarantine is enabled through
+=system.defaults.LaunchServices.LSQuarantine = true=. Docker Desktop is not
+started automatically at login; review engine settings and explicitly bind
+published container ports to loopback before starting local development services.
 
-- *Remote Login (SSH server):* disabled via =systemsetup -setremotelogin off=.
-- *Wake-on-LAN:* disabled via =pmset -a womp 0= to prevent powering
-  on the machine from the network.
-- *IR receiver:* disabled so the machine does not respond to infrared
-  input.
-- *Remote Apple Events:* disabled in =CustomUserPreferences=
-  (=com.apple.AEServer=).
+Remote Apple Events are disabled through the =com.apple.AEServer= user
+preferences. Remote Login, Wake-on-LAN, and IR receiver settings are not
+changed by the current post-activation script. Review those separately in
+the target machine's settings.
 
 * Screen lock and idle timeout
 
@@ -151,12 +142,11 @@ sharing:
 * Nix daemon trust model
 
 =nix.settings.trusted-users= in =hosts/macOS.nix= is set to
-=["root" "$USER"]= where =$USER= is resolved at evaluation time.
-This scopes store substitution authority to the machine owner,
-preventing future accounts from pushing arbitrary derivations.
+=["root"]=. Regular users can request builds but cannot override
+daemon trust settings.
 
 *Audit point:* run =nix show-config | grep trusted-users= and verify
-only the expected user is listed.
+only root is trusted.
 
 * Nix store signature verification
 
@@ -164,8 +154,7 @@ only the expected user is listed.
 
 - =require-sigs = true=: every store path fetched from a cache must
   carry a valid cryptographic signature.
-- =trusted-public-keys= is hardcoded to the official =cache.nixos.org=
-  key so a rogue substituter cannot be silently accepted.
+- =trusted-public-keys= lists only the =cache.nixos.org= key.
 
 *Audit point:* run =nix show-config | grep require-sigs= and verify
 it is =true=.
@@ -174,8 +163,8 @@ it is =true=.
 
 =security.pam.services.sudo_local.touchIdAuth = true= in
 =hosts/macOS.nix= enables Touch ID for sudo authentication.  This
-provides biometric gating: shoulder surfing a password is not enough
-to escalate privileges.
+adds a biometric authentication method. Inspect the generated PAM stack
+for the target machine's complete authentication and fallback policy.
 
 * Homebrew security environment
 
@@ -196,7 +185,7 @@ set.
 
 * SSH client hardening
 
-Shared with nixOS via =home/base.nix=.  Home Manager configures SSH
+Shared with linux-laptop via =home/base.nix=.  Home Manager configures SSH
 with:
 
 - =IdentitiesOnly yes=: only the declared key is offered.
@@ -210,7 +199,7 @@ with:
 
 * Git supply chain verification
 
-Shared with nixOS via =home/base.nix=.  =transfer.fsckObjects=,
+Shared with linux-laptop via =home/base.nix=.  =transfer.fsckObjects=,
 =fetch.fsckObjects=, and =receive.fsckObjects= are enabled.  The
 cleartext =git://= protocol is blocked; only HTTPS and SSH are
 allowed.
@@ -286,9 +275,8 @@ enabled.
 
 ** ICMP redirect sysctl
 
-Run =sysctl net.inet.icmp.drop_redirect= and verify the value is 1.
-If it has been reset (e.g. after a macOS update), run
-=darwin-rebuild switch= to reapply.
+Run =sysctl net.inet.icmp.drop_redirect= and review the value. The current
+configuration does not set it, so rebuilding does not reapply a policy.
 
 ** OpenBSM audit logs
 

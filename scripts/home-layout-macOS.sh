@@ -9,14 +9,14 @@
 chflags_bin=${CHFLAGS_BIN:-/usr/bin/chflags}
 
 # On macOS the system video directory is "Movies" (not "Videos").
-[[ -e $HOME/mov || -L $HOME/mov ]] || $DRY_RUN_CMD ln -s "$HOME/Movies" "$HOME/mov"
+[[ -e $HOME/mov || -L $HOME/mov ]] || $DRY_RUN_CMD ln -s "$HOME/Movies" "$HOME/mov" || true
 
 # Hide the default macOS folders from Finder so that only the short
 # aliases are visible when browsing $HOME.  The UF_HIDDEN flag tells
 # Finder to omit the entry from its directory listing; the folder
 # itself continues to work normally for all applications.
 for d in Desktop Documents Downloads Movies Music Pictures Public; do
-    if [[ -d $HOME/$d ]]; then
-        $DRY_RUN_CMD $chflags_bin hidden "$HOME/$d"
-    fi
+	if [[ -d $HOME/$d ]]; then
+		$DRY_RUN_CMD "$chflags_bin" hidden "$HOME/$d" || true
+	fi
 done
