@@ -54,7 +54,7 @@ jobs:
         run: brew update --quiet
       - name: Register custom taps
         run: |
-          awk '/^tap / {gsub(/"/, "", $2); print $2}' config/Brewfile \
+          awk '/^tap / {gsub(/[",]/, "", $2); print $2}' config/Brewfile \
             | while read -r tap; do
                 echo "::group::tap $tap"
                 brew tap "$tap"
@@ -71,8 +71,8 @@ jobs:
               brew info --cask "$name" &>/dev/null \
                 || { echo "::error file=config/Brewfile::Unknown cask: $name"; rc=1; }
             fi
-          done < <(awk '/^brew / {gsub(/"/, "", $2); print "brew " $2}
-                        /^cask / {gsub(/"/, "", $2); print "cask " $2}' config/Brewfile)
+          done < <(awk '/^brew / {gsub(/[",]/, "", $2); print "brew " $2}
+                        /^cask / {gsub(/[",]/, "", $2); print "cask " $2}' config/Brewfile)
           exit $rc
 
   build:
