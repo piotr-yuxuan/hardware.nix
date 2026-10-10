@@ -76,7 +76,22 @@ jobs:
           exit $rc
 
   build:
-    runs-on: macos-latest
+    # macOS builds the whole system. Once built, the Linux system takes about 47 GiB, more
+    # than a hosted runner holds: Linux only resolves it, which lists what would be built
+    # and what would be fetched.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            architecture: arm64
+            target: darwinConfigurations.macOS.system
+            mode: ""
+          - os: ubuntu-latest
+            architecture: x86_64
+            target: nixosConfigurations.nixOS.config.system.build.toplevel
+            mode: --dry-run
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: cachix/install-nix-action@51f3067b56fe8ae331890c77d4e454f6d60615ff
@@ -84,6 +99,7 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
       - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+        if: runner.os == 'macOS' # a dry run puts nothing in the store
         with:
           primary-key: nix-macos-${{ hashFiles('flake.lock') }}
           restore-prefixes-first-match: nix-macos-
@@ -93,38 +109,42 @@ jobs:
           purge-created: 0
           purge-primary-key: never
       - name: Verify the runner architecture
-        run: test "$(uname -m)" = arm64
-      - name: Build the Apple Silicon system without activation
-        run: nix build --no-write-lock-file '.#darwinConfigurations.macOS.system'
+        run: test "$(uname -m)" = "${{ matrix.architecture }}"
+      - name: Build the system without activation
+        run: nix build ${{ matrix.mode }} --no-write-lock-file '.#${{ matrix.target }}'
 
   test-shellscripts:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            install: brew install bats-core
+            tests: tests/home-layout.bats tests/macOS
+          - os: ubuntu-latest
+            install: sudo apt-get update && sudo apt-get install -y --no-install-recommends bats zsh
+            tests: tests/home-layout.bats tests/getting-started-new-codebase.bats tests/nixOS
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      - name: Install bats-core (macOS)
-        run: brew install bats-core
-      - name: Run tests (macOS)
-        run: bats --tap tests/home-layout.bats tests/macOS
-
-  test-shellscripts-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      - name: Install shell test dependencies (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bats zsh
-      - name: Run tests (Linux)
-        run: bats --tap tests/home-layout.bats tests/getting-started-new-codebase.bats tests/nixOS
+      - name: Install Bats
+        run: ${{ matrix.install }}
+      - name: Run the shell tests of this system
+        run: bats --tap ${{ matrix.tests }}
 
   test-python:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.x'
-      - name: Install Zsh for watchdog integration tests
+      - name: Install Zsh for watchdog integration tests (Linux; macOS ships it)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends zsh

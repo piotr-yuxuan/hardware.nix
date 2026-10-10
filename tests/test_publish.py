@@ -747,16 +747,19 @@ def test_export_refuses_and_leaves_the_public_clone_untouched(
 
 
 def test_public_branch_does_not_move_when_the_new_commit_fails_the_gate(
+    publish: ModuleType,
     export_files: Callable[..., tuple[int, dict[str, bytes]]],
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The commit is gated like any other before the branch may reach it."""
     files = {MANIFEST: EVERYTHING, "notes.txt": b"public\n"}
+    # Denied text that the export itself writes, and only in the message of its commit.
+    message = " ".join(publish.EXPORT_MESSAGE.casefold().split())
 
-    outcome = export_files(files, deny=("the private repository",))
+    outcome = export_files(files, deny=(message,))
 
     assert outcome == (FINDINGS, UNTOUCHED)
-    assert "private deny: the private repository" in capsys.readouterr().out
+    assert f"private deny: {message}" in capsys.readouterr().out
 
 
 @pytest.mark.usefixtures("work_identity")
