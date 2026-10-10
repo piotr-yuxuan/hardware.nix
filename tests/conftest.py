@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from types import ModuleType
@@ -222,35 +223,42 @@ def tree_of(publish: ModuleType) -> Callable[[Path], dict[str, bytes]]:
 
 
 @pytest.fixture(scope="session")
-def gpg_home(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[Path, str]]:
+def gpg_home() -> Iterator[tuple[Path, str]]:
     """Create a GnuPG home holding one signing key without passphrase.
 
     Yields ``(home, fingerprint)`` and stops the agent of that home afterwards.
     """
-    home = tmp_path_factory.mktemp("gnupg")
-    home.chmod(0o700)
-    env = {**os.environ, "GNUPGHOME": str(home)}
-    generate = ["--pinentry-mode", "loopback", "--passphrase", ""]
-    generate += ["--quick-generate-key", "Export test", "ed25519", "sign", "never"]
-    subprocess.run(
-        ["gpg", "--batch", *generate], env=env, check=True, capture_output=True
-    )
-    listing = subprocess.run(
-        ["gpg", "--batch", "--list-secret-keys", "--with-colons"],
-        env=env,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    fingerprint = next(
-        line.split(":")[9]
-        for line in listing.stdout.splitlines()
-        if line.startswith("fpr")
-    )
-    yield home, fingerprint
-    subprocess.run(
-        ["gpgconf", "--kill", "all"], env=env, check=False, capture_output=True
-    )
+    # The agent listens on sockets inside this directory, and the path of a socket is
+    # limited to about a hundred characters. The temporary directory of pytest is too
+    # deep for that on macOS, so the home sits directly below /tmp.
+    with tempfile.TemporaryDirectory(prefix="gnupg-", dir="/tmp") as directory:
+        home = Path(directory)
+        env = {**os.environ, "GNUPGHOME": str(home)}
+        generate = ["--pinentry-mode", "loopback", "--passphrase", ""]
+        generate += ["--quick-generate-key", "Export test", "ed25519", "sign", "never"]
+        # What gpg says is left to pytest, which shows it when the fixture fails.
+        subprocess.run(
+            ["gpg", "--batch", *generate],
+            env=env,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        listing = subprocess.run(
+            ["gpg", "--batch", "--list-secret-keys", "--with-colons"],
+            env=env,
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        fingerprint = next(
+            line.split(":")[9]
+            for line in listing.stdout.splitlines()
+            if line.startswith("fpr")
+        )
+        yield home, fingerprint
+        subprocess.run(
+            ["gpgconf", "--kill", "all"], env=env, check=False, capture_output=True
+        )
 
 
 @pytest.fixture
