@@ -90,6 +90,7 @@ symptoms on the Mac: see [[file:../how-to/macOS-troubleshoot-emacs.org][Troubles
 | =ghostty=         | Linux only in nixpkgs                               |
 | =lft=             | Not packaged by nixpkgs                             |
 | =enca=, =fortune= | Depend on =recode=, broken on aarch64-darwin        |
+| =snowflake-cli=   | Does not build at the locked revision               |
 | =pycharm=         | Its =.app= would need App Management (see above)    |
 | =texlive=         | Homebrew's build registers fonts and paths on macOS |
 
@@ -144,6 +145,27 @@ The Linux evaluation gate cannot see this kind of failure, because
 [[file:macOS-corporate-machine-considerations.org][Running this configuration on a corporate Mac]] for what the gate proves
 and what it does not.
 
+* A temporary exception while snowflake-cli does not build
+
+=snowflake-cli= provides =snow=, which the Snowflake extension of VS
+Code calls for some of its features. It evaluates on both hosts and
+builds on neither: the tests of its dependency
+=snowflake-connector-python= fail under Python 3.14, the default Python
+of the locked nixos-unstable revision, and the binary cache has the
+package for no system. This was seen on nixOS; for the Mac it is
+inferred from the missing binary. The Mac therefore takes the
+=snowflake-cli= formula from Homebrew. nixOS goes without it: nothing
+unfree or built from source is added there for VS Code.
+
+This exception has an exit too: once the binary cache has
+=snowflake-cli= for both systems, it can move to =home/base.nix= and
+leave the Brewfile. The comments in =home/base.nix= and
+=config/Brewfile= name the failure.
+
+Plan 077 rejected an override (see its changelog): building against
+Python 3.13 and skipping the package's own tests works on nixOS, but
+it is a source build, and nothing could check it for the Mac.
+
 * The per-host split
 
 When a package needs Nix on nixOS and Homebrew on the Mac, it leaves
@@ -187,6 +209,10 @@ order. Its shape follows from a few choices:
   switch goes on.
 - Homebrew 6 made ask mode the default, and activation must not wait
   for an answer, so the script exports =HOMEBREW_NO_ASK=1=.
+- Another repository installs the VS Code extensions, and the Brewfile
+  declares one of them. The script exports
+  =HOMEBREW_BUNDLE_CLEANUP_NO_VSCODE=1= so that the drift check does not
+  count the others and the answer =u= does not uninstall them.
 - One failing step does not take the others down: a failed
   =brew update= (offline, for example) is reported and ignored. Only a
   failed =brew bundle install= stops the script, which then skips the

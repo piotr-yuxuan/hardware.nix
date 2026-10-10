@@ -25,6 +25,11 @@
     # Linux gets the wrapped Podman package from its NixOS module.
     unstable.podman
 
+    # Terraform, for the HashiCorp extension of VS Code. nixOS stays
+    # with OpenTofu (home/base.nix).
+    unstable.terraform # unfree (BSL), so built from source; the extension formats and validates with it
+    unstable.terraform-ls # nothing calls this copy by default: the extension bundles its own
+
     # Text / docs
     unstable.gnugrep
     unstable.gnused

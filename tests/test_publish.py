@@ -783,7 +783,7 @@ def test_export_commit_ignores_the_ambient_identity_and_key(
     assert shown.decode().splitlines() == [
         handle,
         handle,
-        "Update from the private repository",
+        "Update configuration files",
         signing_key,
         parent,
     ]

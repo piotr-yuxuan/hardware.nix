@@ -82,7 +82,7 @@ Activation runs with an empty environment, so the =HOMEBREW_*=
 variables that [[file:../../home/macOS.nix][home/macOS.nix]] sets for shells do not apply during
 a switch, and neither does =XDG_CONFIG_HOME= (see
 [[*Trust a third-party tap][Trust a third-party tap]]). The script exports =HOMEBREW_NO_ASK=1=
-itself.
+and =HOMEBREW_BUNDLE_CLEANUP_NO_VSCODE=1= itself.
 
 ** Find the failing entries
 
@@ -216,6 +216,17 @@ Choice [u/e/s]:
 - =s=, any other answer, or no answer leaves the drift in place.
 - Without a readable =/dev/tty=, the script prints
   =brewBundle: drift detected but no TTY available; leaving as-is.=
+
+VS Code extensions should not be listed, and =u= should not uninstall
+one. The [[https://github.com/piotr-yuxuan/vscode-settings][VS Code settings]] repository installs them from its own
+manifest, and the Brewfile declares only the LikeC4 one, so Homebrew
+would count every other extension as drift. The script therefore
+exports =HOMEBREW_BUNDLE_CLEANUP_NO_VSCODE=1=: according to the Homebrew
+manual, =brew bundle cleanup= then does not clean up VS Code
+extensions. This was read, not run on any Mac. The first time the menu
+appears after the extensions are installed, check that the list names
+none of them before you answer =u=. A shell does not have the variable:
+by hand, pass =--no-vscode= to =brew bundle cleanup=.
 
 ** Run brew bundle by hand
 

@@ -28,6 +28,11 @@ repositories, the activation snippet substitutions and the staleness
 agent environment.  Bats' own =run= shadows a variable named =tmpdir=, so
 helpers called through =run= must not read =$tmpdir=.
 
+The =tests/macOS/brew-bundle-activation.bats= suite answers the drift
+menu of =scripts/brew-bundle-activation.sh=, which reads =/dev/tty=. One
+test therefore needs =python3=: its =pty= module gives the script a
+controlling terminal and types the answer.
+
 * Running the suites
 
 ** All BATS tests

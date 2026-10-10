@@ -143,6 +143,23 @@ in {
     unstable.tflint
     unstable.terraform-docs
     unstable.terraform-landscape
+    # Programs that VS Code extensions call, and pre-commit, which team
+    # repositories run. Only free packages that the binary cache serves
+    # are shared with nixOS. Not listed here:
+    # - terraform and terraform-ls, for macOS only (home/macOS.nix):
+    #   terraform is unfree, so it is built from source, and nixOS
+    #   stays with OpenTofu;
+    # - dbt, whose extension installs the dbt v2 binary itself, as
+    #   ~/.local/bin/dbt;
+    # - snowflake-cli (snow), whose build fails on both hosts at the
+    #   locked nixpkgs (snowflake-connector-python under Python 3.14):
+    #   macOS takes it from Homebrew (config/Brewfile).
+    unstable.kubectl
+    unstable.kubernetes-helm # helm
+    unstable.kubelogin # Azure kubelogin: signs kubectl in to AKS clusters
+    unstable.azure-cli # az
+    unstable.sqlfluff # SQL linter and formatter
+    unstable.pre-commit # runs the hooks of a repository's .pre-commit-config.yaml
 
     # PyCharm is per host: on macOS it would be the only Nix .app, and
     # Home Manager's app copy then needs App Management permission at

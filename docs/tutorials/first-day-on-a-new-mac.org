@@ -5,7 +5,8 @@ This lesson takes a fresh Apple Silicon Mac to the =macOS= configuration
 of this repository. At the end of it you have Nix and nix-darwin
 managing the system, Home Manager managing your shell and tools, the
 Homebrew apps of [[file:../../config/Brewfile][config/Brewfile]] installed, your personal Git identity
-with this Mac's own keys, and Emacs running its usual configuration.
+with this Mac's own keys, Emacs running its usual configuration, and
+VS Code with its settings and extensions.
 
 The Mac never clones this repository. It builds from the published copy
 on GitHub and from a small flake of its own, =~/src/local/macOS=, that
@@ -45,7 +46,8 @@ otherwise.
 - [[12. Keep secrets out of the Nix store][12. Keep secrets out of the Nix store]]
 - [[13. Clone the Emacs configuration][13. Clone the Emacs configuration]]
 - [[14. Start Emacs][14. Start Emacs]]
-- [[15. Run the final checks][15. Run the final checks]]
+- [[15. Install the VS Code settings][15. Install the VS Code settings]]
+- [[16. Run the final checks][16. Run the final checks]]
 - [[What to read next][What to read next]]
 
 * Before you start
@@ -138,7 +140,7 @@ Then run these checks. None of them changes anything.
    #+end_src
 
    Keep at least 50 GB available. The Nix part of this configuration
-   unpacks to about 17 GiB (measured on 9 October 2026), and the
+   unpacks to about 18 GiB (measured on 10 October 2026), and the
    Homebrew apps and TeX Live come on top of it.
 
 * 1. Install the command line tools
@@ -351,9 +353,10 @@ nothing.
 nix --extra-experimental-features 'nix-command flakes' build '.#darwinConfigurations.macOS.system'
 #+end_src
 
-On 9 October 2026 it planned 1580 paths to download (5.1 GiB, 16.9 GiB
-unpacked) and 128 small local builds, mostly wrappers, fonts and
-generated configuration files. Expect it to take a while.
+On 10 October 2026 it planned 1760 paths to download (5.3 GiB, 18.3 GiB
+unpacked) and 127 local builds, mostly wrappers, fonts and generated
+configuration files. Terraform is compiled from source, since its
+licence keeps it out of the binary cache. Expect it to take a while.
 
 If you followed the TLS guide, run the build command of its section
 [[file:../how-to/macOS-trust-a-corporate-tls-certificate.org::*Build and switch as root][Build and switch as root]] instead.
@@ -365,7 +368,7 @@ nix --extra-experimental-features nix-command path-info -Sh ./result
 #+end_src
 
 Expect one line: a =darwin-system-26.05= store path and a closure size of
-about 17 GiB.
+about 18 GiB.
 
 If the build fails, nothing has changed on the Mac. Read the first error
 and follow
@@ -410,7 +413,7 @@ What to expect, in order:
    from nixpkgs 26.05 on 9 October 2026).
 6. Home Manager runs Homebrew. Lines starting with ===> brewBundle:=
    show each step: =brew update=, then =brew bundle install= of 28 casks,
-   11 formulae and one VS Code extension. This is the longest part. Some
+   12 formulae and one VS Code extension. This is the longest part. Some
    casks install system components and ask for your password, for
    example =macfuse= (/untested on a managed Mac/).
 7. If Homebrew already holds packages that the Brewfile does not list,
@@ -685,9 +688,71 @@ compilation error on every file visit. If Emacs reports errors or the
 =*Warnings*= buffer shows any, look them up in
 [[file:../how-to/macOS-troubleshoot-emacs.org][Troubleshoot Emacs on macOS]].
 
-* 15. Run the final checks
+* 15. Install the VS Code settings
 
-Run these from the local flake's directory.
+Visual Studio Code came with the first switch, with one extension and
+without its settings or its key bindings. Those, and the other
+extensions, are a separate repository with a tool of its own. This
+whole step is /untested on a managed Mac/.
+
+Start VS Code once, so that it creates its directories, then quit it:
+
+#+begin_src zsh
+open -a 'Visual Studio Code'
+#+end_src
+
+Clone the published settings, and run the other commands of this step
+from the clone:
+
+#+begin_src zsh
+git clone https://github.com/piotr-yuxuan/vscode-settings.git ~/src/github.com/piotr-yuxuan/vscode-settings
+cd ~/src/github.com/piotr-yuxuan/vscode-settings
+bin/vscode-settings status
+#+end_src
+
+The clone goes over HTTPS and needs no key. =status= writes nothing: it
+prints the machine-local directory, then what the tool would change.
+
+Values that belong to this Mac only go into that machine-local
+directory. Start from the example, which switches the AI features of
+VS Code off until you know which assistants the employer permits:
+
+#+begin_src zsh
+mkdir -p "$HOME/Library/Application Support/Code/vscode-settings.local"
+cp local.example/macos/settings.json "$HOME/Library/Application Support/Code/vscode-settings.local/"
+#+end_src
+
+Then write the settings and the key bindings, and install the
+extensions:
+
+#+begin_src zsh
+bin/vscode-settings apply
+bin/vscode-settings extensions
+#+end_src
+
+=extensions= prints a line for each extension: =installed=, or
+=STILL MISSING= when VS Code refused it. The programs that these
+extensions call, such as =terraform=, =kubectl= and =az=, came from
+Nix with the first switch.
+
+*Check.* Start VS Code again, then:
+
+#+begin_src zsh
+bin/vscode-settings status
+#+end_src
+
+Expect =in sync: nothing to apply=.
+
+If =code= is not found, or an extension is still missing, IT probably
+manages VS Code: see
+[[file:../explanation/macOS-corporate-machine-considerations.org::*VS Code and its extensions][VS Code and its extensions]].
+[[https://github.com/piotr-yuxuan/vscode-settings/blob/main/docs/tutorials/getting-started.md][Getting started]], in that repository, explains each command. The next
+switches should leave these extensions alone:
+[[file:../how-to/macOS-manage-homebrew.org::*Answer the drift menu][Answer the drift menu]] says why, and what to check the first time.
+
+* 16. Run the final checks
+
+Run these from the local flake's directory, =~/src/local/macOS=.
 
 1. Homebrew matches the Brewfile that the lock pins:
 

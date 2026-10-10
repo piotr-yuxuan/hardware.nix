@@ -228,13 +228,14 @@ The output has two summaries:
 - =these M paths will be fetched (X GiB download, Y GiB unpacked)=: what
   the Mac downloads, and the disk space it needs.
 
-Baseline measured on 9 October 2026: 128
-derivations to build, 1580 paths to fetch, 5.1 GiB download and
-16.9 GiB unpacked. Besides wrappers, generated files and small
+Baseline measured on 10 October 2026: 127
+derivations to build, 1760 paths to fetch, 5.3 GiB download and
+18.3 GiB unpacked. Besides wrappers, generated files and small
 packages such as fonts and dictionaries, that list holds two Node.js
 builds: =bash-language-server-5.8.1= and =pi-mcp-adapter-2.27.0= (with
-=pi-mcp-adapter-2.27.0-npm-deps=). The numbers move with every lock
-update.
+=pi-mcp-adapter-2.27.0-npm-deps=). It also holds =terraform-1.16.4=,
+which is expected there: the package is unfree, Hydra never builds it,
+and the Mac compiles it. The numbers move with every lock update.
 
 To read the build list without store hashes:
 
@@ -247,7 +248,8 @@ nix build --dry-run .#darwinConfigurations.macOS.system 2>&1 \
 Look for nixpkgs packages with a version number that the baseline does
 not list. Each one has no =aarch64-darwin= binary: either Hydra has not
 built it yet, or its build fails there, as =recode-3.7.16= did in
-October 2026 (nixpkgs#568679). Treat it as a likely build failure on the
+October 2026 (nixpkgs#568679). An unfree package, as =terraform= is,
+never has one. Otherwise treat it as a likely build failure on the
 Mac and resolve it before merging: wait for Hydra, install the tool from
 Homebrew on the Mac, or keep the previous lock.
 

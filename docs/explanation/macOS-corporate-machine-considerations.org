@@ -56,6 +56,9 @@ section below.
     code?
 11. Which of the developer tools this configuration installs are
     useful here?
+12. Is there a list of allowed VS Code extensions, or a private
+    marketplace?
+13. Does IT provide VS Code, and may its =code= command be installed?
 
 * Personal repositories on the company's machine
 
@@ -169,6 +172,25 @@ The casks need you to sign in before they send anything; the remote
 MCP server needs no sign-in at all. =config/mcp.json= is shared with
 nixOS, so removing the remote server only for the Mac needs a per-host
 file.
+
+* VS Code and its extensions
+
+The =visual-studio-code= cask installs the editor and links its =code=
+command into Homebrew's =bin= directory. The Brewfile declares one
+extension, LikeC4. The settings, the key bindings and every other
+extension come from a separate repository, [[https://github.com/piotr-yuxuan/vscode-settings][VS Code settings]], whose tool runs
+=code --install-extension= for each extension of its manifest.
+
+An employer can manage VS Code by policy, with a list of allowed
+extensions or a private marketplace in place of the public one. An
+extension that the list leaves out is then disabled without an error,
+so a key or a language can stop working with no message. IT may also
+provide VS Code itself. The cask is then redundant, and the =code=
+command may be missing: the tool installs nothing without it.
+
+This comes from the page [[https://github.com/piotr-yuxuan/vscode-settings/blob/main/docs/how-to/work-on-a-managed-laptop.md][Work on a managed laptop]] of that
+repository, which was written from VS Code's documentation and says
+what to do after each refusal. None of it was tried on a managed Mac.
 
 * Settings that MDM may own
 
@@ -286,11 +308,12 @@ the Mac would build and fetch:
 nix build --dry-run --no-link --no-write-lock-file '.#darwinConfigurations.macOS.system'
 #+end_src
 
-On 9 October 2026 it planned 128 derivations to build and 1580
-paths to fetch (5.1 GiB download, 16.9 GiB unpacked). The only real
-compilations left were =bash-language-server= and =pi-mcp-adapter=
-with its npm dependencies; the rest are wrappers, fonts and generated
-files. These numbers move with every lock update.
+On 10 October 2026 it planned 127 derivations to build and 1760
+paths to fetch (5.3 GiB download, 18.3 GiB unpacked). The only real
+compilations left were =terraform=, whose licence keeps it out of the
+binary cache, =bash-language-server= and =pi-mcp-adapter= with its npm
+dependencies; the rest are wrappers, fonts and generated files. These
+numbers move with every lock update.
 
 ** Why the laptop builds nothing for macOS
 

@@ -47,6 +47,7 @@ make_fake_brew() {
         printf '#!/bin/sh\n'
         printf 'echo "brew $*" >> "$HOME/.fake-calls"\n'
         printf 'echo "HOMEBREW_NO_ASK=${HOMEBREW_NO_ASK:-unset} brew $*" >> "$HOME/.fake-env"\n'
+        printf 'echo "HOMEBREW_BUNDLE_CLEANUP_NO_VSCODE=${HOMEBREW_BUNDLE_CLEANUP_NO_VSCODE:-unset} brew $*" >> "$HOME/.fake-env"\n'
         printf 'if [ "$1" = "shellenv" ]; then\n'
         printf '    printf '"'"'export PATH="%s/bin:$PATH"\n'"'"' "%s"\n' "$prefix" "$prefix"
         printf 'elif [ "$1" = "update" ]; then\n'
@@ -172,6 +173,30 @@ run_brew_dry() {
     [[ $env_log == *"HOMEBREW_NO_ASK=1 brew bundle install"* ]]
     [[ $env_log == *"HOMEBREW_NO_ASK=1 brew upgrade --greedy"* ]]
     [[ $env_log == *"HOMEBREW_NO_ASK=1 brew bundle cleanup"* ]]
+}
+
+@test "live mode: the drift listing leaves VS Code extensions alone" {
+    # Another tool installs VS Code extensions that the Brewfile does not
+    # declare. Homebrew must not list them as drift.
+    make_fake_brew "$tmpdir/brew"
+    run_brew HOMEBREW_PREFIX="$tmpdir/brew"
+    local env_log; env_log=$(cat "$tmpdir/.fake-env")
+    [[ $env_log == *"HOMEBREW_BUNDLE_CLEANUP_NO_VSCODE=1 brew bundle cleanup --file $tmpdir/Brewfile"* ]]
+}
+
+@test "live mode: answering u to the drift menu leaves VS Code extensions alone" {
+    # The fake brew reports drift (cleanup exits 1), so the menu opens. It
+    # reads its answer from /dev/tty: Python's pty module gives the script
+    # a controlling terminal and types the answer. The alarm ends the test
+    # if the script ever waits for a second answer.
+    make_fake_brew "$tmpdir/brew" 0 0 1
+    printf 'u\n' | python3 -c 'import pty, signal, sys; signal.alarm(30); pty.spawn(sys.argv[1:])' \
+        env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" HOMEBREW_PREFIX="$tmpdir/brew" zsh -c '
+        export HOME BREWFILE HOMEBREW_PREFIX
+        source "$1"
+    ' _ "$SCRIPT"
+    local env_log; env_log=$(cat "$tmpdir/.fake-env")
+    [[ $env_log == *"HOMEBREW_BUNDLE_CLEANUP_NO_VSCODE=1 brew bundle cleanup --file $tmpdir/Brewfile --force"* ]]
 }
 
 @test "live mode: brew cleanup --prune=all -v is called to tidy cache" {

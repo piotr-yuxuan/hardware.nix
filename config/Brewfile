@@ -15,6 +15,7 @@ brew "lft" # kept because nixpkgs does not package it (checked on 26.05)
 brew "likec4" # vs-code extension dependency
 brew "meson" # Fast and user friendly build system
 brew "pkgconf" # pkg-config implementation (Homebrew name)
+brew "snowflake-cli" # snow, for the Snowflake VS Code extension; nixpkgs snowflake-cli does not build at the locked revision
 brew "texlive" # Complex meta-package; brew's texlive handles macOS
                # font/path registration more reliably than nixpkgs
                # texlive.combined.*
@@ -47,7 +48,7 @@ cask "macfuse"
 cask "notunes"
 cask "rectangle"
 cask "slack@beta"
-cask "visual-studio-code" # macOS GUI install; extensions managed via vscode "..." below
+cask "visual-studio-code" # macOS GUI install; the vscode-settings repository installs its extensions
 cask "vlc"
 cask "localsend" # Cross-platform AirDrop alternative
 cask "middleclick" # Three/four-finger trackpad tap → middle click

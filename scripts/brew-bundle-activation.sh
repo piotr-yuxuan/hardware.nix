@@ -45,6 +45,12 @@ fi
 # confirm. Activation must not wait for an answer.
 export HOMEBREW_NO_ASK=1
 
+# Another tool installs the VS Code extensions, from its own manifest;
+# the Brewfile declares one of them. Without this variable,
+# `brew bundle cleanup` counts every other extension as drift, and the
+# answer u of the menu below uninstalls them.
+export HOMEBREW_BUNDLE_CLEANUP_NO_VSCODE=1
+
 # Refresh the Homebrew formula/cask index before installing.
 # Equivalent to `apt update`; keeps formula metadata and available versions current.
 # Non-fatal: activation should still attempt bundle install when offline.

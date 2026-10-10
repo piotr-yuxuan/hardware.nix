@@ -140,7 +140,9 @@ set to the store copy of =config/Brewfile=. In order:
 
 1. Skips everything, successfully, when =/opt/homebrew/bin/brew= does
    not exist.
-2. Exports =HOMEBREW_NO_ASK=1=.
+2. Exports =HOMEBREW_NO_ASK=1= and
+   =HOMEBREW_BUNDLE_CLEANUP_NO_VSCODE=1=. The second keeps VS Code
+   extensions out of step 7.
 3. =brew update=; a failure is reported and ignored.
 4. =brew install --cask --adopt docker-desktop= when
    =/Applications/Docker.app= exists but the cask is not installed.

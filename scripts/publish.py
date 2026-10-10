@@ -20,12 +20,11 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unicodedata
 from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
-
-import tomllib
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -37,7 +36,7 @@ ALLOWLIST = ".github/publish-allow.toml"
 LOCK_FILE = re.compile(r"(?:\.lock|-lock\.json)$")
 HANDLE = "piotr-yuxuan"
 EXPORT_EMAIL = f"{HANDLE}@users.noreply.github.com"
-EXPORT_MESSAGE = "Update from the private repository"
+EXPORT_MESSAGE = "Update configuration files "
 SIGNING_KEY = re.compile(r"(?:0x)?([0-9A-Fa-f]{16,40})!?")
 # Who may appear as author or committer of a public commit: the handle or the
 # GitHub display name, at the handle's noreply address.

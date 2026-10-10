@@ -40,6 +40,7 @@ language and platform support.
   - [[marksman][marksman]]
   - [[vscode-langservers-extracted][vscode-langservers-extracted]]
   - [[tofu-ls][tofu-ls]]
+  - [[terraform-ls (macOS only)][terraform-ls (macOS only)]]
 - [[Formatters and linters][Formatters and linters]]
   - [[alejandra / statix / deadnix][alejandra / statix / deadnix]]
   - [[black / isort / ruff][black / isort / ruff]]
@@ -47,6 +48,8 @@ language and platform support.
   - [[yamlfmt / yamllint][yamlfmt / yamllint]]
   - [[shfmt / shellcheck][shfmt / shellcheck]]
   - [[prettier][prettier]]
+  - [[sqlfluff][sqlfluff]]
+  - [[pre-commit][pre-commit]]
 - [[Testing][Testing]]
   - [[bats][bats]]
   - [[ripgrep][ripgrep]]
@@ -92,11 +95,17 @@ language and platform support.
   - [[sops][sops]]
   - [[age][age]]
   - [[opentofu][opentofu]]
+  - [[terraform (macOS only)][terraform (macOS only)]]
   - [[terraform-mcp-server][terraform-mcp-server]]
   - [[infracost][infracost]]
   - [[tflint][tflint]]
   - [[terraform-docs][terraform-docs]]
   - [[terraform-landscape][terraform-landscape]]
+  - [[kubectl][kubectl]]
+  - [[kubernetes-helm][kubernetes-helm]]
+  - [[kubelogin][kubelogin]]
+  - [[azure-cli][azure-cli]]
+  - [[snowflake-cli (macOS only)][snowflake-cli (macOS only)]]
   - [[podman][podman]]
   - [[podman-compose][podman-compose]]
 - [[CloudFormation][CloudFormation]]
@@ -463,8 +472,19 @@ independently.
 ** tofu-ls
 The official OpenTofu language server.  It provides completion, hover,
 diagnostics, formatting, symbols, and navigation for OpenTofu modules through
-Emacs Eglot or =lsp-mode=.  It replaces the Terraform-specific language
-servers because this fleet has no Terraform-only projects.
+Emacs Eglot or =lsp-mode=.  Emacs uses it for every =.tf= file, in place
+of =terraform-ls=.
+
+** terraform-ls (macOS only)
+The HashiCorp language server for Terraform, installed by
+=home/macOS.nix=.  Nothing calls this copy by default: the HashiCorp
+Terraform extension of VS Code bundles its own, and Emacs is configured
+for =tofu-ls=.  It is on the =PATH= for the
+=terraform.languageServer.path= setting of the extension, should the
+bundled copy not run.
+#+begin_src sh
+terraform-ls version
+#+end_src
 
 * Formatters and linters
 
@@ -538,6 +558,25 @@ Formats HTML, CSS, JSON, Markdown, YAML, and more.
 #+begin_src sh
 prettier --write "**/*.json"
 prettier --check .
+#+end_src
+
+** sqlfluff
+SQL linter and formatter for many dialects, Snowflake among them.  The
+SQLFluff extension of VS Code calls it, when a team lints its SQL with
+SQLFluff.
+#+begin_src sh
+sqlfluff lint models/ --dialect snowflake      # report the violations
+sqlfluff fix models/ --dialect snowflake       # apply the fixes
+sqlfluff dialects                              # list the dialects
+#+end_src
+
+** pre-commit
+Runs the hooks that a repository declares in =.pre-commit-config.yaml=,
+at each commit or on demand.  No editor extension calls it: it is here
+because a team repository usually runs its checks through it.
+#+begin_src sh
+pre-commit install                             # run the hooks at each commit
+pre-commit run --all-files                     # run them now, on every file
 #+end_src
 
 * Testing
@@ -953,6 +992,21 @@ tofu validate                                  # validate the configuration
 tofu test                                      # run OpenTofu tests
 #+end_src
 
+** terraform (macOS only)
+HashiCorp's infrastructure-as-code engine, installed by
+=home/macOS.nix=.  The HashiCorp Terraform extension of VS Code calls it
+to format and to validate; formatting fails silently without it.  Its
+Business Source Licence makes it unfree in nixpkgs, so the binary cache
+has no copy and the Mac builds it from source.  nixOS does not install
+it and stays with OpenTofu, which the Emacs configuration runs on both
+hosts: in VS Code there, the OpenTofu extension replaces the HashiCorp
+one.
+#+begin_src sh
+terraform fmt -recursive                       # format all modules
+terraform init                                 # install locked providers
+terraform validate                             # validate the configuration
+#+end_src
+
 ** terraform-mcp-server
 HashiCorp's MCP server exposes current public Terraform Registry provider,
 module, and policy documentation to MCP clients.  Nix manages the executable,
@@ -995,6 +1049,57 @@ terraform-docs markdown table --output-file README.md --output-mode inject .
 Reformats OpenTofu plan output for readability.
 #+begin_src sh
 tofu plan | landscape
+#+end_src
+
+** kubectl
+The Kubernetes command-line client.  The Kubernetes extension of VS
+Code calls it for every operation on a cluster.
+#+begin_src sh
+kubectl config get-contexts                    # list the known clusters
+kubectl get pods --all-namespaces              # list every pod
+kubectl logs -f deploy/my-app                  # follow the logs of a deployment
+#+end_src
+
+** kubernetes-helm
+Helm, the package manager for Kubernetes; the command is =helm=.  The
+Kubernetes extension of VS Code calls it for charts.
+#+begin_src sh
+helm list --all-namespaces                     # list the installed releases
+helm template my-release ./chart               # render a chart locally
+helm lint ./chart                              # check a chart
+#+end_src
+
+** kubelogin
+The Azure credential plugin of =kubectl=: it signs in to the clusters of
+Azure Kubernetes Service.  The Azure Kubernetes Service extension of VS
+Code calls it.  The OpenID Connect plugin of the same name is another
+package, =kubelogin-oidc=, which is not installed.
+#+begin_src sh
+kubelogin --version
+kubelogin convert-kubeconfig -l azurecli       # reuse the sign-in of az
+#+end_src
+
+** azure-cli
+Microsoft's command-line client for Azure; the command is =az=.  The
+Azure Kubernetes Service extension of VS Code calls it.
+#+begin_src sh
+az login                                       # sign in through the browser
+az account show                                # the active subscription
+az aks get-credentials --resource-group my-group --name my-cluster
+#+end_src
+
+** snowflake-cli (macOS only)
+Snowflake's command-line client; the command is =snow=.  The Snowflake
+extension of VS Code calls it for some of its features.  macOS installs
+the =snowflake-cli= formula of =config/Brewfile=, because the nixpkgs
+package does not build at the locked revision: the tests of
+=snowflake-connector-python= fail under Python 3.14, and the binary
+cache has no copy for either host.  nixOS does not install it.
+#+begin_src sh
+snow --version
+snow connection list                           # the connections it knows
+snow connection test                           # try the default connection
+snow sql -q 'select current_version()'         # run one statement
 #+end_src
 
 ** podman
@@ -1640,7 +1745,25 @@ explicit =emacs -nw= fallback.
 Firefox with developer tools enabled by default.
 
 ** vscode
-Visual Studio Code.
+Visual Studio Code.  nixOS installs it from nixpkgs and runs it inside
+a Firejail sandbox; macOS installs the =visual-studio-code= cask of
+=config/Brewfile=.
+
+Its settings, key bindings and extensions are not in this repository.
+They come from [[https://github.com/piotr-yuxuan/vscode-settings][VS Code settings]], whose tool writes the settings and
+the key bindings and runs =code --install-extension= from its own
+manifest.  The Brewfile keeps the application and one extension,
+LikeC4, and the Homebrew step of a switch asks Homebrew to leave every
+extension out of its drift check.
+
+The programs that the extensions call have their own entries:
+[[kubectl][kubectl]], [[kubernetes-helm][kubernetes-helm]], [[kubelogin][kubelogin]], [[azure-cli][azure-cli]] and [[sqlfluff][sqlfluff]] on both
+hosts, [[terraform (macOS only)][terraform]], [[terraform-ls (macOS only)][terraform-ls]] and [[snowflake-cli (macOS only)][snowflake-cli]] on macOS.  On
+nixOS the sandbox shows VS Code neither =~/.kube= nor =~/.azure=: the
+programs run there and cannot sign in.
+
+This configuration leaves dbt out: its extension installs the dbt v2
+binary itself, as =~/.local/bin/dbt=.
 
 ** maestral / maestral-gui
 Open-source Dropbox client.  =maestral= is the daemon, =maestral-gui=
