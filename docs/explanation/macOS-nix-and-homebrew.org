@@ -1,0 +1,277 @@
+#+title: Why the Mac uses both Nix and Homebrew
+#+author: piotr-yuxuan
+
+On nixOS, Nix provides everything. On the Mac, the same Home Manager
+modules (=home/base.nix= plus =home/macOS.nix=) still provide the
+command-line tools, the shell, Git, fonts and settings, but Homebrew
+installs the graphical apps and a handful of formulae listed in
+[[file:../../config/Brewfile][config/Brewfile]]. This page explains where the line between the two
+falls, how they meet during activation, and what the split costs.
+
+To act on Homebrew, see [[file:../how-to/macOS-manage-homebrew.org][Manage Homebrew on macOS]]. For what each
+package is, see the [[file:../reference/package-guide.org][package guide]].
+
+* Where the line falls
+
+Some macOS GUI apps (Emacs.app via jimeh/emacs-builds, Firefox, Slack,
+VS Code, etc.) work more reliably as native =.app= bundles installed
+through Homebrew casks. A few command-line tools also stay in Homebrew,
+either because nixpkgs cannot provide them on the Mac or because the
+Homebrew build fits macOS better; =texlive= and =lft= were the first.
+
+The Home Manager activation script runs =brew bundle install= from
+=config/Brewfile= automatically on every =darwin-rebuild switch=, so
+both worlds stay in sync.
+
+Nix stays the default. The [[file:goals-and-principles.org][goals and principles]] put it in KISS
+terms: there is no point wrapping GUI apps in Nix derivations when
+=brew bundle= is idempotent already. Homebrew is the fallback, not a
+second home for anything Nix can do on the Mac. Fonts, for example,
+come from Nix: =fonts.packages= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]] copies them to
+=/Library/Fonts/Nix Fonts/=, where every macOS app finds them, so the
+Brewfile has no font casks.
+
+* Why graphical apps come from casks
+
+- Native bundles where macOS expects them. A cask installs the
+  vendor's own =.app= into =/Applications=. Spotlight, the Dock and
+  LaunchServices find it there: the Dock pins
+  =/Applications/Emacs.app= (=system.defaults.dock.persistent-apps=),
+  and [[file:../../scripts/set-macos-defaults.sh][scripts/set-macos-defaults.sh]] makes apps default handlers by
+  their bundle identifiers.
+- Updates. Many casks update themselves, and the activation's
+  =brew upgrade --greedy= step also moves forward the casks that are
+  marked =auto_updates= or =version :latest=.
+- A stable identity for privacy permissions. macOS records permissions
+  such as the Accessibility access Rectangle and MiddleClick need
+  against an app's identity. A vendor-signed bundle at a fixed path
+  keeps that identity across updates.
+- No dependency on the App Management permission. =home.stateVersion=
+  is ="25.11"= ([[file:../../flake.nix][flake.nix]]), so Home Manager's =copyApps= is on: it
+  copies every =.app= that a Nix package ships into
+  =~/Applications/Home Manager Apps=. Before copying, its
+  =checkAppManagementPermission= step touches each bundle already in
+  that folder. If the terminal lacks App Management (System Settings,
+  Privacy & Security, App Management), it aborts the whole Home
+  Manager activation with "permission denied when trying to update
+  apps, aborting activation". An MDM profile may not let you grant
+  that permission. PyCharm was the only Nix package with a =.app= on
+  the Mac; it now comes from the =pycharm= cask, so the folder stays
+  empty and the check has nothing to fail on. Adding a Nix package
+  that ships a =.app= to =home/base.nix= or =home/macOS.nix= brings the
+  dependency back.
+
+** Emacs.app from jimeh/emacs-builds
+
+The Brewfile says not to replace Emacs with nixpkgs' =emacs= on the Mac.
+The =jimeh/emacs-builds= tap provides nightly and release =.app=
+bundles with native compilation and macOS-native UI optimisations.
+nixOS uses =unstable.emacs-pgtk= from Nix instead.
+
+It is the only third-party tap. Since Homebrew 6, non-official taps
+need explicit trust, so the Brewfile declares
+=cask "jimeh/emacs-builds/emacs-app", trusted: true=. The trust lives
+in the Brewfile rather than in Homebrew's own trust store because an
+accepted =brew bundle cleanup= resets that store to what the Brewfile
+declares. That store also depends on the environment, so a switch and
+a terminal use different ones (see
+[[*How the Brewfile is applied during activation][How the Brewfile is applied during activation]]). This was read from
+Homebrew's source and documentation; it is untested on a managed Mac.
+
+An app started from the Dock does not inherit the shell environment
+that Home Manager sets up, which is the root of several Emacs
+symptoms on the Mac: see [[file:../how-to/macOS-troubleshoot-emacs.org][Troubleshoot Emacs on macOS]].
+
+* What nixpkgs cannot provide on the Mac
+
+| Package           | Why it comes from Homebrew on the Mac               |
+|-------------------+-----------------------------------------------------|
+| =gimp=            | Linux only in nixpkgs                               |
+| =ghostty=         | Linux only in nixpkgs                               |
+| =lft=             | Not packaged by nixpkgs                             |
+| =enca=, =fortune= | Depend on =recode=, broken on aarch64-darwin        |
+| =pycharm=         | Its =.app= would need App Management (see above)    |
+| =texlive=         | Homebrew's build registers fonts and paths on macOS |
+
+GIMP and Ghostty list only Linux systems in their nixpkgs platforms at
+the locked revision. PyCharm and TeX Live are available for the Mac in
+nixpkgs, and nixOS takes =texliveFull= from Nix, but the Brewfile
+records that Homebrew's =texlive= handles macOS font and path
+registration more reliably.
+
+For Ghostty, =home/macOS.nix= sets =programs.ghostty.package = null=:
+Home Manager still writes the configuration and the shell integration,
+and the cask provides the app. Its comment calls nixpkgs' Ghostty
+broken on darwin; in fact the package is simply not built for darwin.
+
+A few formulae have other reasons, each recorded next to its line in
+the Brewfile: =curl= because =HOMEBREW_FORCE_BREWED_CURL=1= makes
+Homebrew download with its own curl (the interactive =curl= on =PATH=
+still comes from Nix), =zsh-autocomplete= because no Home Manager
+module covers it, and =likec4= for its VS Code extension.
+
+* Temporary exceptions while recode is broken
+
+=enca= and =fortune= evaluate fine on the Mac but do not build: both
+depend on =recode-3.7.16=, whose test phase fails on aarch64-darwin at
+the locked nixos-unstable revision (Hydra build 347265569,
+[[https://github.com/NixOS/nixpkgs/issues/568679][nixpkgs#568679]]). One failed build stops the whole switch, so the first
+switch on a new Mac would have failed. Both now come from Nix on nixOS
+and from the =enca= and =fortune= formulae on the Mac. Homebrew ships
+the BSD =fortune=, so its options may differ.
+
+This is an exception with an exit: once Hydra builds =recode= for
+aarch64-darwin again, both move back to =home/base.nix= and leave the
+Brewfile. The comments in =home/base.nix=, =home/nixOS.nix= and
+=config/Brewfile= say so. The upstream fix,
+[[https://github.com/NixOS/nixpkgs/pull/571390][nixpkgs PR #571390]] (=recode= 3.7.17), was merged on 8 October 2026,
+after the lock was taken. It helps only once nixos-unstable carries it
+and =flake.lock= is updated; check the Hydra build before moving the
+packages back.
+
+Plan 072 rejected three alternatives (see its changelog):
+
+- Overriding =recode= with =doCheck = false=: it would build, but the
+  failing tests cover the library API and end in a segfault, and
+  =fortune= runs in the login greeting.
+- Taking both from the stable channel on the Mac: cached and tested,
+  but it breaks the rule that user packages come from =unstable=.
+- Darwin-gated channels: =recode= evaluates to the same failing
+  derivation there.
+
+The Linux evaluation gate cannot see this kind of failure, because
+=recode= evaluates without error. See
+[[file:macOS-corporate-machine-considerations.org][Running this configuration on a corporate Mac]] for what the gate proves
+and what it does not.
+
+* The per-host split
+
+When a package needs Nix on nixOS and Homebrew on the Mac, it leaves
+=home/base.nix=. The Nix side moves to [[file:../../home/nixOS.nix][home/nixOS.nix]] and the
+Homebrew side goes into the Brewfile. VisualVM set the precedent; GIMP,
+PyCharm, enca and fortune followed.
+
+=home/base.nix= opens with the rule behind it: only settings applied on
+both hosts belong there. AGENTS.md also allows =meta.availableOn= or a
+platform guard at the point of use, but moving a package between files
+needs no conditional at all, and each host file keeps reading as the
+full list for its host. Comments in =home/base.nix=,
+=home/nixOS.nix= and the Brewfile explain the split for VisualVM,
+PyCharm, enca and fortune, so a pair can be found from either end.
+
+* How the Brewfile is applied during activation
+
+=sudo darwin-rebuild switch --flake .#macOS= builds the new generation
+and runs nix-darwin's activation as root. That script starts from an
+empty environment (=#!/usr/bin/env -i=) and runs its phases under
+=set -e=: checks, users, =/etc=, defaults, launchd, networking (the
+application firewall) and a few more, then =postActivation=. Home
+Manager's nix-darwin module appends the user's activation to
+=postActivation= and runs it as that user through
+=launchctl asuser ... sudo -u <user> --set-home=.
+
+Inside the Home Manager activation, the =brewBundle= entry runs after
+=writeBoundary=. It calls [[file:../../scripts/hm-activation/brew-bundle.sh][scripts/hm-activation/brew-bundle.sh]], which
+runs [[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]] with =BREWFILE= set to a copy of
+=config/Brewfile= in the Nix store. The values are substituted with
+=builtins.replaceStrings= at evaluation time, so the Mac's
+configuration can be evaluated from Linux. =defaultApps= (duti) and
+=homeLayoutMacOS= run after =brewBundle=, so the apps exist before the
+default handlers point at them.
+
+[[file:../reference/macOS-configuration.org::*Homebrew steps][Homebrew steps]] in the reference lists what the script runs, in
+order. Its shape follows from a few choices:
+
+- Homebrew is a prerequisite that Nix does not install. Without
+  =/opt/homebrew/bin/brew=, the script skips the Brewfile and the
+  switch goes on.
+- Homebrew 6 made ask mode the default, and activation must not wait
+  for an answer, so the script exports =HOMEBREW_NO_ASK=1=.
+- One failing step does not take the others down: a failed
+  =brew update= (offline, for example) is reported and ignored. Only a
+  failed =brew bundle install= stops the script, which then skips the
+  greedy upgrade, the drift check and the cache cleanup.
+- The drift check runs =brew bundle cleanup= with no standard input, so
+  Homebrew cannot prompt. When it finds packages that the Brewfile does
+  not declare and a terminal is attached, the script offers its own
+  menu: uninstall the extras, abort, or leave them.
+
+The wrapper turns any failure into "brewBundle: warning: Brewfile
+activation failed; continuing." A Homebrew problem therefore never
+aborts the switch. The same wrapper also swallows the menu's abort
+choice, a known limitation.
+
+Three consequences follow:
+
+- The Brewfile that runs is the one in the generation being activated:
+  the copy that the lock of the Mac's local flake pins. A change to
+  =config/Brewfile= reaches a Mac only after =nix flake update base=
+  and a switch there.
+- The =HOMEBREW_*= hardening variables in =home.sessionVariables=
+  (=HOMEBREW_CASK_OPTS= with =--require-sha= and the others) reach your
+  interactive shells, not the activation, which starts empty. Nor does
+  a proxy exported in your shell, nor =XDG_CONFIG_HOME=, which decides
+  where Homebrew keeps its trust store: a switch records trust in
+  =~/.homebrew/trust.json=, while =brew= in a terminal reads
+  =~/.config/homebrew/trust.json=.
+- Because the firewall phase runs before =postActivation= under
+  =set -e=, a firewall command that fails on a managed Mac would stop
+  the activation before Home Manager, and therefore before Homebrew.
+  Whether it fails is unverified; see
+  [[file:macOS-corporate-machine-considerations.org][Running this configuration on a corporate Mac]].
+
+* What the split costs
+
+- No pinning and no real rollback for the Homebrew half. Nix packages
+  are fixed by =flake.lock=; Brewfile entries carry no versions, and
+  every switch updates and upgrades them. Rolling back activates the
+  previous generation's copy of the Brewfile, which can reinstall what
+  it lists and report newer entries as drift, but cannot bring back an
+  older version of an app. The reproducibility the flake promises
+  covers the Nix half only.
+- Slower switches that need the network. Every switch talks to
+  Homebrew, and the greedy step upgrades auto-updating apps, which may
+  compete with updates an IT department manages.
+- Soft failures. A disabled cask, as =goldenpassport= became in
+  September 2026, makes =brew bundle install= fail on every switch;
+  the switch still succeeds, with a warning that is easy to miss, and
+  the greedy upgrade, drift and cleanup steps no longer run.
+  =codex-app= is deprecated and will do the same once Homebrew
+  disables it. =brew bundle check --file config/Brewfile= shows
+  whether everything is installed.
+- Two trust models. Nix verifies every substituted store path against
+  pinned keys (=require-sigs=, =trusted-public-keys=). Homebrew trusts
+  its official taps plus the one third-party cask marked trusted, and
+  casks run vendor installers, some of them as root (=macfuse=, the
+  =docker-desktop= helper). Requiring checksums through
+  =HOMEBREW_CASK_OPTS= also conflicts with the Google Chrome casks, an
+  open point.
+- Duplicates that drift apart. =enchant=, =meson=, =pkgconf= (Nix's
+  =pkg-config=) and =curl= exist on both sides, and =jenv= manages
+  Java beside Nix's =temurin-bin-27=. The Nix copies are locked; the
+  Homebrew copies follow upstream. Which one a build picks depends on
+  =PATH= and search order.
+- Drift. Anything installed with =brew install= by hand appears as
+  drift at every switch until it is added to the Brewfile or removed.
+- Ownership. The script assumes you own =/opt/homebrew=. When IT
+  manages Homebrew, see
+  [[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use an IT-managed Nix or Homebrew]].
+
+* Alternatives not taken
+
+- Everything from Nix. Not possible today for GIMP, Ghostty or lft, and
+  every Nix =.app= would bring back the App Management dependency.
+- nix-darwin's own =homebrew= module. nix-darwin has one, with its own
+  activation phase; this repository does not use it. Its history does
+  not record why. A plain Brewfile stays usable with =brew bundle=
+  alone.
+- Platform guards in =home/base.nix= instead of per-host files: see
+  [[*The per-host split][The per-host split]].
+
+* Related pages
+
+- [[file:../how-to/macOS-manage-homebrew.org][Manage Homebrew on macOS]]
+- [[file:../how-to/macOS-grant-privacy-permissions.org][Grant privacy permissions on macOS]]
+- [[file:../reference/macOS-configuration.org][macOS configuration reference]]
+- [[file:../reference/package-guide.org][Package guide]]
+- [[file:macOS-corporate-machine-considerations.org][Running this configuration on a corporate Mac]]

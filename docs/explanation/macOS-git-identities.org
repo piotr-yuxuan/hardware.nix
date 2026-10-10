@@ -1,0 +1,248 @@
+#+title: Why the Mac separates work and personal Git identities
+#+author: piotr-yuxuan
+
+The Mac belongs to the employer and holds two kinds of repositories:
+work repositories, and a few personal ones. Each kind needs its own
+author email, signing key and SSH key. A mistake in either direction is
+visible and hard to take back once pushed: a work commit published
+under a personal email, or a personal key offered to a work forge. This
+page explains how the Mac's own =identity.nix= and [[file:../../home/macOS.nix][home/macOS.nix]] keep
+them apart, why the identities are not in this repository, and which
+risks remain.
+
+For the steps, see
+[[file:../how-to/macOS-set-up-work-and-personal-git-identities.org][Set up work and personal Git identities on macOS]]. For the values,
+see the [[file:../reference/macOS-configuration.org][macOS configuration reference]].
+
+* Work by default, personal by directory
+
+The global =user= section is the work identity. A single entry in
+=programs.git.includes=, with the condition
+=gitdir:~/src/github.com/piotr-yuxuan/=, carries the personal identity:
+name, email =piotr-yuxuan@users.noreply.github.com=, an OpenPGP signing
+key, =commit.gpgSign=, =tag.gpgSign=, =gpg.format = "openpgp"= and a
+=core.sshCommand= that selects the personal SSH key. Both are written
+in =identity.nix=, which a Mac gets from
+[[file:../../templates/macOS/identity.nix][templates/macOS/identity.nix]].
+
+Work is the default because on a work machine almost every repository
+is a work repository, cloned wherever work tools and habits put it.
+The personal repositories are few and live in one directory known in
+advance. An include can only be scoped to a path you can name, and the
+personal path is the one you can name. A repository that falls outside
+every include then gets the work identity, which is the safer failure
+on the employer's machine.
+
+Some details make the single condition enough:
+
+- The trailing slash makes the condition match every repository below
+  the directory, including their linked worktrees.
+- On macOS, =~/src= is a plain directory, so the path you type is the
+  path Git sees. On nixOS, =~/src= points into Dropbox and a condition
+  needs both paths.
+- Git matches =gitdir:= against the resolved path, so a symlink into the
+  directory also gets the personal identity. A linked worktree's Git
+  directory sits inside its main repository, so a worktree checked out
+  elsewhere gets it too when its repository is below the directory.
+- Git reads its configuration again after creating a clone, so the
+  include already applies while cloning into the directory.
+
+The Mac's local flake, =~/src/local/macOS=, lies outside the personal
+directory: commits there use the work identity.
+
+[[file:../../tests/macOS/darwin-generated-config.bats][tests/macOS/darwin-generated-config.bats]] checks the configuration that
+the template generates for the personal directory, a symlink into it,
+and a work repository outside it. The symlink and worktree behaviour
+was checked with Git on Linux; it is untested on a managed Mac.
+
+** The inverse of nixOS
+
+nixOS is a personal machine. There, the personal identity is the
+global default, and any further identity applies by directory. The
+mechanism is the same, a default plus =gitdir:= includes; the choice of
+default is reversed. nixOS also selects its GitHub key with a
+=Host github.com= block, which the Mac must not do, as explained below.
+Its identities live in a personal module that this repository does not
+publish.
+
+* Why the identities live in the Mac's own flake
+
+This repository is published. A work email, a forge host, a key ID or
+the name an employer expects would be public the day they were
+committed, and would stay in the history afterwards. They also describe
+one machine, not the configuration.
+
+So this repository holds only the mechanism. [[file:../../home/macOS.nix][home/macOS.nix]] sets
+=user.useConfigOnly=, and the template carries the personal include and
+placeholders. A Mac copies the template into its local flake, which has
+no remote and never leaves the machine, and fills the values there.
+Nothing flows back.
+
+The tests still cover what matters: =darwinConfigurations.macOS= of this
+repository is the template evaluated with its placeholders, so the
+by-directory behaviour is checked on every change, without any real
+value.
+
+* Why =useConfigOnly= instead of placeholder values
+
+The work name, email, forge and signing policy are unknown when the
+template is written. A placeholder email would let commits succeed
+under a wrong identity, silently, and the mistake would only show after
+a push. With =useConfigOnly= set and no work identity, Git refuses
+instead:
+
+#+begin_example
+fatal: no email was given and auto-detection is disabled
+#+end_example
+
+The gap fails loudly, at commit time, before anything leaves the
+machine. No fallback stands in the way: [[file:../../home/base.nix][home/base.nix]] sets no name and
+no email, on any host.
+
+The personal signing key follows the same idea. It is the literal
+placeholder =FIXME-personal-openpgp-key-id=, which no keyring contains,
+so a signed commit in a personal repository fails until the Mac's own
+key ID replaces it. Every value to fill carries a =FIXME= comment in
+=identity.nix=.
+
+The placeholders only fail when Git is used. Evaluation, building and
+activation do not depend on them, so the first switch works before any
+of them is filled.
+
+The cost is that everything that creates a commit outside the personal
+directory fails until the work identity is set: =git commit=,
+=git stash=, and a =git pull= that has to rebase local commits or stash
+changes (=home/base.nix= sets =pull.rebase= and =rebase.autoStash=).
+
+* Why the personal key follows the directory, not the host
+
+=home/base.nix= gives every SSH connection =IdentitiesOnly yes=, so ssh
+offers only the keys the configuration names. A =Host github.com= block
+with an =IdentityFile= selects by host name, and the employer may also
+use github.com: every github.com connection, work repositories
+included, would offer the personal key and nothing else.
+
+So the Mac has no such block. The personal include sets
+
+#+begin_example
+core.sshCommand = ssh -i ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519 -o IdentitiesOnly=yes -o ControlPath=none
+#+end_example
+
+and the key follows the repository's directory. The work side is a
+=FIXME= in =identity.nix=: a global =core.sshCommand= with the work key
+if work also uses github.com (the personal include overrides it below
+the personal directory), or a =programs.ssh.settings= block for the
+work forge's own host.
+
+The key file is named after its email and is not one of ssh's default
+identity files, so ssh never offers it unless asked to.
+
+** Why =ControlPath=none=
+
+=home/base.nix= multiplexes SSH connections: =ControlMaster auto=,
+=ControlPath ~/.ssh/control-%C= and =ControlPersist 10m=. The socket name
+is derived from the host names, port and user, not from the key. Two
+Git commands to =git@github.com= with different keys would share the
+first command's authenticated connection, which stays open for ten
+minutes after its last use, so a personal push could travel over a
+connection authenticated with the work key, or the reverse.
+=ControlPath=none= turns reuse off for commands that use the personal
+key.
+
+** What it costs
+
+Outside the personal directory, nothing selects the personal key:
+
+- =ssh -T git@github.com= without =-i= does not offer the personal
+  key.
+- A personal repository cloned into another directory needs the key
+  passed explicitly, through =GIT_SSH_COMMAND=.
+- =gh repo clone= uses SSH (=git_protocol = "ssh"=), so run it below
+  =~/src/github.com/piotr-yuxuan/= for personal repositories.
+
+The alternative was a =github.com= =IdentityFile= on the personal key,
+to be replaced once the work forge is known. It has less friction on
+the first day, but it offers the personal key to work repositories by
+default.
+
+=UseKeychain yes= applies to =Host *=, so passphrases stay in the login
+Keychain for every host.
+
+* One key per machine
+
+SSH and signing keys are machine-specific: nixOS and a Mac use
+different GitHub SSH keys and different signing keys, each named in
+that machine's own files. A key that never leaves the machine where it
+was created limits the damage when that machine is lost, wiped or
+handed back: only its keys need revoking, and the list of keys on the
+forge says which machine pushed or signed.
+
+On a corporate Mac this matters more, because the machine is the
+employer's and goes back at the end of the job. So every Mac gets new
+keys: a new personal SSH key and a new personal OpenPGP key, plus work
+keys once the forge and policy are known.
+
+* Private keys stay out of the configuration
+
+The configuration holds key paths and public key IDs, never private
+key material. Keys are generated on the machine that uses them.
+
+Storing them encrypted with sops was considered and judged too complex
+for now. Some considerations weigh against it for keys:
+
+- A sops file needs a decryption key on the machine before it can be
+  read, so a new Mac would still start with a key created or carried
+  by hand.
+- A file that every machine can decrypt gives every machine every
+  key, which undoes one key per machine.
+- Encrypted keys stay in the Git history for good, so a later
+  compromise of the decryption key exposes every past version.
+
+* Residual risks
+
+** =UseKeychain= with a non-Apple ssh
+
+=UseKeychain= is an option only Apple's OpenSSH knows. In =Host *=, any
+other ssh, for example Nix's =openssh= if it ever came first on =PATH=,
+would reject the whole configuration as invalid for every host, not
+just github.com. Today nothing installs one: =programs.ssh.package= is
+=null= on the Mac and no package list contains =openssh=. OpenSSH's
+=IgnoreUnknown= directive could defuse it; it is not configured.
+
+** Repositories outside the personal directory get the work identity
+
+Third-party repositories cloned elsewhere, for example personal
+contributions under =~/src/github.com/<owner>/=, get the work identity,
+and cannot commit at all until it is set. The same holds for the Emacs
+configuration cloned at =~/.emacs.d= and for the straight.el package
+clones below it. Neither normally receives commits on the Mac, so no
+extra include was added. To commit there under the personal identity,
+clone the repository below the personal directory and make =~/.emacs.d=
+a symbolic link to it, or add an include for the directory (see the
+how-to).
+
+** A work value typed into this repository
+
+Keeping the identities out of this repository is a convention that the
+template makes easy to follow, not a lock. Nothing stops an edit to a
+clone of this repository on the Mac. The export gate described in
+[[file:../how-to/publish-to-public.org][Publish to the public repository]] refuses shapes such as an email
+address or a key ID, but an employer's name in plain prose only stops
+there if the private deny list names it. Do not clone this repository
+on the Mac to change it; make shared changes on the personal laptop.
+
+** Commits blocked until the keys exist
+
+Personal repositories on the Mac cannot commit until the personal
+OpenPGP key exists and its ID replaces the placeholder. This is
+intended, and the first-day tutorial creates the key right after the
+first switch.
+
+* Related pages
+
+- [[file:../how-to/macOS-set-up-work-and-personal-git-identities.org][Set up work and personal Git identities on macOS]]
+- [[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]]
+- [[file:../tutorials/first-day-on-a-new-mac.org][First day on a new Mac]]
+- [[file:../reference/macOS-configuration.org][macOS configuration reference]]
+- [[file:macOS-security-posture.org][macOS security posture]]
+- [[file:macOS-corporate-machine-considerations.org][Running this configuration on a corporate Mac]]

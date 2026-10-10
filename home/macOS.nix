@@ -6,19 +6,7 @@
   lib,
   unstable,
   ...
-}: let
-  # Substitute at evaluation time so Linux CI can evaluate the Darwin output
-  # without first building a Darwin derivation just to read its script.
-  brewBundleActivation = builtins.replaceStrings
-    ["@BREWFILE@" "@BREW_BUNDLE_SCRIPT@"]
-    [(toString ../config/Brewfile) (toString ../scripts/brew-bundle-activation.sh)]
-    (builtins.readFile ../scripts/hm-activation/brew-bundle.sh);
-
-  defaultAppsActivation = builtins.replaceStrings
-    ["@DUTI_BIN@" "@DEFAULT_APPS_SCRIPT@"]
-    ["${unstable.duti}/bin/duti" (toString ../scripts/set-macos-defaults.sh)]
-    (builtins.readFile ../scripts/hm-activation/default-apps.sh);
-in {
+}: {
   #  macOS only packages
 
   home.packages = [
@@ -34,6 +22,9 @@ in {
     unstable.glab
     unstable.gitlab-runner
 
+    # Linux gets the wrapped Podman package from its NixOS module.
+    unstable.podman
+
     # Text / docs
     unstable.gnugrep
     unstable.gnused
@@ -42,25 +33,15 @@ in {
     unstable.duti
   ];
 
-  #  Git identity (fill in before first use)
+  #  Git identity
+  #
+  # The identities of a Mac live in that Mac's own flake
+  # (templates/macOS/identity.nix), never here. Until they are filled in,
+  # a commit fails instead of carrying a guessed name or address.
+  programs.git.settings.user.useConfigOnly = true;
 
-  programs.git.settings = {
-    user = {
-      name = lib.mkForce "Example User";
-      email = lib.mkForce "example@example.invalid";
-      # signingKey = "<your-gpg-key-id>";
-    };
-    commit.gpgSign = true;
-    tag.gpgSign = true;
-  };
-
-  # 26.05: programs.ssh.settings replaces matchBlocks (upstream directive names).
-  programs.ssh.settings."github.com" = {
-    HostName = "github.com";
-    IdentityFile = "~/.ssh/id_ed25519";
-    AddKeysToAgent = "yes";
-    UseKeychain = "yes";
-  };
+  # Keep SSH key passphrases in the login Keychain (Apple's ssh only).
+  programs.ssh.settings."*".UseKeychain = "yes";
 
   #  macOS environment
 
@@ -103,15 +84,25 @@ in {
 
   # Brewfile integration (imperative bridging for macOS GUI apps)
 
+  # Substitute at evaluation time rather than with pkgs.replaceVars:
+  # reading a derivation's output would need an aarch64-darwin build
+  # during evaluation, so the configuration could not be evaluated on
+  # Linux.
   home.activation.brewBundle =
     lib.hm.dag.entryAfter ["writeBoundary"]
-    brewBundleActivation;
+    (builtins.replaceStrings
+      ["@BREWFILE@" "@BREW_BUNDLE_SCRIPT@"]
+      ["${../config/Brewfile}" "${../scripts/brew-bundle-activation.sh}"]
+      (builtins.readFile ../scripts/hm-activation/brew-bundle.sh));
 
   # Default applications (UTI and URL-scheme handlers via duti)
 
   home.activation.defaultApps =
     lib.hm.dag.entryAfter ["brewBundle"]
-    defaultAppsActivation;
+    (builtins.replaceStrings
+      ["@DUTI_BIN@" "@DEFAULT_APPS_SCRIPT@"]
+      ["${unstable.duti}/bin/duti" "${../scripts/set-macos-defaults.sh}"]
+      (builtins.readFile ../scripts/hm-activation/default-apps.sh));
 
   # macOS desktop wallpaper is intentionally NOT managed here. macOS persists
   # it per-user, and the wallpaper store format (com.apple.wallpaper) is an
@@ -147,6 +138,9 @@ in {
         "-c"
         (lib.fileContents ../scripts/nix-staleness-check.sh)
       ];
+      # launchd agents do not inherit shell variables: without NH_FLAKE
+      # the script finds no flake and exits silently. The Mac's own flake
+      # sets it to its own directory (templates/macOS/identity.nix).
       StartCalendarInterval = [
         {
           Weekday = 1;
@@ -162,7 +156,7 @@ in {
   # Docker: bind published ports to localhost by default
   #
   # Docker publishes `-p` ports to 0.0.0.0 (all interfaces) by default, which
-  # would expose container services to the local network.
+  # would expose containers — e.g. prod data dumps — to the local network.
   # Setting "ip" makes `docker run -p PORT:PORT` (and compose without an
   # explicit host IP) default to 127.0.0.1. Managed here, not via Docker
   # Desktop's UI, so it is reproducible and cannot silently drift; edit engine
@@ -177,6 +171,17 @@ in {
   };
 
   # Start apps at login
+
+  launchd.agents.docker-desktop = {
+    enable = true;
+    config = {
+      Label = "com.user.docker-desktop";
+      ProgramArguments = ["/usr/bin/open" "-g" "-j" "-a" "Docker"];
+      RunAtLoad = true;
+      StandardErrorPath = "/dev/null";
+      StandardOutPath = "/dev/null";
+    };
+  };
 
   launchd.agents.notunes = {
     enable = true;

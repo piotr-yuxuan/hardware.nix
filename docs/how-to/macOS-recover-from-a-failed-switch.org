@@ -1,0 +1,403 @@
+#+title: Recover from a failed switch on macOS
+#+author: piotr-yuxuan
+
+Use this guide when =sudo darwin-rebuild switch --flake '.#macOS'= stops
+with an error, on the first switch or a later one. It shows where the
+switch stopped, how to fix the cause and run it again, how to roll back
+to an earlier generation and, as a last resort, how to remove nix-darwin
+and Nix.
+
+*Untested on a managed Mac.* The messages below come from the
+nix-darwin 26.05 and Home Manager 26.05 sources that this repository
+locks and from its activation scripts. If a message or a step
+differs on the Mac, write down what you saw so that this page can be
+corrected.
+
+Run every command from the Mac's local flake, =~/src/local/macOS=.
+[[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]] describes that directory. This
+repository itself is never edited on the Mac.
+
+* Find where the switch stopped
+
+A switch builds the system, records it as a new generation of the
+system profile, runs the activation checks, applies the system (=/etc=,
+macOS defaults, launchd services, the Nix daemon, the firewall), runs
+Home Manager and the Brewfile step, and only then points
+=/run/current-system= at the new generation.
+
+| The output shows                                               | Section                                   |
+|----------------------------------------------------------------+-------------------------------------------|
+| =error:= right after =building the system configuration...=    | [[*Fix a build failure][Fix a build failure]]                       |
+| a red line that ends with =aborting activation=                | [[*Fix an activation check][Fix an activation check]]                   |
+| =Existing file '...' would be clobbered=                       | [[*Home Manager file collisions][Home Manager file collisions]]              |
+| a firewall error from =socketfilterfw=                         | [[*The application firewall on a managed Mac][The application firewall on a managed Mac]] |
+| lines that start with =brewBundle:= and end with =continuing.= | [[*Homebrew warnings][Homebrew warnings]]                         |
+
+Three consequences of that order matter when you recover:
+
+- =darwin-rebuild= records the new generation before it activates it.
+  A switch that stopped during activation is therefore listed by
+  =darwin-rebuild --list-generations= as the current generation, even
+  though it never became the running system.
+- =/run/current-system= moves only at the very end. After a failure,
+  the running system is still the previous generation, or no
+  nix-darwin system at all if no switch ever succeeded.
+- That lasts only until the next restart. At boot, the
+  =org.nixos.activate-system= daemon, once a switch has installed it,
+  points =/run/current-system= at the newest generation of the system
+  profile, the failed one included, reruns the activation checks and,
+  if they pass, links =/etc= to that generation. Fix the cause and run
+  the switch again, or roll back, before you restart.
+
+* Run the switch again
+
+Once the cause is fixed, run the switch again. The command depends on
+whether a switch ever succeeded on this Mac:
+
+#+begin_src zsh
+# A switch succeeded before: darwin-rebuild is on PATH.
+sudo darwin-rebuild switch --flake '.#macOS'
+
+# No switch succeeded yet, and ./result comes from
+# nix build '.#darwinConfigurations.macOS.system'.
+sudo ./result/sw/bin/darwin-rebuild switch --flake '.#macOS'
+
+# No switch succeeded yet, and there is no ./result.
+sudo nix --extra-experimental-features 'nix-command flakes' \
+  run 'nix-darwin/nix-darwin-26.05#darwin-rebuild' -- switch --flake '.#macOS'
+#+end_src
+
+Flakes only see files that Git tracks: run =git add= on every new file
+of the local flake before the switch. After editing one of its files,
+build first, so that evaluation errors appear before any activation:
+
+#+begin_src zsh
+# A switch succeeded before.
+darwin-rebuild build --flake '.#macOS'
+
+# No switch succeeded yet.
+nix --extra-experimental-features 'nix-command flakes' \
+  build '.#darwinConfigurations.macOS.system'
+#+end_src
+
+* Fix a build failure
+
+Nothing changed on the system: =darwin-rebuild= builds before it touches
+the profile. Read the first line that starts with =error:=.
+
+- A derivation failed to build :: print its log with
+  =nix log /nix/store/<hash>-<name>.drv=, using the path from the error.
+  A package that does not build on =aarch64-darwin= needs a change in
+  this repository, made on the personal laptop: =enca= and =fortune=
+  moved to Homebrew for that reason. If the failure came with
+  =nix flake update base=, restore the previous =flake.lock= and stay
+  on the running generation until a fixed commit is published.
+- A download fails with a certificate error :: the network inspects
+  TLS. Nix reports =SSL peer certificate or SSH remote key was not OK=
+  or =Problem with the SSL CA cert=. Follow
+  [[file:../how-to/macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]].
+- The disk is full :: check with =df -h /nix=. A first build fetches
+  about 5 GiB.
+
+* Fix an activation check
+
+The checks run before nix-darwin changes anything except the profile.
+Each one prints its own message and stops.
+
+** "primary user `example` does not exist"
+
+The account name in the local flake differs from yours; =example= is
+the placeholder the template ships.
+
+1. Print your account name with =id -un=.
+2. Set =user= in the local flake's =flake.nix= to that name. It is the
+   only place the name is written.
+3. [[*Run the switch again][Run the switch again]].
+
+** "Unexpected files in /etc"
+
+nix-darwin replaces a fixed list of files in =/etc= with links. When it
+recognises a file's content, for example =/etc/zshrc= as a Nix installer
+left it, it renames the file to =<file>.before-nix-darwin= by itself.
+Any other content stops the switch, and the message lists the files.
+
+1. Read each listed file, for example =cat /etc/zshrc=.
+2. Keep what you need before moving the file:
+   - =/etc/nix/nix.conf= with an =ssl-cert-file= or proxy line: follow
+     [[file:../how-to/macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]].
+   - =/etc/pam.d/sudo_local= installed by IT: do not move it. Follow the
+     Touch ID section of [[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts with MDM]].
+   - Another file that IT installed: ask IT first, and see
+     [[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use an IT-managed Nix or Homebrew]] for Nix files.
+3. Move each remaining file aside with the suffix the message asks for:
+
+   #+begin_src zsh
+   sudo mv /etc/zshrc /etc/zshrc.before-nix-darwin
+   #+end_src
+
+4. [[*Run the switch again][Run the switch again]].
+
+The configuration manages these paths below =/etc= (evaluated from
+=environment.etc=): =bashrc=, =zshrc=, =zprofile=, =zshenv=,
+=nix/nix.conf=, =nix/machines=, =nix/registry.json=,
+=pam.d/sudo_local=, =ssl/certs/ca-certificates.crt=,
+=sudoers.d/10-nix-darwin-extra-config=, =terminfo=,
+=profiles/per-user/<account>=, and five files below =ssh/ssh_config.d=
+and =ssh/sshd_config.d=. If device management writes one of them again
+later, the next switch stops the same way; see
+[[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts with MDM]].
+
+** "custom settings in `/etc/nix/nix.custom.conf`"
+
+Some installers create this file, and nix-darwin accepts only the
+versions it knows. Copy every setting you need from it into =nix.settings=
+in [[file:../how-to/macOS-maintain-the-local-flake.org::*Add a machine-local module][a machine-local module]], then move it aside and run the switch
+again:
+
+#+begin_src zsh
+sudo mv /etc/nix/nix.custom.conf /etc/nix/nix.custom.conf.before-nix-darwin
+#+end_src
+
+** "Determinate detected"
+
+IT or an earlier install put Determinate Nix on the Mac. Follow
+[[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use an IT-managed Nix or Homebrew]].
+
+** Build users and their group
+
+=Build users have unexpected UIDs= and =Build user group has mismatching GID=
+mean that the Nix installation predates the current defaults or was
+customised. Each message prints the repair command, or the
+=ids.uids.nixbld= or =ids.gids.nixbld= value to add to
+[[file:../how-to/macOS-maintain-the-local-flake.org::*Add a machine-local module][a machine-local module]]. If IT installed Nix, ask IT before migrating
+users.
+
+=permission denied when trying to create user _nixbld1= means macOS did
+not let the terminal create the build users. Accept the dialog that
+macOS shows and run the switch again, or follow the Full Disk Access
+section of [[file:../how-to/macOS-grant-privacy-permissions.org][Grant privacy permissions]].
+
+** "permission denied when trying to update apps"
+
+The terminal lacks the App Management permission. Follow
+[[file:../how-to/macOS-grant-privacy-permissions.org][Grant privacy permissions]]. The variant that ends in =over SSH= asks you
+to run the switch from a graphical session instead.
+
+* Fix a failure after the checks
+
+Part of the system already changed (=/etc= links, macOS defaults,
+launchd services, the firewall), but until the next restart
+=/run/current-system= still points at the previous generation. Fix the
+cause and run the switch again, or
+[[*Roll back to an earlier generation][roll back]].
+
+** Home Manager file collisions
+
+Home Manager links its files into your home directory. A file already
+in the way is renamed to =<file>.hm-backup= (=backupFileExtension= in
+[[file:../../flake.nix][flake.nix]]), and the switch goes on with a warning that says the file
+=is in the way= and =will be moved=. The switch stops only in two
+cases:
+
+- =Existing file '<file>.hm-backup' would be clobbered by backing up '<file>'= ::
+  a backup from an earlier switch is still there. Compare the two
+  files, keep what you need, move the old backup out of the way, and run
+  the switch again:
+
+  #+begin_src zsh
+  diff ~/.ssh/config ~/.ssh/config.hm-backup
+  mv ~/.ssh/config.hm-backup ~/.ssh/config.hm-backup.old
+  #+end_src
+
+- =Existing file '<file>' would be clobbered= :: the file in the way is a
+  symbolic link, which Home Manager never backs up. Check where it points
+  with =ls -l <file>=, remove the link, and run the switch again.
+
+After the first switch, list the backups it made, outside the folders
+that macOS protects:
+
+#+begin_src zsh
+find ~ -maxdepth 4 \( -path "$HOME/Library" -o -path "$HOME/Desktop" \
+  -o -path "$HOME/Documents" -o -path "$HOME/Downloads" \) -prune \
+  -o -name '*.hm-backup' -print
+#+end_src
+
+On a corporate Mac, look in particular at =~/.m2/settings.xml= (a
+company Maven mirror), =~/.ssh/config=, =~/.docker/daemon.json= and
+=~/.config/gh/config.yml=. Move the settings you still need into the
+matching Nix option, then delete the backup: while it stays, the next
+collision on the same file stops the switch.
+
+** The application firewall on a managed Mac
+
+When device management owns the firewall, =socketfilterfw= is reported
+to refuse changes with a message that it
+=cannot be modified from command line on managed Mac computers=.
+Whether it then stops the switch is untested. Follow the firewall
+section of [[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts with MDM]].
+
+** Homebrew warnings
+
+The Brewfile step never stops the switch: every =brew= failure prints a
+=brewBundle:= warning and the switch completes. When =brew bundle install=
+itself fails, the greedy upgrade, the drift check and the cache cleanup
+are skipped. Choosing =[e]= at the drift prompt does not stop the switch
+either, a known limitation. See
+[[file:../how-to/macOS-manage-homebrew.org][Manage Homebrew on macOS]], and
+[[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use an IT-managed Nix or Homebrew]] when IT owns =/opt/homebrew=.
+
+* Roll back to an earlier generation
+
+#+begin_src zsh
+darwin-rebuild --list-generations           # no sudo needed
+sudo darwin-rebuild --rollback              # the previous generation
+sudo darwin-rebuild --switch-generation 12  # a given generation
+#+end_src
+
+- Rolling back runs the activation of that generation again, including
+  its Home Manager step and its Brewfile step.
+- Casks installed since then stay installed. The drift prompt lists
+  them; answer =s= to keep them or =u= to remove them.
+- macOS defaults stay as the newer generation wrote them: nix-darwin
+  writes the values it declares and never deletes a key.
+- A generation whose activation failed is still listed. Pick the one
+  before it.
+- The first generation has no predecessor. If the very first switch
+  failed, there is nothing to roll back to: fix the cause and run the
+  switch again, or [[*Remove nix-darwin and Nix][remove nix-darwin]].
+- The weekly =nh-clean= agent is configured to keep the last five
+  generations and anything newer than seven days.
+- Undo the change in the local flake too, or the next switch applies it
+  again: remove the edit, or restore the previous =flake.lock= after an
+  update of =base=.
+
+Home Manager keeps no generations of its own here. It runs inside
+nix-darwin with =home-manager.enableLegacyProfileManagement= left at
+=false=, so =home-manager generations= and
+=home-manager switch --rollback= do not apply: each system generation
+activates its own Home Manager generation. To see which one is active:
+
+#+begin_src zsh
+readlink ~/.local/state/home-manager/gcroots/current-home
+#+end_src
+
+* Restore files that a switch moved aside
+
+- In =/etc= :: list them with
+  =ls /etc/*.before-nix-darwin /etc/*/*.before-nix-darwin=. While
+  nix-darwin is installed it owns those paths, so put the content you
+  need into the configuration instead. The nix-darwin uninstaller moves
+  all of them back.
+- In your home directory :: to give a file back to yourself, first
+  remove it from the Home Manager configuration and switch, so that the
+  link disappears, then rename =<file>.hm-backup= to =<file>=.
+
+* Remove nix-darwin and Nix
+
+This is the last resort, for example to start the first day again.
+Remove nix-darwin first: its uninstaller needs a working Nix and the
+network, and the Determinate installer documentation reports that
+leftovers of nix-darwin break TLS for a Nix installed again later.
+Removing Nix deletes the whole store. None of this touches the local
+flake: keep =~/src/local/macOS= to start again from it.
+
+** Remove nix-darwin
+
+#+begin_src zsh
+# After at least one successful switch
+sudo darwin-uninstaller
+
+# Otherwise
+sudo nix --extra-experimental-features 'nix-command flakes' \
+  run 'nix-darwin/nix-darwin-26.05#darwin-uninstaller'
+#+end_src
+
+It asks =Proceed? [y/n]=, then:
+
+- removes the =/Applications/Nix Apps= link;
+- removes nix-darwin's links in =/etc= and renames every
+  =*.before-nix-darwin= file back;
+- stops and removes the launchd daemons nix-darwin manages, but not its
+  =org.nixos.nh-clean= user agent;
+- restores the Nix installer's =nix-daemon= service when there is one;
+- gives =/bin/zsh= back as login shell to accounts whose shell was under
+  =/run=;
+- removes =/run/current-system=. =/run= itself disappears at the next
+  reboot.
+
+It leaves the =/nix/var/nix/profiles/system*= profiles, the =nh-clean=
+agent, Home Manager's links and agents in your home directory, the macOS
+defaults the configuration wrote, the firewall settings, and Homebrew
+with its apps.
+
+** Remove what Home Manager left
+
+List the links into the store, review them, then run the same command
+with =-delete= instead of =-print=:
+
+#+begin_src zsh
+find ~ -maxdepth 4 \( -path "$HOME/Library" -o -path "$HOME/Desktop" \
+  -o -path "$HOME/Documents" -o -path "$HOME/Downloads" \) -prune \
+  -o -type l -lname '/nix/store/*-home-manager-files/*' -print
+#+end_src
+
+Rename each =<file>.hm-backup= back to =<file>=. Then stop and remove
+the user agents left in =~/Library/LaunchAgents=: the ones that
+[[file:../../home/macOS.nix][home/macOS.nix]] and [[file:../../home/base.nix][home/base.nix]] declare, which Home Manager copies
+there (so the =find= above does not list them), and nix-darwin's
+=nh-clean=:
+
+#+begin_src zsh
+for label in com.user.clear-hushlogin com.user.docker-desktop \
+             com.user.nix-staleness-check com.user.notunes com.user.rectangle \
+             org.nix-community.home.gpg-agent org.nix-community.home.tldr-update \
+             org.nixos.nh-clean; do
+  launchctl bootout "gui/$(id -u)/$label"
+  rm -f ~/Library/LaunchAgents/"$label".plist
+done
+#+end_src
+
+** Remove Nix
+
+Find which installer put Nix on the Mac:
+
+#+begin_src zsh
+ls /nix/lix-installer /nix/nix-installer /nix/receipt.json 2>/dev/null
+#+end_src
+
+- =/nix/lix-installer= exists :: run =/nix/lix-installer uninstall=.
+- =/nix/nix-installer= exists :: the Determinate installer. If IT
+  installed it, ask IT first; otherwise run =/nix/nix-installer uninstall=.
+- Neither exists :: the official installer. Follow the macOS part of
+  [[https://nix.dev/manual/nix/latest/installation/uninstall.html][Uninstalling Nix]]
+  in the Nix reference manual. It restores the shell files from their
+  =*.backup-before-nix= copies, removes the two launchd daemons, the
+  =nixbld= group and its users, the =/nix= lines in =/etc/fstab= and
+  =/etc/synthetic.conf=, and deletes the Nix Store volume.
+
+Restart the Mac afterwards.
+
+** Remove Homebrew
+
+Only if you installed it yourself; leave an IT-managed Homebrew alone.
+Run Homebrew's uninstaller in dry-run mode first:
+
+#+begin_src zsh
+curl -fsSL -o ~/brew-uninstall.sh \
+  https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh
+/bin/bash ~/brew-uninstall.sh --dry-run
+/bin/bash ~/brew-uninstall.sh
+#+end_src
+
+Applications that casks moved into =/Applications= stay. Remove them
+beforehand with =brew uninstall --cask <name>= if you want them gone.
+
+* Related
+
+- [[file:../tutorials/first-day-on-a-new-mac.org][First day on a new Mac]]
+- [[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]]
+- [[file:../how-to/rebuild-and-roll-back.org][Rebuild and roll back]]
+- [[file:../how-to/troubleshoot-common-problems.org][Troubleshoot common problems]]
+- [[file:../how-to/macOS-grant-privacy-permissions.org][Grant privacy permissions]]
+- [[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use an IT-managed Nix or Homebrew]]
+- [[file:../explanation/architecture.org][Architecture]]

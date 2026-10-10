@@ -1,0 +1,34 @@
+{
+  "settings": {
+    "directTools": false,
+    "hostConfigDiscovery": "off",
+    "mcpFooterStatus": "compact",
+    "scriptMode": false
+  },
+  "mcpServers": {
+    "emacs-tools": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "exec socat - \"UNIX-CONNECT:$HOME/.emacs.d/var/mcp-server/emacs-mcp-server.sock\""
+      ],
+      "lifecycle": "lazy",
+      "requestTimeoutMs": 10000
+    },
+    "clojure-mcp": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "exec clojure -Tmcp start :config-profile :cli-assist"
+      ],
+      "lifecycle": "lazy",
+      "requestTimeoutMs": 30000
+    },
+    "aws-knowledge": {
+      "url": "https://knowledge-mcp.global.api.aws",
+      "lifecycle": "lazy",
+      "requestTimeoutMs": 10000,
+      "directTools": true
+    }
+  }
+}

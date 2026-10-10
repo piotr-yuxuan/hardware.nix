@@ -1,0 +1,30 @@
+#+title: Architecture
+#+author: piotr-yuxuan
+
+How the configuration behaves across rebuilds and releases, and why.
+
+* Generations and rollback
+
+Every =nixos-rebuild switch= or =darwin-rebuild switch= creates a new
+*generation*, a snapshot of the entire system/user closure.  Home
+Manager runs inside that system generation, so it has no generations of
+its own.  Rolling back activates the previous generation immediately.
+On NixOS, old generations also appear in the boot menu, so you can
+recover even if the latest generation fails to boot.
+
+* State versions
+
+=system.stateVersion= and =home.stateVersion= record the release you
+first installed with.  They control backward compatibility for
+stateful services and should stay at their original value
+indefinitely.
+
+* nixOS installation choices
+
+** Why =--no-filesystems=?
+
+The installation generates =hardware-configuration.nix= with
+=nixos-generate-config --no-filesystems=.  Disko already manages all
+mount points declaratively in =disko-config.nix=. Generating
+filesystem entries in =hardware-configuration.nix= would create
+duplicates and conflicts.

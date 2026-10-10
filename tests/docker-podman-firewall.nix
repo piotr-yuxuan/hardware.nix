@@ -1,6 +1,7 @@
 # Empirical test: does a published container port obey the host firewall?
 #
-# Checks how Docker and Podman published ports interact with the Linux firewall:
+# Validates the claim (from a Slack thread about docker-compose binding to
+# 0.0.0.0 and Docker bypassing ufw) that on Linux:
 #   - rootful Docker programs the kernel packet filter (DNAT + FORWARD), so a
 #     published port is reachable even when the host firewall denies all
 #     inbound traffic -> it BYPASSES an INPUT-based firewall like ufw.
@@ -15,12 +16,12 @@
 # over the virtual LAN; loopback shortcuts (which the firewall always allows)
 # cannot mask the result.
 #
-# Run from the repository root on an x86_64 Linux builder:
-#   nix build --no-link --impure --expr '
-#     let f = builtins.getFlake (toString ./.);
-#         pkgs = import f.inputs.nixpkgs { system = "x86_64-linux"; };
-#     in import ./tests/docker-podman-firewall.nix { inherit pkgs; }
-#   '
+# Run (needs the aarch64-linux linux-builder enabled in hosts/macOS.nix):
+#   nix build -L --impure --expr '
+#     let f = builtins.getFlake (toString ~/src/github.com/piotr-yuxuan/hardware.nix);
+#         pkgs = import f.inputs.nixpkgs { system = "aarch64-linux"; };
+#     in import ~/src/github.com/piotr-yuxuan/hardware.nix/tests/docker-podman-firewall.nix { inherit pkgs; }
+#   ' --no-link
 {pkgs}: let
   # A self-contained image (offline: NixOS tests have no network). Serves an
   # HTTP 200 on port 80 inside the container via the Python stdlib server.

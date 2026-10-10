@@ -1,0 +1,359 @@
+#+title: Shell recipes
+#+author: piotr-yuxuan
+
+A collection of shell snippets, utilities, and hard-won notes
+accumulated over several years of environment tinkering first on macOS
+with raw dotfiles, now across NixOS and macOS with Nix.
+
+Some of these are timeless (Z-shell history options, GPG terminal
+setup); others are macOS-specific conveniences. Defunct tools
+(oh-my-zsh, zplug, jenv) are kept in the
+[[file:../explanation/lessons-learnt.org::*Graveyard][graveyard]] for posterity.
+
+* Z-shell                                                              :tty:
+
+** History configuration
+
+Large, deduplicated, shared history is one of the highest-leverage
+shell tweaks. These options are set in =config/after.zshrc= via Home
+Manager now, but the reasoning still applies.
+
+#+begin_src zsh
+export HISTSIZE=10000000
+export HISTFILESIZE=100000000
+export HISTTIMEFORMAT="%d/%m/%y %T "
+
+setopt EXTENDED_HISTORY          # Write ":start:elapsed;command" format.
+setopt INC_APPEND_HISTORY        # Write immediately, not on shell exit.
+setopt SHARE_HISTORY             # Share history between all sessions.
+setopt HIST_EXPIRE_DUPS_FIRST    # Expire duplicates first when trimming.
+setopt HIST_IGNORE_DUPS          # Don't record consecutive duplicates.
+setopt HIST_IGNORE_ALL_DUPS      # Delete old entry if new is a duplicate.
+setopt HIST_FIND_NO_DUPS         # Don't display previously found lines.
+setopt HIST_IGNORE_SPACE         # Don't record entries starting with a space.
+setopt HIST_SAVE_NO_DUPS         # Don't write duplicate entries to the file.
+setopt HIST_REDUCE_BLANKS        # Remove superfluous blanks before recording.
+#+end_src
+
+** Close matching delimiter
+
+#+begin_src zsh
+# If using zsh-autopair:
+source $GH/hlissner/zsh-autopair/autopair.zsh
+autopair-init
+#+end_src
+
+* GPG                                                                  :tty:
+
+#+begin_src zsh
+export GPG_TTY=$(tty)
+#+end_src
+
+This is set automatically by Home Manager (=programs.gpg.enable=) on
+both platforms.
+
+* SSH configuration
+
+Express only connection-specific settings here. Git SSH keys are
+handled through gitconfig's =includeIf= and per-host =IdentityFile= lines.
+
+Home Manager's =programs.ssh= generates =~/.ssh/config= on both
+platforms, so edit =home/base.nix= or =home/<host>.nix= rather than
+the generated file, or the machine's own files for a setting of one
+machine.  The shared =Host *= block looks like this on macOS,
+which adds =UseKeychain= so that Apple's ssh keeps key passphrases in
+the login Keychain:
+
+#+begin_src ssh-config
+Host *
+  AddKeysToAgent yes
+  ControlMaster auto
+  ControlPath ~/.ssh/control-%C
+  ControlPersist 10m
+  ForwardAgent no
+  HashKnownHosts yes
+  IdentitiesOnly yes
+  PasswordAuthentication no
+  ServerAliveCountMax 3
+  ServerAliveInterval 60
+  StrictHostKeyChecking accept-new
+  UseKeychain yes
+#+end_src
+
+With =IdentitiesOnly yes=, ssh offers only the keys that a host block
+or the command line names.  Each machine has its own personal GitHub
+key and names it in its own files:
+
+- nixOS adds a =Host github.com= block with an =IdentityFile=, in its
+  personal module (see
+  [[file:nixOS-personalise-a-fresh-install.org][Personalise a fresh install of nixOS]]).
+- A Mac has no =Host github.com= block, so the personal key is never
+  offered to work repositories.  A =gitdir:~/src/github.com/piotr-yuxuan/=
+  include in the Mac's own =identity.nix= selects the key per directory
+  instead:
+
+  #+begin_src gitconfig
+  [core]
+      sshCommand = ssh -i ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519 -o IdentitiesOnly=yes -o ControlPath=none
+  #+end_src
+
+  =ControlPath=none= stops Git from reusing a connection that another
+  key authenticated.
+
+On macOS, name the personal key explicitly to test it, and clone
+personal repositories into =~/src/github.com/piotr-yuxuan/=, where Git
+applies the include while it clones:
+
+#+begin_src zsh
+ssh -i ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519 \
+  -o IdentitiesOnly=yes -T git@github.com
+git clone git@github.com:piotr-yuxuan/<repository>.git \
+  ~/src/github.com/piotr-yuxuan/<repository>
+#+end_src
+
+Only a clone into another directory needs the key named explicitly:
+
+#+begin_src zsh
+GIT_SSH_COMMAND='ssh -i ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519 -o IdentitiesOnly=yes' \
+  git clone git@github.com:piotr-yuxuan/<repository>.git <directory>
+#+end_src
+
+* Network helpers                                            :utility:macos:
+
+#+begin_src zsh
+alias myip='curl ip.appspot.com'
+alias netCons='lsof -i'
+alias flushDNS='dscacheutil -flushcache'
+alias lsock='sudo /usr/sbin/lsof -i -P'
+alias lsockU='sudo /usr/sbin/lsof -nP | grep UDP'
+alias lsockT='sudo /usr/sbin/lsof -nP | grep TCP'
+alias openPorts='sudo lsof -i | grep LISTEN'
+#+end_src
+
+On NixOS, =ss -tlnp= replaces most of these.
+
+* macOS Finder tricks                                        :utility:macos:
+
+** Recursively delete .DS_Store files
+
+#+begin_src zsh
+alias cleanupDS="find . -type f -name '*.DS_Store' -ls -delete"
+#+end_src
+
+** Hide or show hidden files in Finder
+
+#+begin_src zsh
+alias finderShowHidden='defaults write com.apple.finder AppleShowAllFiles TRUE'
+alias finderHideHidden='defaults write com.apple.finder AppleShowAllFiles FALSE'
+#+end_src
+
+** Change directory to frontmost Finder window
+
+#+begin_src zsh
+pfd () {
+    currFolderPath=$( /usr/bin/osascript <<EOT
+        tell application "Finder"
+            try
+                set currFolder to (folder of the front window as alias)
+            on error
+                set currFolder to (path to desktop folder as alias)
+            end try
+            POSIX path of currFolder
+        end tell
+EOT
+    )
+    cd "$currFolderPath"
+}
+#+end_src
+
+* Syntactic sugar for search                                 :utility:macos:
+
+#+begin_src zsh
+alias f="find . -name "
+ff () { /usr/bin/find . -name "$@" 2>/dev/null ; }
+ffs () { /usr/bin/find . -name "$@"'*' 2>/dev/null ; }
+ffe () { /usr/bin/find . -name '*'"$@" 2>/dev/null ; }
+#+end_src
+
+On NixOS, =fd= (installed via Home Manager) largely replaces these.
+
+* Colourful man pages                                                :tty:
+
+#+begin_src zsh
+man() {
+    env \
+        LESS_TERMCAP_mb=$(printf "\e[1;31m") \
+        LESS_TERMCAP_md=$(printf "\e[1;31m") \
+        LESS_TERMCAP_me=$(printf "\e[0m") \
+        LESS_TERMCAP_se=$(printf "\e[0m") \
+        LESS_TERMCAP_so=$(printf "\e[1;44;33m") \
+        LESS_TERMCAP_ue=$(printf "\e[0m") \
+        LESS_TERMCAP_us=$(printf "\e[1;32m") \
+        man "$@"
+}
+#+end_src
+
+With =bat= as the man pager (configured in =home/base.nix=), this is
+less necessary, but it's a nice fallback.
+
+* Better cat and ls                                                  :tty:
+
+#+begin_src zsh
+alias ls='eza -al'
+alias cat='bat --paging never'
+#+end_src
+
+Both =eza= and =bat= are installed through Home Manager now. The aliases
+live in =config/after.zshrc=.
+
+* Syntax highlighting
+
+#+begin_src zsh
+source /path/to/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+#+end_src
+
+On NixOS: =programs.zsh.syntaxHighlighting.enable = true= in Home
+Manager takes care of this. On macOS with Homebrew: =source $(brew
+--prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh=.
+
+* fzf worked examples
+
+The key bindings are listed in
+[[file:../reference/shell-key-bindings.org::*fzf, command-line fuzzy finder][shell key bindings]].
+
+Interactively pick a file and open it in your =EDITOR=:
+#+begin_src zsh
+$EDITOR $(fzf)
+#+end_src
+
+Kill one or more processes (=Tab= to multi-select, =Enter= to kill):
+#+begin_src zsh
+kill -9 $(ps aux | fzf --multi | awk '{print $2}')
+#+end_src
+
+Check out a git branch:
+#+begin_src zsh
+git checkout $(git branch -a | fzf)
+#+end_src
+
+Fuzzy-grep then open the match at the right line (relies on =bat= preview
+showing the highlighted line before you commit):
+#+begin_src zsh
+rg --line-number '' \
+  | fzf --delimiter ':' --nth 1,3.. \
+        --preview 'bat --color=always --highlight-line {2} {1}' \
+  | awk -F: '{print "+"$2, $1}' \
+  | xargs $EDITOR
+#+end_src
+
+Copy a selected path to the Wayland clipboard:
+#+begin_src zsh
+fzf | wl-copy
+#+end_src
+
+* Feedback sounds                                                   :macos:
+
+Put any sound you like. It helps making human-computer interactions
+more human.
+
+#+begin_src zsh
+function yay {
+  afplay $HOME/snd/yay.m4a > /dev/null 2>&1 &
+}
+
+function mwahaha {
+  afplay $HOME/snd/mwahaha.mp3 > /dev/null 2>&1 &
+}
+#+end_src
+
+* Generate a gif from a screen record
+
+#+begin_src zsh
+function gifgo {
+  ffmpeg -i "$1" -pix_fmt rgb24 -r 10 -s 900x600 -f gif - \
+    | gifsicle --delay=15 --optimize=3 > "$1.gif"
+}
+#+end_src
+
+* Generate and display a QR code from the clipboard                 :macos:
+
+#+begin_src zsh
+function qrgo {
+    tmp_file=$(mktemp).png
+    qrencode -o - "$(pbpaste)" > $tmp_file
+    open $tmp_file
+}
+#+end_src
+
+* Query structured data
+
+** Grep JSON with gron
+
+#+begin_src zsh
+# brew install gron  /  nix-shell -p gron
+gron "https://api.github.com/repos/tomnomnom/gron/commits?per_page=1" \
+  | fgrep "commit.author" \
+  | gron --ungron
+#+end_src
+
+=gron= is like =jq= but less powerful and easier to use: its purpose is
+finding the path to a value in a deeply nested JSON blob when you
+don't already know the structure.
+
+** Query JSON with jq
+
+https://stedolan.github.io/jq/manual/
+
+** Query CSV with q
+
+https://github.com/harelba/q
+
+#+begin_src zsh
+q "SELECT COUNT(*) FROM ./clicks_file.csv WHERE c3 > 32.3"
+ps -ef | q -H "SELECT UID,COUNT(*) cnt FROM - GROUP BY UID ORDER BY cnt DESC LIMIT 3"
+#+end_src
+
+* Regular expressions with AWK
+
+#+begin_src zsh
+function regex {
+  gawk 'match($0,/'$1'/, ary) {print ary['${2:-'0'}']}'
+}
+#+end_src
+
+* Reduce the size of a music library
+
+Extract audio from video containers:
+
+#+begin_src zsh
+# Single file
+if ffmpeg -i a.mkv -vn -acodec copy a.ogg; then
+    rm a.mkv
+else
+    echo "Failed for a.mkv"
+fi
+
+# All MKV files recursively
+find . -type f -name "*.mkv" -exec bash -c '
+  FILE="$1"
+  if ffmpeg -i "$FILE" -vn -acodec copy "$FILE.ogg"; then
+      rm "$FILE"
+  else
+      echo "Failed for $FILE"
+  fi
+' _ '{}' \;
+#+end_src
+
+Ogg is a container format that can embed audio in various codecs
+without re-encoding, so quality stays the same.  Typical size
+reduction from MKV: ~66%.
+
+* Emacs                                                            :editor:
+
+Emacs settings live in a [[https://github.com/piotr-yuxuan/.emacs.d][separate repository]] checked out at =~/.emacs.d/=.
+
+Useful aliases:
+
+#+begin_src zsh
+alias magit-status="emacsclient --create-frame --no-wait --eval '(magit-status)'"
+#+end_src

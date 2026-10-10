@@ -1,0 +1,309 @@
+#+title: Resolve conflicts between MDM and the macOS configuration
+#+author: piotr-yuxuan
+
+Use this guide when the employer's device management (MDM) enforces a
+setting that this repository also sets. Let the profile own the setting
+and take it out of this Mac's configuration: a value written by
+nix-darwin either loses to the profile without notice or, for the
+firewall, can stop the switch.
+
+A profile belongs to one Mac, so the change belongs to that Mac's local
+flake, not to this repository: a machine-local module overrides the
+shared value. Each section names a setting this configuration writes,
+how to see whether a profile manages it, the symptom, and the override.
+Apply every override with [[*Apply a change][the common procedure]].
+
+*Untested on a managed Mac.* The option types and the generated
+activation commands were checked against the nix-darwin 26.05 source
+and by evaluating this configuration on Linux. The commands that read
+profiles and the MDM symptoms were not observed. If something behaves
+differently, write it down so that this page can be corrected.
+
+* Find out what device management controls
+
+#+begin_src zsh
+profiles status -type enrollment
+sudo profiles show -type configuration
+ls "/Library/Managed Preferences" "/Library/Managed Preferences/$(id -un)"
+#+end_src
+
+- =profiles status= tells whether the Mac is enrolled.
+- =profiles show= lists every installed configuration profile with its
+  payloads. Search its output for the payload types named in the
+  sections below, for example =com.apple.security.firewall=.
+- A file under =/Library/Managed Preferences= is named after a
+  preference domain that a profile forces, for example
+  =com.apple.screensaver.plist=. Print the forced values with
+  =defaults read "/Library/Managed Preferences/com.apple.screensaver"=.
+- System Settings lists the same profiles under General, Device
+  Management (Privacy & Security, Profiles on older releases of macOS).
+
+* Apply a change
+
+From the Mac's local flake, =~/src/local/macOS=:
+
+1. Put the override the section gives into a machine-local module, as
+   [[file:../how-to/macOS-maintain-the-local-flake.org::*Add a machine-local module][Add a machine-local module]] shows: a nix-darwin module listed in
+   =extraHostModules=, unless the section asks for a Home Manager one.
+   The overrides use =lib=, so the module starts with ={lib, ...}: {=.
+   Note beside each override which profile owns the setting.
+2. Run =git add= on a new module file.
+3. Run =darwin-rebuild build --flake '.#macOS'=. It evaluates the
+   configuration without changing anything.
+4. Run =sudo darwin-rebuild switch --flake '.#macOS'=.
+5. Run the reset command the section gives, if any. An override only
+   stops nix-darwin from writing the value: the value it wrote last
+   stays until you delete it or the profile overrides it.
+
+The overrides below were evaluated on Linux against the template of the
+local flake.
+
+When no Mac should keep a setting, delete it from this repository
+instead, on the personal laptop, and update
+[[file:../explanation/macOS-security-posture.org][the macOS security posture]] in the same commit.
+
+* Application firewall
+
+- Configuration :: =networking.applicationFirewall= in
+  [[file:../../hosts/macOS.nix][hosts/macOS.nix]], with =enable=, =enableStealthMode=,
+  =allowSignedApp= and =blockAllIncoming=.
+- Managed when :: a profile has a =com.apple.security.firewall=
+  payload. Check the current state with:
+
+  #+begin_src zsh
+  /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+  /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall
+  /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode
+  #+end_src
+
+- Symptom :: the switch prints =configuring application firewall...=
+  and =socketfilterfw= refuses the change. Jamf users report the message
+  "Firewall settings cannot be modified from command line on managed Mac
+  computers"; its exit code is unknown. Activation runs with =set -e=,
+  so a failing call stops the switch at that step: the fonts, the
+  post-activation script and Home Manager are not activated. Separately,
+  =blockAllIncoming= blocks incoming connections that an IT support
+  tool may need.
+- Change :: every option is nullable and defaults to =null=, and
+  nix-darwin calls =socketfilterfw= only for the options that are not
+  =null=. Force the options the profile manages back to =null=; all
+  four hand the whole firewall to the profile. Do not set an option to
+  =false=: that still runs =socketfilterfw= and fails the same way.
+
+  #+begin_src nix
+  networking.applicationFirewall = {
+    enable = lib.mkForce null;
+    enableStealthMode = lib.mkForce null;
+    allowSignedApp = lib.mkForce null;
+    blockAllIncoming = lib.mkForce null;
+  };
+  #+end_src
+- Reset :: none. The profile's values apply.
+
+* Quarantine of downloaded applications
+
+- Configuration :: =system.defaults.LaunchServices.LSQuarantine = false;=
+  in [[file:../../hosts/macOS.nix][hosts/macOS.nix]].
+- Managed when :: a profile sets =LSQuarantine= in
+  =com.apple.LaunchServices=, or IT's security policy requires the
+  quarantine prompt for downloaded applications. Check the value with
+  =defaults read com.apple.LaunchServices LSQuarantine=.
+- Symptom :: none during the switch. Endpoint security tooling may
+  report that quarantine is off.
+- Change :: the option is nullable with default =null=:
+  =system.defaults.LaunchServices.LSQuarantine = lib.mkForce null;=
+- Reset :: =defaults delete com.apple.LaunchServices LSQuarantine=.
+
+* Screen saver password and idle time
+
+- Configuration :: the ="com.apple.screensaver"= entry of
+  =system.defaults.CustomUserPreferences= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]:
+  =askForPassword = 1=, =askForPasswordDelay = 0= and =idleTime = 900=.
+- Managed when :: a profile has a =com.apple.screensaver= payload, or
+  =/Library/Managed Preferences= contains =com.apple.screensaver.plist=.
+  System Settings, Lock Screen, shows the delays that apply.
+- Symptom :: none during the switch. nix-darwin writes the user's own
+  preference domain, and a value forced by a profile wins, so the
+  configured 15 minutes silently do not apply.
+- Change :: empty the ="com.apple.screensaver"= entry, or force only the
+  keys the profile manages to =null=: a =null= key is not written.
+  Leave nix-darwin's =system.defaults.screensaver= options unset as well.
+
+  #+begin_src nix
+  # The whole entry
+  system.defaults.CustomUserPreferences."com.apple.screensaver" = lib.mkForce {};
+  # Or one key
+  system.defaults.CustomUserPreferences."com.apple.screensaver".idleTime = lib.mkForce null;
+  #+end_src
+- Reset :: for each key you removed, for example
+  =defaults delete com.apple.screensaver idleTime=.
+
+* Login window
+
+- Configuration :: =system.defaults.loginwindow= in
+  [[file:../../hosts/macOS.nix][hosts/macOS.nix]] (=GuestEnabled=, =DisableConsoleAccess= and
+  =SHOWFULLNAME=), written as root into
+  =/Library/Preferences/com.apple.loginwindow=. In addition,
+  [[file:../../scripts/darwin-post-activation.sh][scripts/darwin-post-activation.sh]] writes =ShowInputMenu= into the same
+  file.
+- Managed when :: a profile has a =com.apple.loginwindow= payload, or
+  =/Library/Managed Preferences= contains =com.apple.loginwindow.plist=.
+- Symptom :: none during the switch. The login window follows the
+  profile, whatever the configuration says.
+- Change :: the three options are nullable with default =null=. Force
+  the ones the profile manages to =null=, for example
+  =system.defaults.loginwindow.SHOWFULLNAME = lib.mkForce null;=.
+  =ShowInputMenu= has no override: it is written by the shared script.
+  Removing it is a change to this repository, where its =defaults write=
+  line goes together with the test that checks it in
+  [[file:../../tests/macOS/darwin-post-activation.bats][tests/macOS/darwin-post-activation.bats]]:
+  "defaults write is called with com.apple.loginwindow ShowInputMenu -bool true".
+- Reset :: for each key you removed, for example
+  =sudo defaults delete /Library/Preferences/com.apple.loginwindow SHOWFULLNAME=.
+
+* Dock applications
+
+- Configuration :: =persistent-apps = ["/Applications/Emacs.app"];= in
+  =system.defaults.dock= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]].
+- Managed when :: a profile has a =com.apple.dock= payload, or IT
+  expects its own applications in the Dock, such as a self-service
+  portal.
+- Symptom :: every switch rewrites the Dock to Emacs alone and restarts
+  it, which removes the icons IT placed. With a Dock managed by a
+  profile, the list does not stick.
+- Change :: either replace the list with one that also names IT's
+  applications, or force the option to =null=: nix-darwin then leaves
+  the Dock's applications alone. The other Dock options in the same
+  block (=autohide=, =tilesize= and so on) work the same way.
+
+  #+begin_src nix
+  system.defaults.dock.persistent-apps = lib.mkForce null;
+  #+end_src
+- Reset :: =defaults delete com.apple.dock persistent-apps; killall Dock=
+  restores Apple's default Dock.
+
+* Default applications
+
+- Configuration :: =home.activation.defaultApps= in
+  [[file:../../home/macOS.nix][home/macOS.nix]] runs [[file:../../scripts/set-macos-defaults.sh][scripts/set-macos-defaults.sh]] with =duti=:
+  audio files to VLC, source code and text to Emacs, office documents
+  to LibreOffice, HTML to Firefox Developer Edition.
+- Managed when :: IT sets default applications through a profile or a
+  script, or requires its office suite or browser. Check one extension
+  with =duti -x docx=, and the browser in System Settings, Desktop &
+  Dock, Default web browser.
+- Symptom :: the associations flip back after IT's agent runs. The
+  switch itself never fails: every =duti= call ends in =|| true=.
+- Change :: to leave every association to IT on this Mac, replace the
+  activation entry with an empty one, in a Home Manager module of the
+  local flake (one listed in =extraHmModules=, such as =identity.nix=):
+
+  #+begin_src nix
+  home.activation.defaultApps = lib.mkForce (lib.hm.dag.entryAfter ["writeBoundary"] "");
+  #+end_src
+
+  Dropping one group only is a change to the shared script, made in
+  this repository: delete its loop, and the matching test from
+  [[file:../../tests/macOS/set-macos-defaults.bats][tests/macOS/set-macos-defaults.bats]], "office UTIs are assigned to
+  org.libreoffice.script" or "browser UTIs and URL schemes are assigned
+  to org.mozilla.firefoxdeveloperedition".
+- Reset :: none. Removing a loop does not reassign files; choose the
+  application in Finder (Get Info, Open with, Change All) or let IT's
+  policy apply.
+
+According to the =duti= manual and source, =duti -s <bundle id> http all=
+treats =http= as a filename extension, because a URL scheme takes two
+arguments rather than three. The browser loop therefore sets the
+handler for HTML files, not the default browser for links (untested on
+a Mac).
+
+* AirDrop
+
+- Configuration :: the ="com.apple.sharingd"= entry of
+  =system.defaults.CustomUserPreferences= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]:
+  =DiscoverableMode = "Contacts Only"=.
+- Managed when :: a restrictions payload (=com.apple.applicationaccess=)
+  turns AirDrop off, or a profile sets its discoverability.
+- Symptom :: none during the switch. The value has no effect while the
+  profile decides.
+- Change ::
+  =system.defaults.CustomUserPreferences."com.apple.sharingd" = lib.mkForce {};=
+- Reset :: =defaults delete com.apple.sharingd DiscoverableMode=.
+
+* Siri
+
+- Configuration :: the ="com.apple.Siri"= entry (=StatusMenuVisible= and
+  =UserHasDeclinedEnable=) and the ="com.apple.assistant.support"= entry
+  (="Assistant Enabled"=) of =system.defaults.CustomUserPreferences= in
+  [[file:../../hosts/macOS.nix][hosts/macOS.nix]].
+- Managed when :: a restrictions payload (=com.apple.applicationaccess=)
+  allows or forbids Siri.
+- Symptom :: none during the switch. The values have no effect while
+  the profile decides.
+- Change :: empty both entries:
+
+  #+begin_src nix
+  system.defaults.CustomUserPreferences."com.apple.Siri" = lib.mkForce {};
+  system.defaults.CustomUserPreferences."com.apple.assistant.support" = lib.mkForce {};
+  #+end_src
+- Reset ::
+
+  #+begin_src zsh
+  defaults delete com.apple.Siri StatusMenuVisible
+  defaults delete com.apple.Siri UserHasDeclinedEnable
+  defaults delete com.apple.assistant.support 'Assistant Enabled'
+  #+end_src
+
+* Bluetooth sharing and remote Apple events
+
+- Configuration :: the ="com.apple.Bluetooth"= entry
+  (=PrefKeyServicesEnabled = false=) and the ="com.apple.AEServer"=
+  entry (=AppleEventEnabled = false=) of
+  =system.defaults.CustomUserPreferences= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]].
+- Managed when :: a profile manages sharing services. System Settings,
+  General, Sharing, shows the state that applies.
+- Symptom :: none during the switch.
+- Change :: empty the entries the profile manages:
+
+  #+begin_src nix
+  system.defaults.CustomUserPreferences."com.apple.Bluetooth" = lib.mkForce {};
+  system.defaults.CustomUserPreferences."com.apple.AEServer" = lib.mkForce {};
+  #+end_src
+- Reset :: =defaults delete com.apple.Bluetooth PrefKeyServicesEnabled=
+  or =defaults delete com.apple.AEServer AppleEventEnabled=.
+
+* Touch ID for sudo
+
+- Configuration :: =security.pam.services.sudo_local.touchIdAuth = true;=
+  in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]. Unlike the options above, this is a plain
+  boolean with default =false=, not a nullable option. nix-darwin
+  writes =/etc/pam.d/sudo_local= whenever
+  =security.pam.services.sudo_local.enable= is true, its default;
+  =touchIdAuth= only decides whether that file contains the
+  =pam_tid.so= line.
+- Managed when :: =/etc/pam.d/sudo_local= already exists before the
+  first switch (check with =ls -l /etc/pam.d/=), which means IT installed
+  one, or a restrictions payload forbids Touch ID.
+- Symptom :: the first switch stops with =Unexpected files in /etc= and
+  lists =/etc/pam.d/sudo_local=. Or =sudo= asks for the password although
+  Touch ID is configured.
+- Change :: if only Touch ID is forbidden, turn it off. To keep IT's
+  file, also stop nix-darwin from managing it. Do not move IT's file
+  aside as the generic error message suggests unless IT agrees: that
+  replaces its PAM policy.
+
+  #+begin_src nix
+  security.pam.services.sudo_local.touchIdAuth = lib.mkForce false;
+  # Only to keep a file that IT installed:
+  security.pam.services.sudo_local.enable = false;
+  #+end_src
+- Reset :: none.
+
+* Related
+
+- [[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]]
+- [[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]]
+- [[file:../how-to/macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]]
+- [[file:../how-to/macOS-audit-security.org][Audit macOS security]]
+- [[file:../explanation/macOS-security-posture.org][macOS security posture]]
+- [[file:../explanation/macOS-corporate-machine-considerations.org][Corporate machine considerations]]

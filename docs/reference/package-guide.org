@@ -1,0 +1,2113 @@
+#+TITLE: Package guide: quick tour
+#+AUTHOR: piotr-yuxuan
+#+STARTUP: overview
+
+This guide covers every package in the fleet configuration.  For each
+tool you get: what it does, and a couple of examples so you can start
+using it right away.
+
+System foundations use stable nixpkgs.  User-facing Home Manager packages and
+program overrides use unstable nixpkgs so developer tools receive current
+language and platform support.
+
+* Table of contents :TOC_2_org:
+- [[Build toolchain][Build toolchain]]
+  - [[gcc][gcc]]
+  - [[cmake][cmake]]
+  - [[pkg-config][pkg-config]]
+  - [[enchant][enchant]]
+  - [[meson / ninja][meson / ninja]]
+  - [[esbuild][esbuild]]
+- [[Languages & runtimes][Languages & runtimes]]
+  - [[python3][python3]]
+  - [[uv][uv]]
+  - [[nodejs][nodejs]]
+  - [[bun][bun]]
+  - [[Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)][Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)]]
+  - [[go][go]]
+  - [[temurin-bin][temurin-bin]]
+- [[Clojure ecosystem][Clojure ecosystem]]
+  - [[clojure][clojure]]
+  - [[babashka][babashka]]
+  - [[clj-kondo][clj-kondo]]
+  - [[leiningen][leiningen]]
+  - [[neil][neil]]
+  - [[Practicalli deps.edn][Practicalli deps.edn]]
+- [[Language servers][Language servers]]
+  - [[tailwindcss-language-server][tailwindcss-language-server]]
+  - [[htmx-lsp][htmx-lsp]]
+  - [[docker-compose-language-service][docker-compose-language-service]]
+  - [[marksman][marksman]]
+  - [[vscode-langservers-extracted][vscode-langservers-extracted]]
+  - [[tofu-ls][tofu-ls]]
+- [[Formatters and linters][Formatters and linters]]
+  - [[alejandra / statix / deadnix][alejandra / statix / deadnix]]
+  - [[black / isort / ruff][black / isort / ruff]]
+  - [[cljfmt][cljfmt]]
+  - [[yamlfmt / yamllint][yamlfmt / yamllint]]
+  - [[shfmt / shellcheck][shfmt / shellcheck]]
+  - [[prettier][prettier]]
+- [[Testing][Testing]]
+  - [[bats][bats]]
+  - [[ripgrep][ripgrep]]
+  - [[silver-searcher-ng (ag)][silver-searcher-ng (ag)]]
+  - [[fzf][fzf]]
+  - [[zoxide][zoxide]]
+  - [[fd][fd]]
+- [[CLI utilities][CLI utilities]]
+  - [[fortune][fortune]]
+  - [[macchina][macchina]]
+  - [[jq][jq]]
+  - [[yq-go][yq-go]]
+  - [[fx][fx]]
+  - [[curl][curl]]
+  - [[socat][socat]]
+  - [[tokei][tokei]]
+  - [[onefetch][onefetch]]
+  - [[scc][scc]]
+  - [[git-sizer][git-sizer]]
+  - [[gh][gh]]
+  - [[gource][gource]]
+  - [[tree][tree]]
+  - [[enca][enca]]
+  - [[qrencode][qrencode]]
+  - [[duckdb][duckdb]]
+  - [[postgresql][postgresql]]
+  - [[poppler-utils][poppler-utils]]
+  - [[asciinema][asciinema]]
+  - [[bmon][bmon]]
+  - [[yt-dlp][yt-dlp]]
+  - [[ffmpeg][ffmpeg]]
+  - [[graphviz][graphviz]]
+  - [[mermaid-cli][mermaid-cli]]
+  - [[inxi][inxi]]
+  - [[lsof][lsof]]
+  - [[pandoc][pandoc]]
+  - [[zola][zola]]
+- [[IaC / Cloud][IaC / Cloud]]
+  - [[awscli2][awscli2]]
+  - [[aws-vault][aws-vault]]
+  - [[granted][granted]]
+  - [[ssm-session-manager-plugin][ssm-session-manager-plugin]]
+  - [[sops][sops]]
+  - [[age][age]]
+  - [[opentofu][opentofu]]
+  - [[terraform-mcp-server][terraform-mcp-server]]
+  - [[infracost][infracost]]
+  - [[tflint][tflint]]
+  - [[terraform-docs][terraform-docs]]
+  - [[terraform-landscape][terraform-landscape]]
+  - [[podman][podman]]
+  - [[podman-compose][podman-compose]]
+- [[CloudFormation][CloudFormation]]
+  - [[python3Packages.cfn-lint][python3Packages.cfn-lint]]
+  - [[rain][rain]]
+- [[Load testing][Load testing]]
+  - [[k6][k6]]
+  - [[vegeta][vegeta]]
+  - [[hey][hey]]
+- [[LaTeX][LaTeX]]
+  - [[TeX Live][TeX Live]]
+  - [[texlab][texlab]]
+  - [[engrave-faces][engrave-faces]]
+- [[Music & audio][Music & audio]]
+  - [[picard][picard]]
+  - [[lilypond (nixOS only)][lilypond (nixOS only)]]
+  - [[frescobaldi (nixOS only)][frescobaldi (nixOS only)]]
+  - [[timidity (nixOS only)][timidity (nixOS only)]]
+  - [[audacity (nixOS only)][audacity (nixOS only)]]
+  - [[vlc (nixOS only)][vlc (nixOS only)]]
+- [[Profiling & flamegraphs][Profiling & flamegraphs]]
+  - [[visualvm][visualvm]]
+  - [[async-profiler][async-profiler]]
+  - [[flamegraph][flamegraph]]
+- [[AI coding][AI coding]]
+  - [[ollama (nixOS only)][ollama (nixOS only)]]
+  - [[Emacs MCP integration][Emacs MCP integration]]
+  - [[pi-coding-agent][pi-coding-agent]]
+  - [[pi-mcp-adapter][pi-mcp-adapter]]
+  - [[codex-desktop-linux (nixOS only)][codex-desktop-linux (nixOS only)]]
+  - [[claude-desktop (nixOS only)][claude-desktop (nixOS only)]]
+  - [[claude, claude-code, codex and codex-app (macOS only)][claude, claude-code, codex and codex-app (macOS only)]]
+- [[Email][Email]]
+  - [[mu / mu4e][mu / mu4e]]
+  - [[isync (mbsync)][isync (mbsync)]]
+- [[Spell & grammar][Spell & grammar]]
+  - [[hunspell][hunspell]]
+  - [[aspell][aspell]]
+  - [[ispell][ispell]]
+  - [[languagetool][languagetool]]
+  - [[grammalecte (python3Packages)][grammalecte (python3Packages)]]
+- [[Encryption & security][Encryption & security]]
+  - [[gpg][gpg]]
+  - [[age][age]]
+  - [[sops][sops]]
+  - [[firejail (nixOS only)][firejail (nixOS only)]]
+  - [[auditd (nixOS only)][auditd (nixOS only)]]
+- [[Shell & prompt][Shell & prompt]]
+  - [[nh][nh]]
+  - [[zsh][zsh]]
+  - [[starship][starship]]
+  - [[direnv][direnv]]
+  - [[bat][bat]]
+  - [[eza][eza]]
+  - [[btop / htop][btop / htop]]
+  - [[tealdeer][tealdeer]]
+  - [[tmux][tmux]]
+- [[Fonts][Fonts]]
+- [[nixOS-only packages][nixOS-only packages]]
+  - [[Emacs][Emacs]]
+  - [[firefox-devedition][firefox-devedition]]
+  - [[vscode][vscode]]
+  - [[maestral / maestral-gui][maestral / maestral-gui]]
+  - [[signal-desktop][signal-desktop]]
+  - [[difftastic][difftastic]]
+  - [[bubblewrap (nixOS only)][bubblewrap (nixOS only)]]
+  - [[dust / duf][dust / duf]]
+  - [[compsize][compsize]]
+  - [[bees (nixOS only)][bees (nixOS only)]]
+  - [[bluez (Bluetooth)][bluez (Bluetooth)]]
+  - [[USB-C monitor hotplug stabilisation][USB-C monitor hotplug stabilisation]]
+  - [[touchpad-watchdog (nixOS only)][touchpad-watchdog (nixOS only)]]
+  - [[date-menu-formatter (nixOS only)][date-menu-formatter (nixOS only)]]
+  - [[emoji-copy (nixOS only)][emoji-copy (nixOS only)]]
+  - [[grand-theft-focus (nixOS only)][grand-theft-focus (nixOS only)]]
+  - [[appindicator (nixOS only)][appindicator (nixOS only)]]
+  - [[night-theme-switcher (nixOS only)][night-theme-switcher (nixOS only)]]
+  - [[papirus-icon-theme (nixOS only)][papirus-icon-theme (nixOS only)]]
+  - [[clipboard-history (nixOS only)][clipboard-history (nixOS only)]]
+  - [[auto-power-profile (nixOS only)][auto-power-profile (nixOS only)]]
+  - [[gimp][gimp]]
+  - [[pycharm][pycharm]]
+  - [[libreoffice (nixOS only)][libreoffice (nixOS only)]]
+  - [[authenticator (nixOS only)][authenticator (nixOS only)]]
+  - [[localsend (nixOS only)][localsend (nixOS only)]]
+  - [[android-tools (nixOS only)][android-tools (nixOS only)]]
+  - [[scrcpy (nixOS only)][scrcpy (nixOS only)]]
+  - [[google-chrome (nixOS only)][google-chrome (nixOS only)]]
+  - [[ungoogled-chromium (nixOS only)][ungoogled-chromium (nixOS only)]]
+  - [[tuba (nixOS only)][tuba (nixOS only)]]
+  - [[wget (nixOS only)][wget (nixOS only)]]
+  - [[thunderbird (nixOS only)][thunderbird (nixOS only)]]
+  - [[discord (nixOS only)][discord (nixOS only)]]
+- [[Tor and transparent proxy (nixOS only)][Tor and transparent proxy (nixOS only)]]
+  - [[tor][tor]]
+  - [[torsocks][torsocks]]
+  - [[tor-transparent-proxy][tor-transparent-proxy]]
+- [[ProtonVPN via NetworkManager (nixOS only)][ProtonVPN via NetworkManager (nixOS only)]]
+- [[Virtualisation (nixOS only)][Virtualisation (nixOS only)]]
+  - [[qemu_kvm][qemu_kvm]]
+  - [[virt-manager][virt-manager]]
+  - [[libvirtd][libvirtd]]
+  - [[dmg2img][dmg2img]]
+  - [[p7zip][p7zip]]
+  - [[cdrtools][cdrtools]]
+  - [[tesseract][tesseract]]
+- [[macOS only packages][macOS only packages]]
+  - [[glab][glab]]
+  - [[gitlab-runner][gitlab-runner]]
+  - [[ghostty (macOS only)][ghostty (macOS only)]]
+  - [[duti (macOS only)][duti (macOS only)]]
+  - [[luarocks (macOS only)][luarocks (macOS only)]]
+  - [[pipenv (macOS only)][pipenv (macOS only)]]
+  - [[poetry (macOS only)][poetry (macOS only)]]
+  - [[gnugrep (macOS only)][gnugrep (macOS only)]]
+  - [[gnused (macOS only)][gnused (macOS only)]]
+  - [[localsend (macOS only)][localsend (macOS only)]]
+  - [[middleclick (macOS only)][middleclick (macOS only)]]
+
+* Build toolchain
+
+** gcc
+C/C++ compiler.  Used by Emacs to compile native modules (jinx, vterm).
+#+begin_src sh
+gcc -o hello hello.c
+gcc -shared -fPIC -o module.so module.c   # build a shared library
+#+end_src
+
+** cmake
+Cross-platform build system generator.
+#+begin_src sh
+cmake -B build -S .       # generate build files from CMakeLists.txt
+cmake --build build       # compile the project
+#+end_src
+
+** pkg-config
+Queries installed library flags for compilation.
+#+begin_src sh
+pkg-config --cflags --libs enchant-2   # print -I and -l flags for enchant
+#+end_src
+
+** enchant
+Spell-checking meta-library.  Jinx (Emacs) compiles against it.  You
+rarely call it directly. It is a compile-time dependency.
+
+** meson / ninja
+Modern build system pair.  Meson generates ninja files, ninja executes them.
+#+begin_src sh
+meson setup builddir
+ninja -C builddir
+#+end_src
+
+** esbuild
+Fast JavaScript and TypeScript bundler installed as a cross-platform fallback.
+Projects should invoke the version locked by their package manager rather than
+silently substituting this global executable in builds or CI.
+#+begin_src sh
+esbuild src/index.ts --bundle --outfile=dist/index.js
+esbuild --version
+#+end_src
+
+* Languages & runtimes
+
+** python3
+#+begin_src sh
+python3 -c "print('hello')"
+python3 -m venv .venv && source .venv/bin/activate   # virtual environment
+#+end_src
+
+** uv
+Python version, environment, dependency, and command manager.  Home Manager
+supplies the executable while each project owns its =.python-version=,
+=pyproject.toml=, and =uv.lock=.
+#+begin_src sh
+uv sync --locked               # create or update the project environment
+uv run pytest                  # run a command in the locked environment
+uv add requests                # add and lock a dependency
+uv python install 3.14         # install a requested Python version
+#+end_src
+
+On nixOS, =/etc/ssl/cert.pem= points to NixOS's CA bundle at
+=/etc/ssl/certs/ca-certificates.crt=. Standalone Python downloaded by =uv=
+expects that conventional OpenSSL path. The alias also covers isolated
+Python build processes that make their own HTTPS requests. Adding a
+certificate package to a project's dependencies does not install it in
+those isolated build environments.
+
+Before activating this NixOS configuration, use the existing bundle for a
+single invocation:
+#+begin_src sh
+SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt uv run --locked dbt
+#+end_src
+
+** nodejs
+JavaScript runtime.  Also provides =npm=.
+#+begin_src sh
+node -e "console.log(42)"
+npm init -y && npm install express
+#+end_src
+
+** bun
+All-in-one JavaScript/TypeScript runtime, package manager, bundler,
+and test runner.  Drop-in faster alternative to =node=/=npm= for many
+projects, with native TypeScript and JSX execution.  Installed
+cross-platform via =home/base.nix=.
+
+#+begin_src sh
+bun --version                  # check installed version
+bun run script.ts              # run a TypeScript file directly
+bun init                       # scaffold a new project
+bun install                    # install dependencies (reads package.json)
+bun add express                # add a runtime dependency
+bun test                       # run the built-in test runner
+bun build ./entry.ts --outdir ./dist   # bundle for production
+#+end_src
+
+** Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)
+Individual Rust components installed via Nix (=unstable.cargo=,
+=unstable.rustc=, =unstable.rustfmt=, =unstable.rust-analyzer=) in
+=home/base.nix=.  No =rustup= is used.
+#+begin_src sh
+cargo new hello && cd hello && cargo run   # create and run a project
+cargo build --release                      # optimised build
+rustfmt src/main.rs                        # format Rust code
+#+end_src
+
+** go
+Go programming language.  Installed cross-platform via =home/base.nix=.
+#+begin_src sh
+go run main.go
+go build -o app .
+#+end_src
+
+** temurin-bin
+Eclipse Temurin JDK, required by the Clojure CLI, Leiningen and Maven.
+Installed cross-platform via =home/base.nix= as =temurin-bin-27=.  JDK 27
+is not a long-term support release: bump it when JDK 28 ships (around
+March 2027).  Pin an older JDK per project (for example with
+=nix develop=) when a project needs one.
+#+begin_src sh
+java -version
+#+end_src
+
+* Clojure ecosystem
+
+** clojure
+Clojure CLI (=clj= / =clojure=) with tools.deps.  Installed
+cross-platform via =home/base.nix=.
+#+begin_src sh
+clj                            # start a REPL
+clj -X:deps tree               # show dependency tree
+clojure -M:test                # run tests via alias in deps.edn
+#+end_src
+
+** babashka
+Fast Clojure scripting with no JVM startup.
+#+begin_src sh
+bb -e '(+ 1 2)'                                # quick expression
+bb -e '(-> (slurp "data.json") (json/parse-string))'
+bb script.clj                                  # run a file
+#+end_src
+
+** clj-kondo
+Clojure linter / static analysis.
+#+begin_src sh
+clj-kondo --lint src/            # lint a directory
+clj-kondo --lint - <<< "(defn f [x] x x)"   # lint from stdin
+#+end_src
+
+** leiningen
+Clojure project automation and build tool.
+#+begin_src sh
+lein new app my-project          # scaffold a new Leiningen project
+lein repl                        # start a REPL
+lein test                        # run tests
+lein uberjar                     # build a standalone JAR
+#+end_src
+
+** neil
+Manage =deps.edn= aliases and dependencies.
+#+begin_src sh
+neil dep add cheshire/cheshire   # add a dependency to deps.edn
+neil dep upgrade                 # bump all deps to latest
+neil new scratch my-project      # scaffold a new project
+#+end_src
+
+** Practicalli deps.edn
+Not a package, but a flake input.  The community =deps.edn= from
+=practicalli/clojure-deps-edn= is symlinked to
+=~/.config/clojure/deps.edn=.  It gives you dozens of ready-made
+aliases:
+#+begin_src sh
+clj -M:repl/rebel              # rich REPL with Rebel Readline
+clj -M:test/runner              # run tests
+clj -X:project/create           # create a new project
+#+end_src
+Run =clj -A:deps -Stree= to see everything available.
+
+* Language servers
+
+These servers are used through Emacs or other editors. LTeX+ uses the
+standalone =lsp-ltex-plus= Emacs client; the programming servers use
+=lsp-mode=. You generally do not invoke them manually.
+
+| Server                       | Language         | Trigger              |
+|------------------------------+------------------+----------------------|
+| =clojure-lsp=               | Clojure          | =.clj=, =.edn=      |
+| =basedpyright=               | Python           | =.py=                |
+| =typescript-language-server= | TypeScript / JS  | =.ts=, =.tsx=, =.js= |
+| =ltex-ls-plus=               | LaTeX / Markdown | =.tex=, =.md=        |
+| =texlab=                     | LaTeX            | =.tex=, =.bib=       |
+| =jdt-language-server=        | Java             | =.java=              |
+| =bash-language-server=       | Shell            | =.sh=, =.bash=       |
+| =dockerfile-language-server= | Dockerfile       | =Dockerfile=         |
+| =sqls=                       | SQL              | =.sql=               |
+| =yaml-language-server=       | YAML             | =.yaml=, =.yml=      |
+| =nixd=                      | Nix              | =.nix=               |
+| =rust-analyzer=              | Rust             | =.rs=                |
+| =gopls=                      | Go               | =.go=                |
+| =lua-language-server=        | Lua              | =.lua=               |
+| =tailwindcss-language-server= | Tailwind CSS class names | =.html=, =.tsx=, =.jsx= |
+| =htmx-lsp=                   | htmx attributes  | =.html=              |
+| =docker-compose-langserver=  | Docker Compose   | =compose.yaml=, =docker-compose.yml= |
+| =marksman=                   | Markdown         | =.md=                |
+| =vscode-html-language-server= | HTML            | =.html=              |
+| =vscode-css-language-server= | CSS / SCSS / LESS | =.css=, =.scss=, =.less= |
+| =vscode-json-language-server= | JSON            | =.json=              |
+| =vscode-eslint-language-server= | ESLint        | =.js=, =.ts=, =.jsx=, =.tsx= |
+| =tofu-ls=                    | OpenTofu         | =.tf=, =.tfvars=     |
+
+** tailwindcss-language-server
+Tailwind CSS class-name completion, hover docs and diagnostics.
+Triggers in HTML, JSX/TSX, Vue and Svelte buffers when a Tailwind
+config is detected up the directory tree.
+
+** htmx-lsp
+Completion and hover documentation for [[https://htmx.org][htmx]]
+=hx-*= attributes inside HTML.  Tiny scope; expects to run alongside
+=vscode-html-language-server= rather than replace it.
+
+** docker-compose-language-service
+Compose-file LSP shipped as the binary =docker-compose-langserver=.
+Provides schema validation, completion and hover for service keys in
+=compose.yaml= / =docker-compose.yml=.  Distinct from
+=dockerfile-language-server= (which targets =Dockerfile= syntax) and
+they coexist without conflict.
+
+** marksman
+Structural Markdown LSP: heading completion, =[[wiki-link]]= follow,
+section rename across files, diagnostics for broken references.
+Complementary to =ltex-ls-plus=, which focuses on prose grammar and
+spelling rather than document structure.
+
+** vscode-langservers-extracted
+The HTML, CSS, JSON, ESLint and Markdown servers extracted from VS
+Code's source tree, packaged as a single Nix derivation that exposes
+five binaries:
+=vscode-html-language-server=, =vscode-css-language-server=,
+=vscode-json-language-server=, =vscode-eslint-language-server= and
+=vscode-markdown-language-server=.  Eglot / =lsp-mode= keys server
+selection off the major mode, so each binary is picked up
+independently.
+
+** tofu-ls
+The official OpenTofu language server.  It provides completion, hover,
+diagnostics, formatting, symbols, and navigation for OpenTofu modules through
+Emacs Eglot or =lsp-mode=.  It replaces the Terraform-specific language
+servers because this fleet has no Terraform-only projects.
+
+* Formatters and linters
+
+** alejandra / statix / deadnix
+The Nix formatting and static-analysis toolchain, installed cross-platform via
+=home/base.nix=.  The tools have deliberately separate jobs: =alejandra=
+formats source, =statix= reports Nix anti-patterns, and =deadnix= reports unused
+bindings and arguments.
+
+#+begin_src sh
+alejandra .                     # format every Nix file below this directory
+statix check                    # report Nix anti-patterns without changing files
+deadnix                         # report unused Nix code without changing files
+#+end_src
+
+** black / isort / ruff
+
+Python formatters and linter. Home Manager gives Ruff an =ALL=
+stable-rule user fallback. Preview rules and unsafe fix-all remain
+opt-in. A project's =pyproject.toml= (with =[tool.ruff]=), =ruff.toml=, or
+=.ruff.toml= replaces the fallback; Ruff does not implicitly merge these
+files. Use =extend= when inheritance is intentional. New stable rules
+can appear after upgrades.
+
+The fallback ignores contradictory docstring choices (=D203= and =D213=)
+and formatter-owned indentation, quoting, and trailing-comma rules. It
+retains annotation, security, correctness, complexity, modernization,
+unused-code, and import-order checks. See [[https://docs.astral.sh/ruff/configuration/][Ruff configuration discovery]]
+and [[https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules][formatter rule conflicts]].
+
+Emacs keeps isort followed by Black on save (=C-c r= on demand). Ruff
+provides explicit import organization (=C-c l r o=), lint fixes, and
+safe fix-all (=C-c l a a=). Organizing sorts imports; removing unused
+imports is a separate fix. Ruff does not read =[tool.isort]= or
+=[tool.black]=: projects that customize those tools should align their
+Ruff options to avoid alternating changes. Overlapping unused-import
+diagnostics from BasedPyright and Ruff are intentional; their
+rule-specific suppressions are different (=pyright: ignore[...]= versus
+=noqa: ...=).
+
+#+begin_src sh
+black myfile.py                # reformat Python
+isort myfile.py                # sort imports
+ruff check src/                # lint Python (very fast)
+ruff check --fix src/          # apply safe lint fixes
+ruff check --show-settings myfile.py # inspect effective rules and config
+ruff format src/               # format Python (alternative to black)
+#+end_src
+
+** cljfmt
+Clojure code formatter installed cross-platform through Home Manager.
+#+begin_src sh
+cljfmt fix src/                # format Clojure files in place
+cljfmt check src/              # check without modifying
+#+end_src
+
+** yamlfmt / yamllint
+#+begin_src sh
+yamlfmt file.yaml              # auto-format YAML
+yamllint -d relaxed file.yaml  # lint YAML
+#+end_src
+
+** shfmt / shellcheck
+#+begin_src sh
+shfmt -w script.sh             # format shell script in place
+shellcheck script.sh           # lint shell script (catches quoting bugs, etc.)
+#+end_src
+
+** prettier
+Formats HTML, CSS, JSON, Markdown, YAML, and more.
+#+begin_src sh
+prettier --write "**/*.json"
+prettier --check .
+#+end_src
+
+* Testing
+
+** bats
+Shell test framework (Bash Automated Testing System). Tests live in
+=tests/= and cover the =scripts/= activation snippets.
+#+begin_src sh
+bats tests/                                # run all test suites
+bats tests/home-layout.bats               # run one file
+bats --tap tests/                          # TAP-format output for CI
+#+end_src
+
+** ripgrep
+Recursive regex search, faster than grep.
+#+begin_src sh
+rg "TODO" src/                 # search for TODO in src/
+rg -t py "import os"           # search only Python files
+rg -l "fixme"                  # list filenames only
+#+end_src
+
+** silver-searcher-ng (ag)
+Maintained fork of Silver Searcher with PCRE2 support.  It provides the =ag=
+command alongside ripgrep's =rg= command so programs can depend on either.
+#+begin_src sh
+ag "pattern" .
+ag --clojure "defn"            # search only Clojure files
+#+end_src
+
+** fzf
+Fuzzy finder.  Any list piped in becomes an interactive selector.
+Configured in =home/base.nix= with =fd= as the file-listing backend so
+=.gitignore= is respected and hidden files are included.
+
+*** Shell key bindings (always available at the prompt)
+| Key     | Action                                            |
+|---------+---------------------------------------------------|
+| =C-t=   | Paste selected file(s) onto the command line      |
+| =C-r=   | Fuzzy-search shell history; =C-r= again for chronological order |
+| =M-c=   | =cd= into a selected subdirectory                 |
+
+*** Inside the fzf popup
+| Key       | Action                          |
+|-----------+---------------------------------|
+| =C-a=     | Toggle-select all matches       |
+| =C-/=     | Toggle preview pane             |
+| =C-u=     | Scroll preview half-page up     |
+| =C-d=     | Scroll preview half-page down   |
+| =Alt-↑=   | Jump to top of preview          |
+| =Alt-↓=   | Jump to bottom of preview       |
+| =Tab=     | Mark/unmark one item            |
+
+*** Worked examples
+#+begin_src sh
+# Open a file in $EDITOR, previewing it with bat before committing.
+# Press C-/ to show/hide the preview pane.
+$EDITOR $(fzf)
+
+# Kill one or more processes interactively (multi-select with Tab).
+kill -9 $(ps aux | fzf --multi | awk '{print $2}')
+
+# Check out a git branch.
+git checkout $(git branch -a | fzf)
+
+# Replay a recent git commit as a patch to the working tree.
+git show $(git log --oneline | fzf | awk '{print $1}') | git apply
+
+# Fuzzy-grep then open the matching file at the right line.
+rg --line-number '' | fzf --delimiter ':' --nth 1,3.. \
+    --preview 'bat --color=always --highlight-line {2} {1}' \
+  | awk -F: '{print "+"$2, $1}' | xargs $EDITOR
+
+# Copy a selected file path to the clipboard (Wayland).
+fzf | wl-copy
+
+# fzf also works inside scripts: read one line from any list.
+selected=$(printf '%s\n' alpha beta gamma | fzf)
+#+end_src
+
+** zoxide
+Smarter =cd= that learns your most-visited directories.
+#+begin_src sh
+z nixos                        # jump to most-used dir matching "nixos"
+zi                             # interactive selection
+#+end_src
+
+** fd
+User-friendly =find= replacement. Also drives fzf file and directory search.
+#+begin_src sh
+fd "\.nix$"                    # find all .nix files
+fd -e py -x black {}           # find Python files and format them
+#+end_src
+
+* CLI utilities
+
+** fortune
+Print a random quotation. Runs once at login as part of the shell greeting.
+Installed via nixpkgs (=home/nixOS.nix=) on nixOS and via Homebrew
+(=config/Brewfile=) on macOS: the nixpkgs build depends on recode, which
+fails on aarch64-darwin (nixpkgs#568679).  Homebrew ships the BSD
+=fortune=, so options beyond those below may differ.
+#+begin_src sh
+fortune                         # random quote
+fortune -s                      # short quotes only
+#+end_src
+
+** macchina
+System information fetcher (modern replacement for archey/neofetch).
+Runs once at login as part of the shell greeting.
+#+begin_src sh
+macchina                        # show system info
+macchina -t Hydrogen            # use a specific theme
+#+end_src
+
+** jq
+JSON processor.
+#+begin_src sh
+curl -s https://api.github.com/repos/NixOS/nixpkgs | jq '.description'
+echo '[1,2,3]' | jq 'map(. * 2)'
+cat data.json | jq -r '.[] | .id'
+#+end_src
+
+** yq-go
+YAML processor, same idea as jq.
+#+begin_src sh
+yq '.services.web.image' docker-compose.yml
+yq -i '.version = "2"' config.yaml          # edit in place
+#+end_src
+
+** fx
+Interactive JSON viewer (TUI).
+#+begin_src sh
+curl -s https://api.github.com/repos/NixOS/nixpkgs | fx
+cat large.json | fx '.items[0]'
+#+end_src
+
+** curl
+HTTP client.
+#+begin_src sh
+curl -sL https://example.com
+curl -X POST -H "Content-Type: application/json" -d '{"key":"val"}' https://api.example.com/data
+#+end_src
+
+** socat
+Bidirectional data relay used to bridge MCP clients' standard input and
+output to the Unix socket created by the Emacs MCP server.
+#+begin_src sh
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  | socat - "UNIX-CONNECT:$HOME/.emacs.d/var/mcp-server/emacs-mcp-server.sock"
+#+end_src
+
+** tokei
+Count lines of code by language.
+#+begin_src sh
+tokei .                        # summary of the whole repo
+tokei src/ --sort code         # sorted by lines of code
+#+end_src
+
+** onefetch
+Git repository summary for the terminal (languages, contributors,
+license, LOC).
+#+begin_src sh
+onefetch                       # summary card for the current repo
+onefetch --no-art              # text-only output
+onefetch -o json               # machine-readable JSON output
+#+end_src
+
+** scc
+Fast code counter with complexity estimation and COCOMO cost model.
+#+begin_src sh
+scc .                          # count the current directory
+scc --by-file --sort code      # per-file breakdown sorted by code lines
+scc --format html > report.html   # export as HTML report
+#+end_src
+
+** git-sizer
+Compute size metrics for a Git repository and flag potential problems.
+#+begin_src sh
+git-sizer --verbose            # human-readable report with warnings
+git-sizer --json               # machine-readable JSON output
+#+end_src
+
+** gh
+Official GitHub command-line tool.  Installed cross-platform via the
+Home Manager =programs.gh= module: =~/.config/gh/config.yml= is
+managed declaratively, the gh git credential helper is wired into
+=programs.git= for HTTPS remotes, and =git_protocol = "ssh"= matches
+the per-host SSH config for =github.com= so =gh repo clone= and
+=gh pr checkout= use SSH out of the box.
+
+Authentication itself is interactive and stays outside Nix:
+#+begin_src sh
+gh auth login                                # one-shot OAuth/SSH key setup
+gh auth status                               # show current session
+#+end_src
+
+Day-to-day:
+#+begin_src sh
+gh repo clone owner/repo                     # clone via SSH (default protocol)
+gh repo view --web                           # open the current repo on github.com
+
+gh pr create --fill --web                    # create a PR from the current branch
+gh pr list --state open                      # list open PRs in this repo
+gh pr checkout 123                           # check out PR #123 locally
+gh pr review 123 --approve --body "LGTM"
+
+gh issue list --label bug --state open
+gh issue create --title "Crash on launch" --body-file BUG.md
+
+gh run list --limit 5                        # recent workflow runs
+gh run watch                                 # live tail the latest run
+#+end_src
+
+** gource
+Animated 3D visualisation of repository history.  Can export to video
+via ffmpeg.  See [[file:../how-to/assess-an-unfamiliar-codebase.org][assess an unfamiliar codebase]] for reading guidance.
+#+begin_src sh
+gource .                                     # visualise the current repo
+gource --seconds-per-day 0.5 --auto-skip-seconds 1 -o - \
+  | ffmpeg -y -r 60 -f image2pipe -vcodec ppm -i - \
+    -vcodec libx264 -preset medium -pix_fmt yuv420p -crf 1 gource.mp4
+#+end_src
+
+** tree
+Directory listing as a tree.
+#+begin_src sh
+tree -L 2                      # depth-limited to 2
+tree -I node_modules           # exclude a directory
+#+end_src
+
+** enca
+Detect and convert file encodings.  Installed via nixpkgs
+(=home/nixOS.nix=) on nixOS and via Homebrew (=config/Brewfile=) on
+macOS, for the same recode reason as =fortune=.
+#+begin_src sh
+enca -L fr fichier.txt         # detect encoding (French heuristics)
+enca -x UTF-8 fichier.txt     # convert to UTF-8 in place
+#+end_src
+
+** qrencode
+Generate QR codes.
+#+begin_src sh
+qrencode -o qr.png "https://example.com"
+echo "wifi secret" | qrencode -t UTF8        # print QR in terminal
+#+end_src
+
+** duckdb
+In-process analytical SQL engine like SQLite for analytics.
+#+begin_src sh
+duckdb                                       # interactive REPL
+duckdb -c "SELECT count(*) FROM 'data.csv'"
+duckdb -c "SELECT * FROM read_parquet('file.parquet') LIMIT 5"
+#+end_src
+
+** postgresql
+PostgreSQL client and server programs.  Only the command-line tools are
+used: neither host declares a PostgreSQL service.
+#+begin_src sh
+psql "postgresql://user@host:5432/db"        # interactive client
+pg_dump -Fc -d db -f db.dump                 # custom-format dump
+pg_restore -d db db.dump                     # restore that dump
+#+end_src
+
+** poppler-utils
+PDF text extraction tools.
+#+begin_src sh
+pdftotext document.pdf -        # extract text to stdout
+pdfinfo document.pdf            # show metadata (pages, size, etc.)
+#+end_src
+
+** asciinema
+Record and share terminal sessions.
+#+begin_src sh
+asciinema rec demo.cast         # start recording
+asciinema play demo.cast        # replay locally
+asciinema upload demo.cast      # share on asciinema.org
+#+end_src
+
+** bmon
+Real-time network bandwidth monitor (TUI).
+#+begin_src sh
+bmon                            # launch the monitor
+bmon -p wlp1s0                  # monitor a specific interface
+#+end_src
+
+** yt-dlp
+Download videos/audio from YouTube and hundreds of other sites.
+#+begin_src sh
+yt-dlp "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+yt-dlp -x --audio-format mp3 URL              # extract audio as MP3
+yt-dlp -f "bestvideo+bestaudio" URL            # best quality
+yt-dlp --list-formats URL                      # show available formats
+#+end_src
+
+** ffmpeg
+Swiss-army knife for audio/video processing.
+#+begin_src sh
+ffmpeg -i input.mp4 output.mkv                 # convert format
+ffmpeg -i video.mp4 -ss 00:01:00 -t 30 clip.mp4   # extract 30s clip
+ffmpeg -i input.wav -codec:a libopus output.opus   # transcode audio
+ffmpeg -i video.mp4 -vn -acodec copy audio.m4a     # strip video, keep audio
+#+end_src
+
+** graphviz
+Graph visualisation (DOT language).  Installed cross-platform via
+=home/base.nix=.
+#+begin_src sh
+dot -Tpng graph.dot -o graph.png
+echo "digraph { A -> B -> C }" | dot -Tsvg > graph.svg
+#+end_src
+
+** mermaid-cli
+Render Mermaid diagrams to PNG/SVG/PDF.  Installed cross-platform via
+=home/base.nix= so =mmdc= is on =PATH= on both NixOS and macOS, which
+is what =ob-mermaid= picks up when it falls through to the bare
+=mmdc= command (see =~/.emacs.d/init.el=).  Mermaid CLI bundles
+Puppeteer and downloads its own headless Chromium on first run.
+#+begin_src sh
+mmdc -i diagram.mmd -o diagram.png
+mmdc -i diagram.mmd -o diagram.svg -t dark
+#+end_src
+
+** inxi
+System information tool.  Prints a summary of hardware, drivers, and
+kernel details.  Installed cross-platform via =home/base.nix=.
+#+begin_src sh
+inxi -Fxz                     # full system report (anonymised IPs)
+inxi -G                       # graphics card / driver info
+#+end_src
+
+** lsof
+List open files and the processes that opened them.  Installed
+cross-platform via =home/base.nix=.
+#+begin_src sh
+lsof -i :8080                  # find what is listening on port 8080
+lsof +D /tmp                   # list all open files under /tmp
+#+end_src
+
+** pandoc
+Universal document converter.  Installed cross-platform via
+=home/base.nix= (=programs.pandoc.enable=).
+#+begin_src sh
+pandoc README.md -o README.pdf
+pandoc -f org -t docx notes.org -o notes.docx
+pandoc --list-input-formats
+#+end_src
+
+** zola
+Static site generator written in Rust: one binary with templates, Sass
+and a live-reloading development server.  Installed from nixpkgs on both
+hosts; it replaced a Homebrew formula on macOS.
+#+begin_src sh
+zola init site                               # scaffold a new site
+zola serve                                   # preview with live reload
+zola build                                   # render into public/
+#+end_src
+
+* IaC / Cloud
+
+** awscli2
+Official AWS CLI.
+#+begin_src sh
+aws sts get-caller-identity                    # who am I?
+aws s3 ls s3://my-bucket/                      # list bucket contents
+aws cloudformation describe-stacks --stack-name my-stack
+#+end_src
+
+** aws-vault
+Securely store and access AWS credentials (uses OS keychain).
+#+begin_src sh
+aws-vault add work                             # store credentials for "work" profile
+aws-vault exec work -- aws s3 ls               # run a command with temporary creds
+aws-vault login work                           # open AWS console in browser
+#+end_src
+
+** granted
+Fast AWS role switching.
+#+begin_src sh
+assume work-admin                              # switch to a role (interactive)
+assume --export work-admin                     # export creds as env vars
+#+end_src
+
+** ssm-session-manager-plugin
+Start SSH-like sessions to EC2 instances via AWS SSM (no open ports).
+#+begin_src sh
+aws ssm start-session --target <instance-id>
+#+end_src
+
+** sops
+Encrypted secrets management (works with age, gpg, AWS KMS).
+#+begin_src sh
+sops secrets.yaml                              # edit encrypted file (decrypts in $EDITOR)
+sops -d secrets.yaml                           # decrypt to stdout
+sops -e -i secrets.yaml                        # encrypt a plaintext file in-place
+sops --age $(cat ~/.config/sops/age/keys.txt | grep public) -e plain.yaml > enc.yaml
+#+end_src
+
+** age
+Modern file encryption, simpler than GPG.
+#+begin_src sh
+age-keygen -o key.txt                          # generate a keypair
+age -r age1... -o secret.enc secret.txt        # encrypt to a recipient
+age -d -i key.txt secret.enc                   # decrypt with your key
+#+end_src
+
+** opentofu
+Open-source infrastructure-as-code engine.  Nix supplies one reproducible
+version for both hosts, so no mutable version-manager installation is needed.
+#+begin_src sh
+tofu fmt -recursive                            # format all modules
+tofu init                                      # install locked providers
+tofu validate                                  # validate the configuration
+tofu test                                      # run OpenTofu tests
+#+end_src
+
+** terraform-mcp-server
+HashiCorp's MCP server exposes current public Terraform Registry provider,
+module, and policy documentation to MCP clients.  Nix manages the executable,
+while clients such as Codex may keep their server registration mutable.
+#+begin_src sh
+terraform-mcp-server --version
+terraform-mcp-server --toolsets=registry stdio
+codex mcp add terraform -- terraform-mcp-server --toolsets=registry stdio
+#+end_src
+
+The =registry= toolset omits HCP Terraform and Terraform Enterprise operations.
+
+** infracost
+Estimates infrastructure costs and compares a proposed change with a baseline.
+It reads OpenTofu-compatible configuration and plan JSON without applying it.
+#+begin_src sh
+infracost breakdown --path .                   # estimate the current module
+infracost diff --path . --compare-to baseline.json
+#+end_src
+
+** tflint
+Static analysis for Terraform-compatible configuration, including OpenTofu
+modules.  Provider plugins add rules for services such as AWS.
+#+begin_src sh
+tflint --init                                  # install configured plugins
+tflint --recursive                             # lint all modules
+#+end_src
+
+** terraform-docs
+Generates Markdown, AsciiDoc, JSON, and other documentation from module inputs
+and outputs.  No OpenTofu-specific documentation generator exists in the
+locked nixpkgs revision.  This tool supports the shared =.tf= syntax, but
+OpenTofu-only language extensions may require manual documentation.
+#+begin_src sh
+terraform-docs markdown table .                # print a Markdown table
+terraform-docs markdown table --output-file README.md --output-mode inject .
+#+end_src
+
+** terraform-landscape
+Reformats OpenTofu plan output for readability.
+#+begin_src sh
+tofu plan | landscape
+#+end_src
+
+** podman
+Rootless container engine (Docker-compatible).
+
+On nixOS, the NixOS module supplies Podman from the stable system channel
+and provides =docker= as a compatible command. Run either command as the
+ordinary user, without =sudo=, for rootless operation. The macOS CLI remains
+on the unstable Home Manager channel.
+
+The nixOS image policy permits =docker.io= (Docker Hub) and =public.ecr.aws=
+(Amazon ECR Public), rejecting other sources by default. These permissions
+include third-party publishers and do not require image signatures. HTTPS
+certificate verification remains enabled. Short names default to Docker Hub;
+=hello-world= resolves to =docker.io/library/hello-world=. The root-owned
+Podman API socket is disabled; the CLI does not require it.
+
+#+begin_src sh
+podman info --format '{{.Host.Security.Rootless}}' # expect true
+docker run --rm hello-world                   # Docker Hub official image
+podman run --rm docker.io/library/hello-world:latest
+podman run --rm -it alpine sh                  # run a throwaway container
+podman build -t myapp .                        # build from Dockerfile
+podman ps                                      # list running containers
+#+end_src
+
+The policy governs image imports, not execution permissions for images
+already in local storage. It also rejects archive imports unless a suitable
+transport exception is added. A user policy at =~/.config/containers/policy.json=
+takes precedence over the system policy in =/etc/containers/policy.json=.
+
+Also used by =scripts/getting-started-new-codebase.zsh= to run
+Hercules and code-maat analyses in containers.  See
+[[file:../how-to/assess-an-unfamiliar-codebase.org][assess an unfamiliar codebase]] for the full workflow.
+
+** podman-compose
+Runs Compose files (=compose.yaml=, =docker-compose.yml=) with Podman
+instead of Docker.
+#+begin_src sh
+podman-compose up -d                         # start the services
+podman-compose ps                            # list their containers
+podman-compose down                          # stop and remove them
+#+end_src
+
+* CloudFormation
+
+** python3Packages.cfn-lint
+CloudFormation template linter.
+#+begin_src sh
+cfn-lint template.yaml                         # lint a template
+cfn-lint "templates/**/*.yaml"                 # lint all templates in a directory
+cfn-lint -f json template.yaml                 # JSON output for CI
+#+end_src
+
+** rain
+CloudFormation deploy / diff CLI with much better UX than =aws cloudformation=.
+#+begin_src sh
+rain deploy template.yaml my-stack             # deploy (waits, streams events)
+rain diff template.yaml my-stack               # show what would change
+rain cat my-stack                              # print current template from AWS
+rain logs my-stack                             # show recent CloudWatch logs
+rain fmt template.yaml                         # format a CFN template
+#+end_src
+
+* Load testing
+
+** k6
+Modern load testing with tests written in JavaScript.
+#+begin_src sh
+# Create a test script:
+cat > test.js <<'EOF'
+import http from 'k6/http';
+export default function () {
+  http.get('https://test-api.example.com/');
+}
+EOF
+k6 run test.js                                 # default: 1 VU, 1 iteration
+k6 run --vus 50 --duration 30s test.js         # 50 virtual users for 30s
+#+end_src
+
+** vegeta
+HTTP load testing that is pipe-based and composable.
+#+begin_src sh
+echo "GET https://example.com/" | vegeta attack -duration=10s | vegeta report
+echo "GET https://example.com/" | vegeta attack -rate=100/s | vegeta plot > plot.html
+#+end_src
+
+** hey
+Simple HTTP load generator: one command, instant results.
+#+begin_src sh
+hey -n 1000 -c 50 https://example.com/        # 1000 requests, 50 concurrent
+hey -m POST -d '{"key":"val"}' -T "application/json" https://api.example.com/
+#+end_src
+
+* LaTeX
+
+** TeX Live
+nixOS installs =unstable.texliveFull= through Home Manager. macOS installs the
+Homebrew =texlive= formula because it integrates fonts and paths more reliably
+with native applications. Each host therefore has exactly one TeX Live
+provider. Both distributions include XeLaTeX, LuaLaTeX, pdfLaTeX, latexmk, and
+the CTAN package collection.
+#+begin_src sh
+xelatex document.tex           # compile with XeLaTeX (for system fonts)
+lualatex document.tex          # compile with LuaLaTeX (for advanced font features)
+latexmk -xelatex document.tex # auto-build with latexmk (watches dependencies)
+latexmk -c                     # clean auxiliary files
+#+end_src
+
+** texlab
+LaTeX language server.  Used by Eglot / VS Code for completion,
+diagnostics, and forward/inverse search.  Installed cross-platform via
+=home/base.nix=.
+
+** engrave-faces
+Emacs package that converts font-lock faces into LaTeX colour commands
+for syntax-highlighted Org source blocks.  It runs inside Emacs, so
+exports do not need Pygments or LaTeX shell escape.
+
+* Music & audio
+
+** picard
+MusicBrainz Picard for automatic music tagging.
+#+begin_src sh
+picard                         # launch GUI
+picard /path/to/album/         # open a directory directly
+#+end_src
+Drag files into the left pane, click "Scan" or "Lookup", then "Save".
+
+** lilypond (nixOS only)
+Music engraving: write scores in text and produce publication-quality PDFs.
+#+begin_src sh
+lilypond score.ly              # compile to PDF + MIDI
+lilypond -o output score.ly    # specify output prefix
+#+end_src
+
+** frescobaldi (nixOS only)
+GUI editor for LilyPond with live score preview, MIDI playback, syntax
+highlighting.
+
+** timidity (nixOS only)
+MIDI playback used by Frescobaldi for score preview audio.
+#+begin_src sh
+timidity output.midi           # play a MIDI file
+#+end_src
+
+** audacity (nixOS only)
+Audio editor for recording, cutting, filtering, and mixing.
+
+** vlc (nixOS only)
+Media player that handles virtually any audio/video format.
+#+begin_src sh
+vlc file.mp4
+cvlc --play-and-exit file.mp3  # headless playback
+#+end_src
+
+VA-API hardware decoding is disabled because of recurring VCN v4.0
+ring timeouts on the Radeon 780M (Phoenix) iGPU that cause Mesa to
+abort the process.  The Firejail wrapper in =hosts/nixOS.nix= starts
+VLC with =--avcodec-hw=none=.
+
+* Profiling & flamegraphs
+
+** visualvm
+JVM monitoring and profiling GUI.  Attach to running JVM processes,
+inspect heap, threads, CPU sampling.
+
+Installed via the Homebrew cask (=config/Brewfile=) on macOS, via
+nixpkgs (=home/nixOS.nix=) on nixOS.  The cask ships only
+=VisualVM.app=, so on macOS launch it from Spotlight or with
+=open -a VisualVM=; the =visualvm= command-line entry point shown below
+exists on nixOS (Nix) only.
+#+begin_src sh
+visualvm                       # launch GUI that auto-detects local JVMs
+visualvm --openjmx jmx://host:port   # connect to a remote JVM
+#+end_src
+
+** async-profiler
+Low-overhead JVM sampling profiler.  Produces flamegraph-ready output.
+#+begin_src sh
+# Attach to a running JVM PID:
+asprof -d 30 -f profile.html <PID>   # profile for 30s, produce HTML flamegraph
+asprof -e alloc -f alloc.html <PID>  # profile memory allocations
+#+end_src
+
+** flamegraph
+Brendan Gregg's FlameGraph scripts that turn perf/DTrace stacks into SVGs.
+#+begin_src sh
+# Typical Linux perf workflow:
+perf record -g -p <PID> -- sleep 10
+perf script | stackcollapse-perf.pl | flamegraph.pl > flame.svg
+#+end_src
+
+* AI coding
+
+** ollama (nixOS only)
+Local model inference, installed with its systemd service through
+=services.ollama= in =hosts/nixOS.nix=. The system package
+=pkgs.ollama-vulkan= uses the Radeon 780M's existing Mesa Vulkan driver.
+The service listens on =127.0.0.1:11434=, disables Ollama Cloud features,
+and starts only when requested. No models are downloaded automatically.
+
+NixOS's =enable = true= installs the service and CLI; overriding
+=systemd.services.ollama.wantedBy= with an empty list removes its boot
+target dependency. Use =start= when needed, without =systemctl enable=.
+The service stores models under =/var/lib/ollama/models=, independently
+of any older model downloads under =~/.ollama=.
+
+After rebuilding and activating the configuration:
+#+begin_src sh
+sudo systemctl start ollama
+systemctl status ollama --no-pager
+ollama run qwen3:0.6b "Explain a systemd service in one sentence. /no_think"
+ollama ps                       # inspect the PROCESSOR column while loaded
+ollama stop qwen3:0.6b           # unload the model; keep the server running
+sudo systemctl stop ollama      # stop the server as well
+journalctl -u ollama -b --no-pager  # diagnose startup or GPU errors
+#+end_src
+
+[[https://ollama.com/library/qwen3:0.6b][Qwen3 0.6B]] is a small smoke-test model; the first run downloads it.
+A successful reply verifies inference, while =ollama ps= and the journal
+show whether the intended GPU backend is actually used. Vulkan support
+in the package alone does not prove GPU offloading on this machine.
+Stopping a model or the service keeps the downloaded files for later use.
+See the [[https://docs.ollama.com/faq][Ollama FAQ]] and [[https://docs.ollama.com/gpu][hardware support documentation]].
+
+** Emacs MCP integration
+The Emacs configuration runs =rhblind/emacs-mcp-server= on a local Unix
+socket. Codex keeps its MCP registration in the application-owned
+=~/.codex/config.toml= so the desktop app and CLI can update and share it.
+Register the upstream Python bridge once on each host, then restart Codex:
+#+begin_src sh
+codex mcp add emacs-tools -- \
+  "$HOME/.emacs.d/straight/repos/emacs-mcp-server/mcp-wrapper.py" \
+  "$HOME/.emacs.d/var/mcp-server/emacs-mcp-server.sock"
+codex mcp get emacs-tools
+# In Codex:
+/mcp
+#+end_src
+
+The bridge uses the shared Python 3 package. The shared =socat= package is
+also available for direct Unix-socket diagnostics and clients such as Pi.
+
+** pi-coding-agent
+Pi is the cross-platform terminal coding agent.  It keeps the core
+small and discovers global extensions under =~/.pi/agent/extensions/=
+without requiring its mutable =settings.json= to be generated by Home
+Manager.
+#+begin_src sh
+pi                              # start an interactive session
+pi -c                           # continue the latest session
+pi --list-models                # inspect available models
+#+end_src
+
+** pi-mcp-adapter
+A pinned custom package from
+[[https://github.com/nicobailon/pi-mcp-adapter][nicobailon/pi-mcp-adapter]] that adds Model Context Protocol support
+to Pi.  The derivation in =packages/pi-mcp-adapter.nix= installs only
+runtime dependencies and Home Manager links it into Pi's global
+extension directory.
+
+Server declarations live in =config/mcp.json= and are deployed to the
+tool-agnostic =~/.config/mcp/mcp.json= path.  All servers start lazily:
+
+- =emacs-tools= :: local Emacs Unix socket, bridged to MCP standard input
+  and output with =socat= and accessed through the adapter's proxy tool.
+- =clojure-mcp= :: starts =clojure -Tmcp= in the current project,
+  accessed through the proxy.  The Clojure tool itself is installed by
+  the =clojureMcpInstall= Home Manager activation.
+- =aws-knowledge= :: AWS-hosted, anonymous, read-only documentation
+  service.  Its tools are registered directly because they are used
+  frequently.
+
+Proxy mode keeps one small =mcp= schema in the model context and lets
+the agent search for a server tool on demand.  Direct mode registers
+each selected MCP tool as a regular Pi tool, which improves discovery
+at the cost of adding its schema to the prompt.
+#+begin_src sh
+pi-mcp-adapter --help           # adapter CLI
+# Inside Pi:
+/mcp                            # inspect servers and connection state
+#+end_src
+
+** codex-desktop-linux (nixOS only)
+The ChatGPT Community desktop application is an unofficial,
+community-maintained Nix repackaging of OpenAI's signed Linux desktop
+payload.  It is installed system-wide through the upstream NixOS module
+and keeps its default feature set.  This graphical application is separate
+from the terminal-based Pi coding agent.
+#+begin_src sh
+codex-desktop                  # launch the desktop application
+#+end_src
+
+** claude-desktop (nixOS only)
+Claude Desktop provides Claude Code through its graphical Code tab.
+Home Manager installs the native =claude-desktop= package from
+[[https://github.com/aaddrick/claude-desktop-debian][the community packaging flake]], which repackages Anthropic's official
+Linux =.deb=. Its nixpkgs input follows this fleet's unstable channel;
+=flake.lock= pins the packaging revision. Anthropic's Linux beta officially
+supports Ubuntu and Debian, so the NixOS integration is community maintained.
+
+The native package uses Nix runtime paths and the machine's existing
+=nix-ld= support. The flake's default =claude-desktop-fhs= package instead
+runs in a compatibility environment that restricts child processes,
+including =sudo=. Cowork virtualisation setup is not managed here.
+#+begin_src sh
+claude-desktop                  # launch, sign in, then open the Code tab
+nix flake update claude-desktop  # update only this input, then rebuild
+#+end_src
+The Code tab requires a paid Claude plan. After rebuilding, check sign-in,
+the Code tab and a simple local command in a scratch project.
+
+** claude, claude-code, codex and codex-app (macOS only)
+Homebrew casks (=config/Brewfile=) for the vendors' AI coding tools: the
+Claude desktop app, the Claude Code CLI, the OpenAI Codex CLI and the
+Codex desktop app.  The casks are the canonical install on macOS.
+Homebrew deprecated =codex-app= on 2026-07-12 in favour of the =chatgpt=
+cask; it stays in the Brewfile until that switch is decided.
+#+begin_src sh
+claude                                       # Claude Code in this directory
+codex                                        # Codex CLI in this directory
+#+end_src
+
+* Email
+
+** mu / mu4e
+=mu= indexes your Maildir; =mu4e= is the Emacs frontend.
+#+begin_src sh
+mu init -m ~/Maildir --my-address me@example.com
+mu index                       # (re)index mail
+mu find "from:alice subject:meeting"   # search from the CLI
+#+end_src
+In Emacs: =M-x mu4e= to launch the email client.
+
+** isync (mbsync)
+IMAP mailbox synchronisation.
+#+begin_src sh
+mbsync -a                      # sync all configured accounts
+mbsync work                    # sync only the "work" channel
+#+end_src
+Configuration lives in =~/.mbsyncrc=.
+
+* Spell & grammar
+
+** hunspell
+Spell checker with dictionary support.  Installed dictionaries:
+en_GB, en_US, fr-classique, pl_PL, es_ES, de_DE, la (Latin, 130 000+
+words covering archaic, classical, medieval, ecclesiastical and New
+Latin).
+#+begin_src sh
+echo "speling errror" | hunspell -d en_US      # interactive check
+hunspell -l -d fr_FR document.txt              # list misspelled words
+hunspell -d la latin-text.txt                  # check Latin text
+#+end_src
+
+** aspell
+Alternative spell checker (used by some Emacs packages).
+#+begin_src sh
+aspell check document.txt
+echo "testt" | aspell -a -d en
+#+end_src
+
+** ispell
+Classic interactive spell checker.  Installed cross-platform via
+=home/base.nix= (=unstable.ispell=).
+#+begin_src sh
+ispell document.txt                # interactive spell check
+echo "speling" | ispell -a         # pipe mode; * means correct
+#+end_src
+
+** languagetool
+Grammar and style checker (EN, FR, PL, DE, ES, …).
+#+begin_src sh
+languagetool document.txt                      # check a file
+echo "Their going to the store" | languagetool -l en-US -   # check stdin
+languagetool --list                            # list available languages
+#+end_src
+LTeX+ bundles LanguageTool for in-editor grammar checking through the
+standalone =lsp-ltex-plus= Emacs client. It does not use this separate
+=languagetool= command.
+
+** grammalecte (python3Packages)
+French grammar checker.
+#+begin_src sh
+grammalecte-cli -f document.txt
+echo "Il mangent des pomme." | grammalecte-cli
+#+end_src
+
+* Encryption & security
+
+** gpg
+GNU Privacy Guard for encryption, signing, and verification.
+#+begin_src sh
+gpg --gen-key                                  # create a key pair
+gpg -e -r recipient@example.com file.txt       # encrypt
+gpg -d file.txt.gpg                            # decrypt
+gpg --verify signature.sig file.txt            # verify a signature
+#+end_src
+
+** age
+Modern file encryption (simpler than GPG, no key servers).
+#+begin_src sh
+age-keygen -o key.txt                          # generate keypair
+age -r age1publickey... secret.txt > secret.enc
+age -d -i key.txt secret.enc > secret.txt
+#+end_src
+
+** sops
+See [[*sops][IaC / Cloud § sops]] above.
+
+** firejail (nixOS only)
+Filesystem sandboxing for GUI applications. Firefox Developer Edition,
+VS Code, Signal, VLC, Discord, and Transmission, all run through
+Firejail. Firefox and Signal can use ordinary files throughout the
+current user's home while the upstream sensitive-path blacklists
+remain active. Transmission, Discord, VLC, and VS Code retain narrower
+application-specific filesystem views.
+#+begin_src sh
+firejail --list                # show running sandboxed processes
+firejail --tree                # sandbox hierarchy
+firejail --debug code          # launch with debug logging
+#+end_src
+
+*** NixOS profile overrides
+
+The local overlay in =config/firejail/firefox.profile= suppresses two
+upstream directives that are incompatible with NixOS:
+
+- =ignore private-bin=: the upstream profile restricts the binaries
+  visible in the sandbox to a known list.  NixOS stores all binaries
+  under =/nix/store=, which is outside the locations firejail searches,
+  so the restriction breaks Firefox entirely.
+
+- =ignore private-etc=: the upstream profile mounts a tmpfs over =/etc=
+  populated with copies of the host files taken at sandbox startup.
+  When NetworkManager updates =/etc/resolv.conf= after a WiFi network
+  change, the stale copy inside the sandbox makes DNS resolution fail
+  and Firefox loses internet access while all other applications
+  continue to work.  Disabling this directive lets Firefox read the
+  live =/etc/resolv.conf= directly.
+
+Firefox relies on its own remote-instance mechanism for subsequent host-side
+launches.  Firejail's =join-or-start= profile directive is intentionally not
+used because it aborts before executing Firefox when the generated NixOS
+wrapper supplies the executable after =--=.  Signal's =xdg-open= is replaced on
+Signal's private =PATH= by an HTTP and HTTPS-only client for the desktop
+=OpenURI= portal.  The portal launches the configured host browser, which
+prevents a link click from starting Firefox inside the Signal sandbox or
+bypassing the Firefox wrapper.
+
+VS Code can write only to its configuration, extension directories,
+=~/OSX-KVM=, =~/src=, and the canonical
+=~/Dropbox (Maestral)/example/src= path.  It also enables Firejail's packaged
+hardened Electron include, which drops capabilities and adds =nonewprivs=,
+protocol filtering, and seccomp while leaving development tools available.
+
+** auditd (nixOS only)
+Linux kernel audit daemon.  Logs execve calls, password file changes,
+and Secure Boot key modifications to =/var/log/audit/audit.log=.
+#+begin_src sh
+sudo ausearch -k exec --start recent   # recent process executions
+sudo aureport --summary                # high-level audit summary
+sudo ausearch -k secureboot            # Secure Boot key events
+#+end_src
+
+* Shell & prompt
+
+** nh
+Nix CLI helper that wraps =nixos-rebuild=, =darwin-rebuild=, and
+=home-manager= with a nicer interface: a build tree via
+=nix-output-monitor=, a coloured diff of what is about to change via
+=dix=, and an interactive confirmation prompt before activation.
+
+Installed fleet-wide via =home/base.nix=.  On nixOS the NixOS module
+(=programs.nh= in =hosts/nixOS.nix=) also enables a weekly =nh clean=
+systemd timer that prunes old generations (keeps 5, anything newer than
+7 days).  On macOS an equivalent launchd user agent runs on the same
+schedule (Sunday 03:00) via =hosts/macOS.nix=.
+
+The =NH_FLAKE= session variable is intentionally unset: the flake path
+is user-specific and must be supplied at the call site or via a personal
+shell alias.  On nixOS, =NH_OS_FLAKE= is set automatically by the NixOS
+module (=programs.nh.flake=) and takes precedence over =NH_FLAKE= for
+=nh os= commands.
+
+*** Seeing a human-friendly diff before switching
+
+This is the key workflow: build the new configuration, show you exactly
+what derivations and closures are added, changed, or removed, then ask
+for confirmation before touching the running system.
+
+On NixOS (nixOS):
+#+begin_src sh
+nh os switch          # reads NH_OS_FLAKE; auto-detects hostname
+nh os switch -H nixOS   # explicit host
+#+end_src
+
+On macOS:
+#+begin_src sh
+nh darwin switch          # reads NH_FLAKE; auto-detects hostname
+#+end_src
+
+For Home Manager on any platform:
+#+begin_src sh
+nh home switch          # reads NH_FLAKE
+#+end_src
+
+In all three cases =nh= will:
+1. Evaluate the flake and build the new system closure (output routed
+   through =nix-output-monitor= for a readable build tree).
+2. Display a =dix= diff: a compact, colour-coded summary of every
+   package added, removed, or version-bumped between the current and
+   new generation.
+3. Ask =Apply? [y/N]= before running the activation script.
+
+To preview without any risk of activation, use =--dry=:
+#+begin_src sh
+nh os switch --dry          # build + diff, never activate
+nh darwin switch --dry
+nh home switch --dry
+#+end_src
+
+*** Garbage collection
+#+begin_src sh
+nh clean all                           # remove old generations + collect garbage
+nh clean all --keep 5 --keep-since 7d # keep 5 gens and anything < 7 days old
+nh clean user                          # clean current-user profile only
+#+end_src
+On nixOS =nh clean= runs automatically every week via a systemd timer.
+
+*** Package search
+#+begin_src sh
+nh search ripgrep              # search nixpkgs via Elasticsearch (very fast)
+nh search --channel nixos-unstable fzf
+#+end_src
+
+** zsh
+Your login shell.  Configured via Home Manager with autosuggestion,
+syntax highlighting, and completions.
+
+** starship
+Cross-shell prompt.  Configured with the gruvbox-rainbow preset.
+Shows git status, language versions, AWS profile, etc.
+
+** direnv
+Per-directory environment variables.  With =nix-direnv=, entering a
+directory with a =flake.nix= auto-loads its dev shell.
+#+begin_src sh
+echo "use flake" > .envrc      # in a project with flake.nix
+direnv allow                   # trust the .envrc
+cd .                           # environment is now loaded
+#+end_src
+
+** bat
+=cat= with syntax highlighting and line numbers.
+#+begin_src sh
+bat src/main.rs
+bat --diff file.txt            # show git diff highlighting
+#+end_src
+
+** eza
+Modern =ls= with git integration and icons.
+#+begin_src sh
+eza -la                        # long listing with hidden files
+eza --tree --level 2           # tree view
+#+end_src
+
+** btop / htop
+System monitors.
+#+begin_src sh
+btop                           # rich TUI (CPU, RAM, disks, network)
+htop                           # classic process viewer (tree mode enabled)
+#+end_src
+
+** tealdeer
+Fast =tldr= client with simplified, example-driven man pages.
+#+begin_src sh
+tldr tar                       # quick tar examples
+tldr ffmpeg                    # quick ffmpeg examples
+tldr --update                  # refresh the cache
+#+end_src
+
+** tmux
+Terminal multiplexer.  Beyond session persistence, it is the
+terminal-agnostic solution for keyboard-driven scrollback selection across
+Ghostty, GNOME Console, Terminal.app, and any other terminal.
+Configured in =home/base.nix= with vi keys, mouse support, and clipboard
+integration.  See the [[file:shell-key-bindings.org::*Scrollback, text selection, and prompt navigation][scrollback and prompt navigation]] guide for full copy-mode key bindings.
+#+begin_src sh
+tmux new-session -s work       # start a named session
+tmux attach -t work            # reattach after disconnecting
+C-b [                          # enter copy mode (vi keys)
+C-b ]                          # paste from tmux buffer
+C-b Up / C-b Down              # jump to previous / next shell prompt
+C-b |                          # split pane vertically
+C-b -                          # split pane horizontally
+#+end_src
+
+* Fonts
+
+=fonts.nix= lists the fonts shared by both hosts.  nixOS installs them
+with Home Manager (=home/nixOS.nix=) and exposes them through
+fontconfig; macOS installs them with =fonts.packages= in
+=hosts/macOS.nix=, which copies them to =/Library/Fonts/Nix Fonts/=.
+
+| Package                                          | Use                                                   |
+|--------------------------------------------------+-------------------------------------------------------|
+| =nerd-fonts.iosevka=, =nerd-fonts.iosevka-term=  | Terminal and code, with the prompt's Nerd Font glyphs |
+| =nerd-fonts.fira-code=, =nerd-fonts.inconsolata= | Other code fonts with Nerd Font glyphs                |
+| =font-awesome_7=                                 | Font Awesome 7 icons                                  |
+| =libertine=                                      | Linux Libertine and Biolinum                          |
+| =junicode=                                       | Medieval and historical text, rich OpenType features  |
+| =libertinus=                                     | Fork of Linux Libertine with extensive ligatures      |
+| =eb-garamond=                                    | Garamond revival, old-style ligatures and alternates  |
+| =cardo=                                          | Scholarly serif with historic glyphs and diacritics   |
+| =sorts-mill-goudy=                               | Goudy Old Style revival                               |
+| =crimson-pro=                                    | Body serif with OpenType features                     |
+| =gentium=                                        | Latin, Cyrillic and Greek with diacritics             |
+| =victor-mono=, =cascadia-code=, =jetbrains-mono= | Code fonts with ligatures                             |
+| =recursive=                                      | Variable font from sans to mono                       |
+| =tex-gyre.chorus=                                | Free Zapf Chancery                                    |
+| =dancing-script=                                 | Informal calligraphic script                          |
+| =lxgw-wenkai=                                    | CJK calligraphic Kai                                  |
+| =packages/zapfino.nix=                           | Zapfino by Hermann Zapf, nixOS only (macOS ships it) |
+| =packages/tw-moe-fonts.nix=                      | Taiwan Ministry of Education Kai and Sung             |
+| =noto-fonts-cjk-sans=, =noto-fonts-cjk-serif=    | CJK fallback                                          |
+
+#+begin_src sh
+fc-list | grep -i iosevka                     # nixOS: known to fontconfig?
+ls "/Library/Fonts/Nix Fonts/"                # macOS: fonts copied by nix-darwin
+#+end_src
+
+* nixOS-only packages
+
+** Emacs
+Text editor and Lisp environment. The flagship editor in this config.
+nixOS uses the PGTK build so graphical frames connect directly to the
+GNOME Wayland session. This avoids keeping a second XWayland cursor
+and display-scaling path. Terminal Emacs remains available through the
+explicit =emacs -nw= fallback.
+
+** firefox-devedition
+Firefox with developer tools enabled by default.
+
+** vscode
+Visual Studio Code.
+
+** maestral / maestral-gui
+Open-source Dropbox client.  =maestral= is the daemon, =maestral-gui=
+is the system tray icon.
+#+begin_src sh
+maestral status                # check sync status
+maestral ls /                  # list Dropbox root
+#+end_src
+
+** signal-desktop
+Encrypted messaging.
+
+** difftastic
+Structural diff that understands syntax, not just lines.
+#+begin_src sh
+difft old.py new.py
+GIT_EXTERNAL_DIFF=difft git diff HEAD~1      # use with git
+#+end_src
+
+** bubblewrap (nixOS only)
+Unprivileged sandboxing tool that provides the =bwrap= executable.  It creates
+isolated mount, user, PID, and network namespaces for applications.
+#+begin_src sh
+bwrap --version                 # check the installed version
+#+end_src
+
+** dust / duf
+Modern disk usage tools.
+#+begin_src sh
+dust                           # visual directory size (like du but better)
+duf                            # disk free overview (like df but prettier)
+#+end_src
+
+** compsize
+Show compression ratio of files on btrfs.  Requires root.
+#+begin_src sh
+sudo compsize /                # whole filesystem compression stats
+sudo compsize /nix/store       # compression ratio for /nix/store
+#+end_src
+
+** bees (nixOS only)
+Block-level deduplication daemon for btrfs.  Runs in the background
+and transparently merges identical extents across all subvolumes.
+Works well with zstd compression already enabled on lv-btrfs.
+Configured as a NixOS service in =hosts/nixOS.nix=.
+#+begin_src sh
+systemctl status beesd@root          # check the daemon status
+journalctl -u beesd@root -f          # follow dedup activity
+sudo bees-status /run/bees/root.status  # live progress (if available)
+#+end_src
+
+** bluez (Bluetooth)
+Bluetooth protocol stack.  Enabled via =hardware.bluetooth.enable= and
+managed by the declarative whitelist in =hosts/nixOS/bluetooth-devices.nix=.
+Only whitelisted devices survive a rebuild; unknown peripherals are forgotten.
+#+begin_src sh
+bluetoothctl devices            # list known devices
+bluetoothctl info AA:BB:CC:DD:EE:01   # inspect a specific device
+bluetoothctl pair <address>     # interactively pair a new device
+#+end_src
+
+** USB-C monitor hotplug stabilisation
+Workaround for a known Infineon PD controller firmware race on
+Framework AMD laptops that causes the Iiyama PL3494WQ's built-in
+Realtek USB hub to enter a rapid connect/disconnect cycle.  No
+upstream kernel patch or firmware update exists (as of March 2026).
+Configured in =hosts/nixOS.nix=.
+
+References:
+- https://community.frame.work/t/tracking-usb-c-error-on-boot/52012
+- https://community.frame.work/t/display-connecting-infinitely-via-usb-c/68717
+
+Levers:
+- udev (=config/udev/99-iiyama-usb-hub.rules=) pins the Realtek hub
+  and xHCI controller to active power.
+- Watchdog service (=usbc-monitor-stabilize=) detects rapid
+  disconnects and reloads =ucsi_acpi= + rebinds the xHCI controller
+  to break the cycle.
+#+begin_src sh
+systemctl status usbc-monitor-stabilize              # watchdog running
+cat /sys/bus/pci/devices/0000:c3:00.3/power/control   # should be on
+cat /sys/bus/pci/devices/0000:c3:00.3/d3cold_allowed   # should be 0
+#+end_src
+
+** touchpad-watchdog (nixOS only)
+The PixArt PIXA3854 I2C HID touchpad on the Framework 16 AMD 7040
+sometimes enters a stuck state where the firmware sends only
+=MSC_TIMESTAMP= heartbeat events with no position data.  This happens
+both after suspend/resume and spontaneously during normal use.
+
+The watchdog service (=touchpad-watchdog=) samples raw evdev events
+every few seconds.  When it detects the stuck signature (timestamps
+flowing, no position data), it reloads the =i2c_hid_acpi= kernel
+module to reinitialise the firmware.  Configured in =hosts/nixOS.nix=,
+scripts in =scripts/touchpad_watchdog.py= and =scripts/touchpad-watchdog.zsh=.
+#+begin_src sh
+systemctl status touchpad-watchdog     # watchdog running
+journalctl -u touchpad-watchdog -f     # watch for recovery events
+#+end_src
+
+** date-menu-formatter (nixOS only)
+GNOME Shell extension that replaces the panel clock with a custom
+Luxon format string.  Configured via dconf in =home/nixOS.nix=.
+
+** emoji-copy (nixOS only)
+GNOME Shell extension providing a searchable emoji picker.  Click the
+panel icon or press the keyboard shortcut to open it, search by name,
+and copy an emoji to the clipboard.
+
+** grand-theft-focus (nixOS only)
+GNOME Shell extension that suppresses the annoying "… is ready"
+notification banner and immediately focuses the requesting window.
+
+** appindicator (nixOS only)
+GNOME Shell extension that adds a system tray to the top panel for
+apps using legacy StatusNotifierItem or libappindicator icons (Maestral,
+VLC, Signal, etc.).
+
+** night-theme-switcher (nixOS only)
+GNOME Shell extension that automatically switches between light and
+dark GTK/Shell themes based on a manual schedule or sunrise/sunset at
+your location.
+
+** papirus-icon-theme (nixOS only)
+Papirus application and symbolic icons. Missing named icons fall back through
+Breeze and hicolor to the application's own installed icon. The desktop uses
+its original GTK appearance and existing light/dark switch.
+
+** clipboard-history (nixOS only)
+GNOME Shell extension that keeps a persistent clipboard ring
+accessible from the panel, with search and pinned entries.
+
+** auto-power-profile (nixOS only)
+GNOME Shell extension that automatically switches between power saver,
+balanced, and performance power profiles based on battery state and
+AC/battery connection.
+
+** gimp
+Raster image editor.  The nixpkgs package is Linux only, so it is
+installed via nixpkgs (=home/nixOS.nix=) on nixOS and via the Homebrew
+cask (=config/Brewfile=) on macOS.
+#+begin_src sh
+gimp image.png                  # open an image (nixOS)
+open -a GIMP image.png          # open an image (macOS)
+#+end_src
+
+** pycharm
+JetBrains Python IDE.  Installed via nixpkgs (=home/nixOS.nix=) on
+nixOS and via the Homebrew cask (=config/Brewfile=) on macOS.  On macOS
+it would be the only Nix =.app=, and Home Manager's copy of Nix apps
+into =~/Applications= then needs the App Management privacy permission
+at every switch.
+#+begin_src sh
+pycharm .                       # open the current project (nixOS)
+open -a PyCharm .               # open the current project (macOS)
+#+end_src
+
+** libreoffice (nixOS only)
+Full office suite.  Hunspell dictionaries (en_GB, en_US, fr-classique,
+pl_PL, es_ES, de_DE) are picked up from =DICPATH=.  A LanguageTool
+HTTP server runs locally on port 47193; configure it in
+Tools > Options > Language Settings > LanguageTool Server with base
+URL =http://localhost:47193/v2=.  Run =scripts/libreoffice-setup.sh=
+to install the Grammalecte LibreOffice extension.
+#+begin_src sh
+soffice                                     # launch LibreOffice
+soffice --writer                             # launch Writer directly
+systemctl --user status languagetool         # check LanguageTool server
+#+end_src
+
+** authenticator (nixOS only)
+GNOME Authenticator: two-factor authentication code generator for
+GNOME.  Supports TOTP and HOTP tokens, encrypted storage via GNOME
+Keyring, QR code scanning, and import/export.
+#+begin_src sh
+authenticator                                # launch the GUI
+#+end_src
+
+** localsend (nixOS only)
+Open source, cross-platform alternative to AirDrop.  Share files and
+messages to nearby devices over the local network without an internet
+connection.  Uses a REST API and HTTPS encryption.
+#+begin_src sh
+localsend                                    # launch the GUI
+#+end_src
+
+** android-tools (nixOS only)
+Android platform tools: =adb= (Android Debug Bridge), =fastboot=, and
+=mkbootimg=.  Requires USB debugging enabled on the device (Settings >
+Developer options > USB debugging).
+#+begin_src sh
+adb devices                          # list connected devices
+adb shell                            # open an interactive shell on the device
+adb push local.txt /sdcard/          # copy a file to the device
+adb pull /sdcard/DCIM/photo.jpg .    # copy a file from the device
+adb logcat                           # stream device logcat output
+adb install app.apk                  # sideload an APK
+fastboot devices                     # list devices in fastboot mode
+fastboot reboot                      # reboot device from fastboot
+#+end_src
+
+** scrcpy (nixOS only)
+Display and control Android devices over USB or TCP/IP.  Mirrors the
+device screen in a window with low latency and allows keyboard/mouse
+input.  Requires USB debugging enabled on the Android device.
+#+begin_src sh
+scrcpy                                       # mirror via USB
+scrcpy --tcpip=192.168.1.42                  # mirror over Wi-Fi
+scrcpy --no-audio --max-fps 30               # video only, capped at 30 fps
+scrcpy --record file.mp4                     # mirror and record to file
+#+end_src
+
+** google-chrome (nixOS only)
+Google Chrome browser.
+#+begin_src sh
+google-chrome-stable                         # launch Chrome
+#+end_src
+
+** ungoogled-chromium (nixOS only)
+Chromium browser with Google services removed.
+#+begin_src sh
+chromium                                     # launch Chromium
+#+end_src
+
+** tuba (nixOS only)
+GNOME Mastodon/Fediverse client.
+#+begin_src sh
+tuba                                         # launch the client
+#+end_src
+
+** wget (nixOS only)
+Network downloader.
+#+begin_src sh
+wget https://example.com/file.tar.gz         # download a file
+wget -r -l 2 https://example.com/            # recursive download (depth 2)
+#+end_src
+
+** thunderbird (nixOS only)
+Email client.
+#+begin_src sh
+thunderbird                                  # launch Thunderbird
+#+end_src
+
+** discord (nixOS only)
+Voice, video, and text chat.  Sandboxed via Firejail with a custom
+profile granting DBus portal access for desktop integration (dark/light
+theme, screen sharing).
+#+begin_src sh
+Discord                                      # launch (runs inside firejail)
+firejail --list                              # verify it is sandboxed
+#+end_src
+
+* Tor and transparent proxy (nixOS only)
+
+** tor
+Anonymous communication network.  Runs as a system service
+(=services.tor=) on nixOS with TransPort (9040), DNSPort (5353), and
+the default SOCKSPort (9050).  The daemon starts at boot and maintains
+circuits so the transparent proxy can be toggled on without bootstrap
+delay.
+
+** torsocks
+Wrapper that forces a single command through Tor's SOCKS proxy without
+needing the transparent proxy active.
+#+begin_src sh
+torsocks curl https://check.torproject.org/api/ip
+torsocks wget https://example.onion/file.txt
+torsocks ssh user@host                       # SSH over Tor
+#+end_src
+
+** tor-transparent-proxy
+Oneshot systemd service that installs nftables redirect rules capturing
+all outbound TCP and DNS traffic through Tor.  Not started at boot; the
+user toggles it manually.
+
+IPv6 is blocked while the proxy is active because Tor does not support
+IPv6 exit nodes (allowing it would leak traffic outside Tor).  LAN
+traffic (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) is exempted, so
+LocalSend (port 53317) and mDNS continue to work.
+
+#+begin_src sh
+# Route all traffic through Tor
+sudo systemctl start tor-transparent-proxy
+
+# Return to normal networking
+sudo systemctl stop tor-transparent-proxy
+
+# Check status
+systemctl status tor-transparent-proxy
+
+# Verify Tor is working
+curl https://check.torproject.org/api/ip
+
+# Verify the nftables table exists while active
+sudo nft list tables
+#+end_src
+
+* ProtonVPN via NetworkManager (nixOS only)
+
+ProtonVPN connections are WireGuard profiles imported into NetworkManager
+at runtime, not declared in Nix.  See
+[[file:../how-to/nixOS-connect-to-protonvpn.org][Connect to ProtonVPN on nixOS]].
+
+* Virtualisation (nixOS only)
+
+QEMU/KVM stack for running macOS guests via [[https://github.com/kholia/OSX-KVM][OSX-KVM]].
+See =scripts/osx-kvm-setup.sh= for the initial setup workflow.
+
+** qemu_kvm
+QEMU with KVM acceleration (system level).  Provides =qemu-system-x86_64=
+and =qemu-img= for creating and running VMs.
+#+begin_src sh
+qemu-img create -f qcow2 disk.img 256G
+#+end_src
+
+** virt-manager
+GTK GUI for managing libvirt/QEMU VMs.
+#+begin_src sh
+virt-manager
+#+end_src
+
+** libvirtd
+Virtualisation management daemon.  Configured at system level
+(=virtualisation.libvirtd=).  Provides =virsh= for CLI management.
+#+begin_src sh
+virsh list --all
+virsh start macOS
+#+end_src
+
+** dmg2img
+Convert Apple =.dmg= disk images to raw =.img= format.
+#+begin_src sh
+dmg2img -i BaseSystem.dmg BaseSystem.img
+#+end_src
+
+** p7zip
+7-Zip file archiver.  Used by OSX-KVM tooling for extraction.
+#+begin_src sh
+7z x archive.7z
+#+end_src
+
+** cdrtools
+CD/DVD recording tools.  Provides =mkisofs= for ISO image creation.
+#+begin_src sh
+mkisofs -o output.iso input_dir/
+#+end_src
+
+** tesseract
+OCR engine.  Used by OSX-KVM automated install helpers for screen
+recognition.
+#+begin_src sh
+tesseract image.png output_text
+#+end_src
+
+* macOS only packages
+
+** glab
+GitLab CLI.
+#+begin_src sh
+glab mr create --title "Feature X" --target main
+glab mr list
+glab ci status
+#+end_src
+
+** gitlab-runner
+Run CI/CD jobs locally.
+#+begin_src sh
+gitlab-runner exec docker test_job
+#+end_src
+
+** ghostty (macOS only)
+GPU-accelerated terminal emulator with native macOS integration.
+Installed via Homebrew cask; config is symlinked from =config/ghostty/config=
+by Home Manager (=home/macOS.nix=).
+#+begin_src sh
+# Open a new window.
+ghostty
+# Pass a command directly.
+ghostty -e tmux new-session
+#+end_src
+
+** duti (macOS only)
+Sets default applications for UTIs and URL schemes via the LaunchServices API.
+Invoked automatically during =sudo darwin-rebuild switch= (=home.activation.defaultApps=
+in =home/macOS.nix=) using =scripts/set-macos-defaults.sh=.
+#+begin_src sh
+# Show current handler for a UTI or scheme.
+duti -x public.html
+duti -x http
+# Set a default manually (app must be installed).
+duti -s org.gnu.Emacs public.json all
+#+end_src
+
+** luarocks (macOS only)
+Lua package manager.
+#+begin_src sh
+luarocks install luasocket                   # install a Lua module
+luarocks list                                # list installed modules
+#+end_src
+
+** pipenv (macOS only)
+Python virtual environment manager.
+#+begin_src sh
+pipenv install requests                      # add a dependency
+pipenv shell                                 # activate the virtual env
+#+end_src
+
+** poetry (macOS only)
+Python dependency management and packaging.
+#+begin_src sh
+poetry new my-project                        # scaffold a project
+poetry add requests                          # add a dependency
+poetry install                               # install from lock file
+#+end_src
+
+** gnugrep (macOS only)
+GNU grep (macOS uses BSD grep by default).
+#+begin_src sh
+ggrep -rn "pattern" .                        # recursive search with line numbers
+#+end_src
+
+** gnused (macOS only)
+GNU sed (macOS uses BSD sed by default).
+#+begin_src sh
+gsed -i 's/old/new/g' file.txt               # in-place substitution
+#+end_src
+
+** localsend (macOS only)
+Open source, cross-platform alternative to AirDrop.  Share files and
+messages to nearby devices over the local network without an internet
+connection.  Uses a REST API and HTTPS encryption.  Installed via
+Homebrew cask on macOS, via nixpkgs on nixOS.
+#+begin_src sh
+open -a LocalSend
+#+end_src
+
+** middleclick (macOS only)
+Synthesises a middle-click from a multi-finger trackpad tap so that
+Firefox closes a tab on tap, Safari opens links in a background tab,
+Terminal pastes the selection, etc.  macOS itself does not expose
+three-finger tap as button 2, so a userland helper is required to get
+the behaviour that NixOS gives for free via libinput.
+
+Installed via Homebrew cask (=config/Brewfile=).  Configured to use a
+*four*-finger tap rather than the upstream default of three, because
+=system.defaults.trackpad.TrackpadThreeFingerDrag= is enabled in
+=hosts/macOS.nix= and a three-finger tap would conflict with
+three-finger drag.  The =fingers = 4= preference is written to
+=art.ginzburg.MiddleClick= via =system.defaults.CustomUserPreferences=
+in =hosts/macOS.nix=.
+
+Autostart and menu bar visibility are handled through MiddleClick's
+own UI rather than from Nix.  Both rely on macOS APIs (=SMAppService=
+for login items and the status item autosave key for icon visibility)
+that are not safely expressible as =defaults= writes, so the in-app
+controls are the source of truth and persist across rebuilds.
+
+The one-time steps after the first switch (Accessibility, launch at
+login, hiding the menu bar icon) are in
+[[file:../how-to/macOS-grant-privacy-permissions.org::*MiddleClick][Grant privacy permissions on macOS]].
+
+Other tunables (set with =defaults write art.ginzburg.MiddleClick …=
+and restart the app):
+
+| Key                | Default | Effect                                     |
+|--------------------+---------+--------------------------------------------|
+| =fingers=          | 3       | Number of fingers for the tap (we use 4)   |
+| =allowMoreFingers= | false   | Accept taps with at least =fingers= fingers |
+| =maxDistanceDelta= | 0.05    | Max cursor travel during the tap (0..1)    |
+| =maxTimeDelta=     | 300     | Max touch-to-release interval, in ms       |

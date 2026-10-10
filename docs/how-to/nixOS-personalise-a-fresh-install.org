@@ -1,0 +1,344 @@
+#+title: Personalise a fresh install of nixOS
+#+author: piotr-yuxuan
+
+The published configuration carries no personal setting. Time zone,
+formats, keyboard layout, world clocks, Git identity, mail account,
+Bluetooth devices and account picture live in five files that this
+repository does not publish. Each is imported only when it exists, so a
+fresh checkout evaluates without them. Use this guide after
+[[file:../tutorials/install-nixos-on-the-framework-16.org][installing NixOS on the Framework 16]] to write your own.
+
+The example files below were evaluated on Linux against a checkout
+without the personal files. They were not activated on a machine: if a
+step behaves differently, write down what you saw so that this page can
+be corrected.
+
+* What a fresh install lacks
+
+| Setting                  | Without the personal files                             | File that sets it                    |
+|--------------------------+--------------------------------------------------------+--------------------------------------|
+| Time zone                | Follows the machine's location, UTC until one is known | none needed, see [[*Time zone][Time zone]]           |
+| Formats                  | =i18n.defaultLocale=, =en_US.UTF-8= in =flake.nix=     | =hosts/nixOS/personal.nix=          |
+| Keyboard layout          | =us=, in GNOME, on the console and at the LUKS prompt  | both =personal.nix= files            |
+| Git identity             | None                                                   | =home/nixOS/personal.nix=           |
+| SSH key for a forge      | None selected                                          | =home/nixOS/personal.nix=           |
+| World clocks, bookmarks  | None                                                   | =home/nixOS/personal.nix=           |
+| Mail account             | None; mbsync and Thunderbird are not enabled           | =home/nixOS/personal.nix=           |
+| Paired Bluetooth devices | Not managed: pair and forget them by hand              | =hosts/nixOS/bluetooth-devices.nix= |
+| Account picture          | None                                                   | =img/nixOS/avatar.png=              |
+
+=hosts/nixOS.nix= imports =hosts/nixOS/personal.nix= and
+=hosts/nixOS/bluetooth-devices.nix=, and installs the picture.
+=home/nixOS.nix= imports =home/nixOS/personal.nix=. Every import is
+guarded with =builtins.pathExists=.
+
+* Before you start
+
+- Work in a checkout of this repository, for example the one the
+  tutorial clones into =~/src/github.com/piotr-yuxuan/=.
+- A flake only sees the files that Git tracks. Run =git add= on each
+  file you create, or Nix behaves as if it did not exist.
+- These files are personal. Keep the commits that hold them in a private
+  clone or on a branch you never push to a public repository.
+
+* System settings
+
+Create =hosts/nixOS/personal.nix=, a NixOS module:
+
+#+begin_src nix
+# Personal system settings: locales and keyboard layout.
+_: {
+  # XKB layout: GNOME, the virtual console and the LUKS passphrase
+  # prompt all use it.
+  services.xserver.xkb = {
+    layout = "us";
+    variant = "dvorak";
+  };
+
+  # Formats that differ from i18n.defaultLocale.
+  i18n.extraLocaleSettings = {
+    LC_TIME = "C.UTF-8";
+    LC_MEASUREMENT = "C.UTF-8";
+    LC_PAPER = "C.UTF-8";
+  };
+}
+#+end_src
+
+Replace the layout, the variant and the locales with yours;
+=localectl list-x11-keymap-layouts= and =locale -a= list the names.
+=hosts/nixOS.nix= sets =console.useXkbConfig= and =console.earlySetup=,
+so the same layout reaches the console and the passphrase prompt at
+boot.
+
+** Time zone
+
+The time zone needs no file. =hosts/nixOS.nix= enables
+=services.automatic-timezoned=, which sets it from the machine's
+location, and forces =time.timeZone= to =null= so that nothing static
+gets in the way. A =time.timeZone= line in the personal module therefore
+has no effect.
+
+To pin your time zone instead, turn the service off and give the option
+a priority above that force, in =hosts/nixOS/personal.nix= (its first
+line then becomes ={lib, ...}: {=):
+
+#+begin_src nix
+services.automatic-timezoned.enable = lib.mkForce false;
+time.timeZone = lib.mkOverride 40 "UTC";
+#+end_src
+
+=timedatectl list-timezones= lists the names. GNOME has its own switch,
+which =home/nixOS.nix= turns on: turn it off in
+=home/nixOS/personal.nix= as well.
+
+#+begin_src nix
+dconf.settings."org/gnome/desktop/datetime".automatic-timezone = lib.mkForce false;
+#+end_src
+
+* User settings
+
+Create =home/nixOS/personal.nix=, a Home Manager module. Keep the parts
+you need:
+
+#+begin_src nix
+# Personal settings of the user: identity, keys, keyboard, bookmarks
+# and mail.
+{
+  config,
+  lib,
+  ...
+}: {
+  # Git identity. <KEY-ID> is the long ID of this machine's own OpenPGP
+  # key, from `gpg --list-secret-keys --keyid-format long`.
+  programs.git.settings = {
+    user = {
+      name = "example";
+      email = "you@example.com";
+      signingKey = "<KEY-ID>";
+    };
+    commit.gpgSign = true;
+    tag.gpgSign = true;
+  };
+
+  # SSH key for github.com. home/base.nix sets IdentitiesOnly, so ssh
+  # offers no other key.
+  programs.ssh.settings."github.com" = {
+    HostName = "github.com";
+    IdentityFile = "~/.ssh/github_ed25519";
+  };
+
+  # GNOME: keyboard layout, written as layout+variant.
+  dconf.settings."org/gnome/desktop/input-sources".sources = [
+    (lib.hm.gvariant.mkTuple ["xkb" "us+dvorak"])
+  ];
+
+  # GNOME: Nautilus sidebar bookmarks, one "URI label" per line.
+  xdg.configFile."gtk-3.0/bookmarks".text = ''
+    file://${config.home.homeDirectory}/src src
+  '';
+
+  # Mail: one IMAP account, fetched by mbsync and indexed by mu.
+  accounts.email = {
+    maildirBasePath = "${config.home.homeDirectory}/Mail";
+    accounts.personal = {
+      address = "you@example.com";
+      realName = "Your Name";
+      userName = "you@example.com";
+      passwordCommand = "gpg -q --for-your-eyes-only --no-tty -d ~/.authinfo.gpg | awk '/machine imap.example.com/{print $NF}'";
+      primary = true;
+      imap = {
+        host = "imap.example.com";
+        port = 993;
+        tls.enable = true;
+      };
+      maildir.path = "personal";
+      mbsync = {
+        enable = true;
+        create = "maildir";
+        expunge = "maildir";
+        patterns = ["*"];
+      };
+      mu.enable = true;
+    };
+  };
+  programs.mbsync.enable = true;
+  programs.thunderbird = {
+    enable = true;
+    profiles.default.isDefault = true;
+  };
+}
+#+end_src
+
+Notes on the values:
+
+- Git identity :: without it, a commit on a fresh install either fails
+  or carries a name and an address that Git guessed. Leave out
+  =signingKey= and the two =gpgSign= lines if you do not sign commits.
+  For a second identity that applies below one directory, add a
+  =programs.git.includes= entry as [[file:../../templates/macOS/identity.nix][templates/macOS/identity.nix]] does.
+- SSH key :: create the key under the name you wrote, for example with
+  =ssh-keygen -t ed25519 -f ~/.ssh/github_ed25519=, and register its
+  public half on the forge.
+- Mail password :: =passwordCommand= prints the password. The example
+  reads it from an encrypted =~/.authinfo.gpg= with a line
+  =machine imap.example.com login you@example.com password <secret>=.
+  Never write the password itself in a Nix file: the Nix store is
+  readable by every user.
+
+* World clocks
+
+The clocks of the GNOME panel are a list of GWeather locations. Keep
+them in their own file, =home/nixOS/world-clocks.nix=:
+
+#+begin_src nix
+# World clocks of the GNOME Shell panel. Coordinates are in radians.
+[
+  {
+    name = "Reykjavik";
+    metar = "BIRK";
+    cityLat = 1.119337;
+    cityLon = -0.382809;
+    stationLat = 1.119279;
+    stationLon = -0.382925;
+  }
+]
+#+end_src
+
+Then read the file from =home/nixOS/personal.nix=. Add the =let= block
+between the argument list and the opening brace of the module, and the
+setting inside the module:
+
+#+begin_src nix
+let
+  inherit (lib.hm.gvariant) mkVariant mkTuple mkUint32;
+
+  # One GWeather location of the GNOME world clocks.
+  mkLoc = clock:
+    mkVariant (mkTuple [
+      (mkUint32 2)
+      (mkVariant (mkTuple [
+        clock.name
+        clock.metar
+        true
+        [(mkTuple [clock.cityLat clock.cityLon])]
+        [(mkTuple [clock.stationLat clock.stationLon])]
+      ]))
+    ]);
+in
+#+end_src
+
+#+begin_src nix
+dconf.settings."org/gnome/shell/world-clocks".locations =
+  map mkLoc (import ./world-clocks.nix);
+#+end_src
+
+The surest source for a city's values is GNOME itself. Add the city in
+the Clocks application, then print what it stored:
+
+#+begin_src zsh
+dconf read /org/gnome/shell/world-clocks/locations
+#+end_src
+
+Each entry shows the name, the weather station code and two pairs of
+coordinates, in the order of the fields above.
+
+* Bluetooth devices
+
+Without =hosts/nixOS/bluetooth-devices.nix=, Bluetooth works and
+nothing manages the pairings. With it, every switch keeps the listed
+devices trusted and forgets every other device, through the published
+script [[file:../../hosts/nixOS/bluetooth-devices-sync.sh][hosts/nixOS/bluetooth-devices-sync.sh]]. Create the module with
+your adapter and devices in place of the =XX= and =YY= addresses:
+
+#+begin_src nix
+# Bluetooth devices this machine keeps paired.
+{
+  pkgs,
+  lib,
+  ...
+}: let
+  # Address of the adapter, as `bluetoothctl show` prints it.
+  adapterAddress = "XX:XX:XX:XX:XX:XX";
+
+  devices = {
+    "YY:YY:YY:YY:YY:YY" = {
+      name = "Headphones";
+      source = 1;
+      vendor = 0;
+      product = 0;
+    };
+  };
+
+  deviceEntries = lib.concatStringsSep "\\n" (lib.mapAttrsToList
+    (mac: dev: "${mac}\t${dev.name}\t${toString dev.source}\t${toString dev.vendor}\t${toString dev.product}")
+    devices);
+in {
+  hardware.bluetooth.enable = true;
+
+  # The script reads these variables; its header comment lists them.
+  system.activationScripts.bluetoothDeviceWhitelist = lib.stringAfter ["etc"] ''
+    sed=${pkgs.gnused}/bin/sed
+    basename_cmd=${pkgs.coreutils}/bin/basename
+    bt_dir=/var/lib/bluetooth/${adapterAddress}
+    whitelist="${lib.concatStringsSep " " (builtins.attrNames devices)}"
+    device_entries="$(printf '%b' '${deviceEntries}')"
+    ${builtins.readFile ./bluetooth-devices-sync.sh}
+  '';
+}
+#+end_src
+
+Pair each device once by hand, in GNOME Settings or with
+=bluetoothctl=: link keys cannot be declared. Then read its values:
+
+#+begin_src zsh
+bluetoothctl show | head -1
+sudo ls /var/lib/bluetooth/
+sudo grep -A3 '^\[DeviceID\]' /var/lib/bluetooth/<adapter>/<device>/info
+#+end_src
+
+The first command prints the adapter address. The =info= file of a
+paired device gives =Source=, =Vendor= and =Product=. A device that is
+not in the list is forgotten at the next switch, so list every device
+you want to keep before you switch.
+
+* Account picture
+
+GDM and GNOME show the picture that =hosts/nixOS.nix= copies to
+AccountsService when the file exists. Use a square PNG:
+
+#+begin_src zsh
+mkdir -p img/nixOS
+cp ~/Pictures/me.png img/nixOS/avatar.png
+#+end_src
+
+* Apply and check
+
+Stage every file you created, then switch:
+
+#+begin_src zsh
+git add hosts/nixOS/personal.nix home/nixOS/personal.nix
+git add home/nixOS/world-clocks.nix hosts/nixOS/bluetooth-devices.nix img/nixOS/avatar.png
+sudo nixos-rebuild switch --flake '.#nixOS'
+#+end_src
+
+Leave out the files you did not create. The picture and the GNOME
+keyboard layout show after the next login; the console and LUKS prompt
+layout after the next boot.
+
+#+begin_src zsh
+localectl status
+locale
+timedatectl show --property Timezone
+git config --show-origin user.email
+ssh -G github.com | grep -i identityfile
+gsettings get org.gnome.desktop.input-sources sources
+dconf read /org/gnome/shell/world-clocks/locations
+sudo ls /var/lib/bluetooth/<adapter>/
+ls /var/lib/AccountsService/icons/
+mbsync -a
+#+end_src
+
+Each command shows the value you wrote. =git config= names a file
+below =~/.config/git/=, and =mbsync -a= fetches the mail into
+=~/Mail/personal=. If a value is missing, the file that sets it is
+probably not staged: =git status --short= marks it with =??=.

@@ -1,0 +1,172 @@
+#+title: Maintain the Mac's local flake
+#+author: piotr-yuxuan
+
+A Mac does not clone this repository. Its configuration is a small flake
+of its own, by default in =~/src/local/macOS=, that takes this
+repository as the input =base= and adds what belongs to that Mac only:
+the account name, the Git identities and any machine-local module. The
+[[file:../tutorials/first-day-on-a-new-mac.org][first-day tutorial]] creates it from the template in
+[[file:../../templates/macOS/][templates/macOS/]]. Use this guide for every change you make to it
+afterwards.
+
+*Untested on a Mac.* The commands and the Nix snippets were evaluated on
+Linux against the template; none was run on a Mac. If a step behaves
+differently, write down what you saw so that this page can be corrected.
+
+* What the local flake holds
+
+| File           | Role                                                                                                                           |
+|----------------+--------------------------------------------------------------------------------------------------------------------------------|
+| =flake.nix=    | The input =base=, and one call to =base.lib.mkDarwinHost= with =system=, =user=, =extraHmModules= and =extraHostModules=       |
+| =identity.nix= | Home Manager module of this Mac: the work Git identity, the personal identity by directory, =NH_FLAKE= for the staleness agent |
+| =flake.lock=   | The commit of =base= in use and, through its own lock, the commits of nixpkgs, nix-darwin and Home Manager                     |
+
+The directory is a Git repository because a flake in a Git repository
+only sees the files that Git tracks. It has no remote and never leaves
+the Mac. Staging a file is enough for Nix. After the first switch, a
+commit there uses the work identity, so it fails until that identity is
+filled in.
+
+Run every command of this guide from that directory:
+
+#+begin_src zsh
+cd ~/src/local/macOS
+#+end_src
+
+* Apply a change
+
+#+begin_src zsh
+git status --short
+darwin-rebuild build --flake '.#macOS'
+sudo darwin-rebuild switch --flake '.#macOS'
+rm result
+#+end_src
+
+A status line that starts with =??= names a file Nix does not see yet:
+stage it with =git add <file>=. The build evaluates and builds the
+system without changing anything, so an error there costs nothing; it
+leaves a =result= link that the last line removes. If the switch fails,
+follow [[file:macOS-recover-from-a-failed-switch.org][Recover from a failed switch]].
+
+* Update the shared configuration
+
+#+begin_src zsh
+nix flake metadata
+nix flake update base
+darwin-rebuild build --flake '.#macOS'
+nix store diff-closures /run/current-system ./result
+sudo darwin-rebuild switch --flake '.#macOS'
+rm result
+#+end_src
+
+=nix flake metadata= shows the commit of =base= in use and its date.
+=nix flake update base= moves =flake.lock= to the latest commit of this
+repository. The versions of nixpkgs, nix-darwin and Home Manager come
+with it: they are the ones this repository locked and checked, and
+nothing on the Mac updates them separately.
+
+To go back, run =sudo darwin-rebuild --rollback=, then restore the
+previous =flake.lock=, or the next switch applies the update again.
+=git restore flake.lock= brings back the lock as it was last staged or
+committed, so stage the new one with =git add flake.lock= only once you
+are happy with the update.
+
+* Change the account name
+
+=user= in =flake.nix= must equal the output of =id -un=. The home
+directory, the Nix trusted users and the Home Manager user derive from
+it. The template ships the placeholder =example=. While the name is
+wrong, a switch stops before it changes anything:
+
+#+begin_example
+error: primary user `example` does not exist, aborting activation
+#+end_example
+
+Check what the flake evaluates to:
+
+#+begin_src zsh
+nix eval --raw '.#darwinConfigurations.macOS.config.system.primaryUser'; echo
+#+end_src
+
+* Fill or change the Git identities
+
+They live in =identity.nix=. Each value to fill carries a =FIXME=
+comment:
+
+#+begin_src zsh
+grep -n FIXME identity.nix
+#+end_src
+
+[[file:macOS-set-up-work-and-personal-git-identities.org][Set up work and personal Git identities]] covers each value, and
+[[file:../explanation/macOS-git-identities.org][Why the Mac separates work and personal Git identities]] the reasons.
+
+* Add a machine-local module
+
+Anything only this Mac needs is a module file kept beside =flake.nix=:
+a corporate certificate, a proxy, a setting that device management
+owns. A nix-darwin module goes into =extraHostModules=, a Home Manager
+module into =extraHmModules=.
+
+1. Write the module, for example =machine.nix=:
+
+   #+begin_src nix
+   # nix-darwin settings of this Mac only.
+   {lib, ...}: {
+     # Hand the Dock's application list back to device management.
+     system.defaults.dock.persistent-apps = lib.mkForce null;
+   }
+   #+end_src
+
+   A value that this repository already sets needs =lib.mkForce= to
+   replace it. A new value, or one more element of a list, needs
+   nothing.
+
+2. List it in =flake.nix=:
+
+   #+begin_src nix
+   extraHostModules = [./machine.nix];
+   #+end_src
+
+3. Stage it and [[*Apply a change][apply the change]]:
+
+   #+begin_src zsh
+   git add machine.nix
+   #+end_src
+
+Worked examples are in
+[[file:macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]] and
+[[file:macOS-resolve-mdm-conflicts.org][Resolve MDM conflicts]].
+
+* Where the staleness check looks
+
+The weekly =com.user.nix-staleness-check= agent reads the lock file of
+the directory named by its =NH_FLAKE= variable, which =identity.nix=
+sets to =~/src/local/macOS=. When an input is older than 14 days it
+posts a notification; =nix flake update base= is the answer. The agent
+stays silent when the directory does not exist, so if you move the
+local flake, change that line too:
+
+#+begin_src nix
+launchd.agents.nix-staleness-check.config.EnvironmentVariables.NH_FLAKE = "${config.home.homeDirectory}/src/local/macOS";
+#+end_src
+
+Check the value a switch will install:
+
+#+begin_src zsh
+nix eval --raw ".#darwinConfigurations.macOS.config.home-manager.users.$(id -un).launchd.agents.nix-staleness-check.config.EnvironmentVariables.NH_FLAKE"; echo
+#+end_src
+
+* What never goes into the shared repository
+
+This repository is published. Nothing about one Mac or its employer
+belongs in it:
+
+- the account name, the work name and email, the work forge host;
+- key IDs, key files and certificates, including a corporate root
+  certificate, whose subject names the employer;
+- proxy addresses, internal host names and tokens.
+
+All of these stay in the local flake, or in =~/.zshenv.secrets= for
+tokens. A change that every machine should get is made on the personal
+laptop, in this repository, and reaches the Mac with
+=nix flake update base=. Nothing flows back from the Mac.

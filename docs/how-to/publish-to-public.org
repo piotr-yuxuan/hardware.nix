@@ -1,0 +1,231 @@
+#+title: Publish to the public repository
+#+author: piotr-yuxuan
+
+The configuration is written in a private repository and published
+mechanically: the public tree is a function of one private commit. A
+manifest selects the files, private rules rename and rewrite them, and
+a gate refuses personal data. Use this guide on the personal laptop to
+publish a commit, and to fix what the gate reports.
+
+One tool does all of it, [[file:../../scripts/publish.py][scripts/publish.py]]. Its code is published; the
+manifest and the rules it reads exist only in the private repository,
+so a public checkout cannot run an export. This page describes the
+tool as its source and its tests, [[file:../../tests/test_publish.py][tests/test_publish.py]], define it. Only
+the =check= command was run while writing it, on a throwaway
+repository.
+
+* What the tool reads
+
+| Path in the private repository               | Role                                                                                         |
+|----------------------------------------------+----------------------------------------------------------------------------------------------|
+| =publish/manifest.toml=                      | Which tracked files are published: =include=, =exclude= and =sweep=                          |
+| =publish/overlay/=                           | Files copied as they are to the root of the public tree                                      |
+| =publish/overlay/.github/publish-allow.toml= | The public allowlist: =values= and =sha256=. It is published at =.github/publish-allow.toml= |
+| =publish/private/replacements.txt=           | Private rules that rename paths and rewrite contents                                         |
+| =publish/private/deny.txt=                   | Private list of what must never be published                                                 |
+| =publish/private/mailmap=                    | Identities to rewrite, used by =rewrite-history= only                                        |
+| =publish/private/remove.txt=                 | Paths to drop from every commit, used by =rewrite-history= only                              |
+
+** The manifest
+
+#+begin_src toml
+include = ["**"]
+exclude = ["drafts/**", "notes.org"]
+sweep = true
+#+end_src
+
+- =include= and =exclude= are lists of glob patterns over tracked
+  paths. =*= stays inside one directory, =**= crosses directories, and
+  hidden files match.
+- Exclude wins over include.
+- Every tracked file must match one of the two lists. A file that
+  matches neither is a finding, =unclassified path=: the export refuses
+  to guess.
+- A pattern that matches no file is a finding too, =stale pattern=, so
+  a typing mistake in an exclusion cannot pass unnoticed.
+- =sweep = true= applies the private replacements to the selected
+  files. With =sweep = false=, a replacement that would change a file
+  is a finding.
+- Nothing below =publish/= is ever selected. Only the overlay reaches
+  the public tree.
+
+** The overlay
+
+Everything below =publish/overlay/= is added to the public tree with
+that prefix removed: a licence, the public =.gitignore=, workflow
+files, the allowlist. An overlay file that lands on a selected path is
+a finding, =overlay collision=.
+
+The allowlist has two lists and no other key:
+
+#+begin_src toml
+values = ["an exact value the gate reported and that is fine to publish"]
+sha256 = ["the digest the gate printed for a binary or large file"]
+#+end_src
+
+** The private rules
+
+- =replacements.txt= has one =FROM==>TO= rule per line, in the syntax
+  of =git filter-repo=: a literal by default, a regular expression with
+  the prefix =regex:=. Literal rules come before regular expressions.
+  The same rules rename paths and rewrite file contents. Lock files and
+  binary files are never rewritten.
+- =deny.txt= has one entry per line: a literal, or =regex:= followed by
+  a pattern. Lines that start with =#= are comments. Matching ignores
+  case, character width, invisible characters and line wraps.
+- =remove.txt= has one path per line, with the same comments. A history
+  rewrite drops these paths from every commit. It is for what no text
+  rule can rewrite, such as a screenshot that shows a private name.
+- The tool refuses a rules directory it cannot trust as written: a
+  replacement whose result would be rewritten again, or that the deny
+  list forbids, stops the run with status 2.
+
+* Before you start
+
+- The change is committed in the private repository. The tool reads the
+  commit, never the working tree.
+- You have a clone of the public repository, on a branch, without local
+  changes. The export only fast-forwards it. Never commit in that clone
+  by hand.
+- The personal signing key is on this laptop and its agent can prompt:
+  the export signs the commit it makes.
+- =git-filter-repo= and =gitleaks= are on the =PATH=, or run through
+  Nix as [[*Run the tools through Nix][Run the tools through Nix]] shows.
+
+The examples use two variables. Run them from the root of the private
+repository:
+
+#+begin_src zsh
+PUBLIC=<path of the clone of the public repository>
+KEY=<KEY-ID>
+#+end_src
+
+=<KEY-ID>= is the long ID of the personal signing key. Give it on the
+command line; never write it in a file that is published.
+
+* Publish a commit
+
+1. Export. This reads the commit, builds the public tree, runs the gate
+   and, when the gate is clean, adds one signed commit to the clone:
+
+   #+begin_src zsh
+   scripts/publish.py export --source . --commit main --rules publish/private --public "$PUBLIC" --signing-key "$KEY"
+   #+end_src
+
+   It ends with =Published <private commit> as <public commit> in
+   <clone>.=, or with =Nothing to publish: the public tree is up to
+   date.= when the tree did not change. The public commit carries a
+   fixed identity and message, and the date of the private commit.
+   The tree comes from the commit, but the rules are read from the
+   work tree: run the export from a checkout of the branch that holds
+   the rules you mean.
+
+   The export goes from the private repository to a separate clone of
+   the public one. It builds and gates the public tree in memory, so
+   nothing reaches the clone before the gate passes, and it refuses a
+   clone that holds any commit of the private history.
+
+2. Check the whole public history, every ref of the clone:
+
+   #+begin_src zsh
+   scripts/publish.py check "$PUBLIC" --allow "$PUBLIC/.github/publish-allow.toml" --rules publish/private
+   gitleaks git "$PUBLIC"
+   #+end_src
+
+   =gitleaks= is a second, independent net over the same history.
+
+3. Look at what would be pushed:
+
+   #+begin_src zsh
+   git -C "$PUBLIC" log --show-signature -1
+   git -C "$PUBLIC" show --stat HEAD
+   git -C "$PUBLIC" diff HEAD~1 HEAD
+   #+end_src
+
+4. Push by hand, only when the three steps above are clean:
+
+   #+begin_src zsh
+   git -C "$PUBLIC" push origin HEAD
+   #+end_src
+
+No command of the tool pushes. Each one ends with one of three
+statuses:
+
+| Status | Meaning                                                                                |
+|--------+----------------------------------------------------------------------------------------|
+|      0 | Clean                                                                                  |
+|      1 | Findings, one per line on standard output, as =where: check: value=                    |
+|      2 | Invalid input: a rule, a manifest, an argument or a clone the tool cannot trust or use |
+
+When the export has findings, the branch of the public clone does not
+move.
+
+* Fix a finding
+
+Every fix is a commit in the private repository, followed by a new
+export. Never edit the public clone.
+
+| Check reported                                                                                                  | Fix                                                                                                                         |
+|-----------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------|
+| =unclassified path=                                                                                             | Add the file to =include= or =exclude= in the manifest, in the same commit that adds the file                               |
+| =stale pattern=                                                                                                 | Correct or delete the manifest pattern that no longer matches a file                                                        |
+| =private deny=                                                                                                  | Fix it at the source: reword the file, move the content to an excluded file, or add a replacement rule. It cannot be waived |
+| =e-mail address=, =MAC address=, =UUID=, =home directory=, =key id=, =key fingerprint=, =key material=, =token= | If it is real, fix it at the source. If it is a false positive, add its exact value to =values= in the allowlist            |
+| =numeric-id noreply address=                                                                                    | Fix it at the source. The allowlist cannot waive it                                                                         |
+| =binary or large file not allowlisted=                                                                          | Check the file, then add the printed digest to =sha256= in the allowlist                                                    |
+| =archive or compressed file=                                                                                    | Exclude the file, or publish its contents uncompressed                                                                      |
+| =unstable replacement=, =path collision=, =overlay collision=                                                   | Correct the rule, or rename one of the two files                                                                            |
+| =rule applies but sweep is false=                                                                               | Remove the text at the source, or set =sweep = true=                                                                        |
+| =signature=                                                                                                     | The new commit is not signed by the key you gave: check the key ID and the agent, then export again                         |
+| =annotated tag=                                                                                                 | Replace it with a plain tag: the gate does not read a tag's tagger and message                                              |
+| =author identity=, =committer identity=, =attribution trailer=                                                  | Reported on commits already in the public clone: see [[*Rewrite the public history][Rewrite the public history]]                                             |
+
+The allowlist is part of the commit being exported, so an
+acknowledgement and the text it covers travel together. An address at
+=example.com=, =example.org= or a name ending in =.example= never needs
+one: use those in documentation.
+
+* Check a public checkout without the rules
+
+Without =--rules=, only the generic checks run. This is the form
+anyone can run on a public checkout, because the private rules never
+leave the laptop:
+
+#+begin_src zsh
+scripts/publish.py check . --allow .github/publish-allow.toml
+#+end_src
+
+* Rewrite the public history
+
+Use this only when =check= reports something in commits that are
+already public, for example after a new deny entry. It writes a
+rewritten copy and never touches the origin:
+
+#+begin_src zsh
+scripts/publish.py rewrite-history --origin "$PUBLIC" --rules publish/private --allow "$PUBLIC/.github/publish-allow.toml" --out <new directory>
+#+end_src
+
+- =--out= must not exist yet. It becomes a bare clone of the origin,
+  rewritten with =git filter-repo=: the replacements apply to contents,
+  messages and paths, =mailmap= to identities, the paths of
+  =remove.txt= are dropped, and attribution trailers are removed.
+- Every commit is kept with its dates. Every commit identifier changes,
+  and every commit loses its signature.
+- The result is gated like any history, and the command reports a
+  finding if the number of commits or a date changed.
+
+Publishing a rewritten history is a forced push. Do it by hand,
+deliberately, and remember that it cannot recall what was already
+fetched.
+
+* Run the tools through Nix
+
+When =git-filter-repo= or =gitleaks= is not installed, prefix the
+command with a shell that provides both from this flake's package set:
+
+#+begin_src zsh
+nix shell --inputs-from . 'nixpkgs-unstable#git-filter-repo' 'nixpkgs-unstable#gitleaks' -c \
+  scripts/publish.py check "$PUBLIC" --allow "$PUBLIC/.github/publish-allow.toml" --rules publish/private
+#+end_src
+
+[[file:../../tests/README.org][tests/README.org]] gives the matching command for the tool's tests.

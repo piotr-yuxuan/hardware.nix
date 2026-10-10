@@ -1,5 +1,5 @@
 #+TITLE: Testing conventions
-#+AUTHOR: example
+#+AUTHOR: piotr-yuxuan
 #+STARTUP: overview
 
 * Overview
@@ -17,32 +17,46 @@ system to validate (e.g. systemd service activation, kernel module loading).
 Do not introduce additional frameworks without a concrete justification
 grounded in a gap the existing frameworks cannot fill.
 
-* Running the suites
+The =tests/pi-mcp-deployment.bats= suite builds the nixOS Home Manager
+activation package and checks that Pi receives the MCP adapter, its runtime
+dependencies, and exactly the selected lazy server configuration.
 
-Install Bash, Zsh, Git, and BATS before running the shell suites. Zsh is
-required by =getting-started-new-codebase.zsh= and the Python watchdog
-integration tests. The Linux CI jobs install it explicitly so those tests
-run even on a runner without Zsh preinstalled.
+The =tests/macOS/darwin-generated-config.bats= suite evaluates
+=darwinConfigurations.macOS= with =nix eval=, which also works on Linux.
+It checks the generated Git identities by running Git against temporary
+repositories, the activation snippet substitutions and the staleness
+agent environment.  Bats' own =run= shadows a variable named =tmpdir=, so
+helpers called through =run= must not read =$tmpdir=.
+
+* Running the suites
 
 ** All BATS tests
 #+begin_src sh
-bats --recursive --tap tests/
+bats -r --tap tests/
 #+end_src
 
-** Linux-only BATS tests (linux-laptop)
+** Linux-only BATS tests (nixOS)
 #+begin_src sh
-bats --recursive --tap tests/home-layout.bats tests/linux-laptop
+bats --tap tests/home-layout.bats tests/nixOS
 #+end_src
 
 ** macOS-only BATS tests
 #+begin_src sh
-bats --recursive --tap tests/home-layout.bats tests/macOS
+bats --tap tests/home-layout.bats tests/macOS
 #+end_src
 
 ** Python tests
 #+begin_src sh
 pytest        # from the repository root; pytest.ini sets testpaths = tests
 pytest -v     # verbose (already the default via addopts in pytest.ini)
+#+end_src
+
+The tests of =scripts/publish.py= run =git=, =gpg= and =git filter-repo=.
+Where pytest or =git-filter-repo= is not installed, take both from the
+flake's package set:
+
+#+begin_src sh
+nix shell --inputs-from . 'nixpkgs-unstable#python3Packages.pytest' 'nixpkgs-unstable#git-filter-repo' -c pytest
 #+end_src
 
 * Isolation contract
@@ -67,6 +81,24 @@ than duplicating setup logic.  The shared fixtures are:
 - =fake_sysfs=: builds a temporary =/sys/class/input= tree.
 - =fifo_factory=: creates named FIFOs in =tmp_path/fifos/=.
 - =write_to_fifo=: forks a child to write bytes to a FIFO; caller must =waitpid=.
+- =publish= (session-scoped): the =scripts/publish.py= module.
+- =rules_dir=: writes a private rules directory (=replacements.txt=,
+  =deny.txt=, =mailmap=, =remove.txt=) for =scripts/publish.py=.
+- =commit=: adds a commit with a given message, author and committer.
+- =git_repo=: creates git repositories with one commit, isolated from the
+  system and user git configuration.
+- =tree_of=: reads the files of a repository's HEAD commit.
+- =gpg_home= (session-scoped) and =signing_key=: a throwaway GnuPG home
+  with one signing key, and its fingerprint.
+- =public_clone=, =export=, =export_files=: a public clone, and
+  =publish.py export= run against it.
+- =work_identity=: surrounds the test with a work identity in git's
+  configuration and environment.
+- =check_history=: runs =publish.py check= on a repository and returns the
+  exit status and the report.
+- =rewrite=: runs =publish.py rewrite-history= on a repository and returns
+  the exit status and the rewritten repository. It needs =git-filter-repo=
+  on the =PATH=.
 
 * Mock contract
 
@@ -117,7 +149,7 @@ Use =run_script_dry= from =isolation.bash= to run a script in dry-run mode:
 
 * Adding a new BATS test file
 
-1. Create the file under =tests/= (or =tests/macOS/=, =tests/linux-laptop/=).
+1. Create the file under =tests/= (or =tests/macOS/=, =tests/nixOS/=).
 2. Load =isolation.bash= with the correct relative path:
    #+begin_src bash
    load '../helpers/isolation'
@@ -128,19 +160,10 @@ Use =run_script_dry= from =isolation.bash= to run a script in dry-run mode:
 
 * Flake structure conventions
 
-=mkDarwinHost= accepts =extraHmModules= and =extraHostModules= for
-per-architecture layering; the zero-module call must evaluate identically to
-the pre-refactor positional call.  Verify this by comparing =nix flake show=
-output before and after.
-
-* Security policy
-
-=nix flake check= evaluates both host configurations and runs the
-=tests/security-policy.nix= assertions. They cover daemon trust, firewall
-defaults, macOS quarantine, and the absence of automatic global agent
-integrations and Docker startup.
-
-CI also scans the repository with Gitleaks. Keep credentials, authentication
-exports, private keys, and local account state outside version control.
-Run builds without activation when reviewing a change. Native macOS and GUI
-behaviour need separate checks on the appropriate hardware.
+=lib.mkDarwinHost= takes =system=, the account name =user=, and the module
+lists =extraHmModules= and =extraHostModules=.  A Mac calls it from its own
+flake, created from =templates/macOS=.  =darwinConfigurations.macOS= of this
+repository is that template evaluated against the checkout, placeholders
+included (=user = "example"=), so =nix flake check= and
+=tests/macOS/darwin-generated-config.bats= cover what a Mac receives.  Tests
+must therefore not assume a real account name or a filled identity.

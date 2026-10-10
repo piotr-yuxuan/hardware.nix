@@ -1,0 +1,255 @@
+#+TITLE: nixOS security posture
+#+AUTHOR: piotr-yuxuan
+#+STARTUP: overview
+
+Security hardening rationale for the nixOS host (Framework 16,
+NixOS 26.05, GNOME/Wayland, Secure Boot).  The periodic checklist is in
+[[file:../how-to/nixOS-audit-security.org][Audit nixOS security]].
+
+* Table of contents :TOC_2_org:
+- [[Full disk encryption (LUKS + Btrfs)][Full disk encryption (LUKS + Btrfs)]]
+- [[Secure Boot (lanzaboote)][Secure Boot (lanzaboote)]]
+- [[Firewall and network stack][Firewall and network stack]]
+- [[Kernel hardening][Kernel hardening]]
+- [[Audit subsystem][Audit subsystem]]
+- [[Crash and coredump capture][Crash and coredump capture]]
+- [[User and privilege model][User and privilege model]]
+- [[Application sandboxing (Firejail)][Application sandboxing (Firejail)]]
+- [[Service sandboxing (Maestral)][Service sandboxing (Maestral)]]
+- [[Automatic updates][Automatic updates]]
+- [[Temporary files][Temporary files]]
+- [[Thunderbolt and USB4][Thunderbolt and USB4]]
+- [[Bluetooth whitelist][Bluetooth whitelist]]
+- [[SSH client hardening][SSH client hardening]]
+- [[Git supply chain verification][Git supply chain verification]]
+- [[Btrfs snapshots as safety net][Btrfs snapshots as safety net]]
+
+* Full disk encryption (LUKS + Btrfs)
+
+The NVMe drive is partitioned with a 1 GB ESP and a LUKS2 encrypted
+partition containing an LVM volume group.  The LVM holds a 72 GB swap
+(for hibernate) and a Btrfs volume with subvolumes for root, home,
+cache, and snapshots.
+
+=allowDiscards = true= is set so TRIM passes through the encryption
+layer.  This trades a small metadata leak (which blocks are free) for
+SSD longevity and performance.  The trade-off is acceptable for a
+personal laptop with reasonable physical security.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Disk encryption][Audit nixOS security]].
+
+* Secure Boot (lanzaboote)
+
+Lanzaboote replaces =systemd-boot= and signs all boot components with
+machine specific keys stored in =/etc/secureboot=.  Automatic key
+generation and enrollment are enabled, including Microsoft keys for
+firmware compatibility.
+
+=kernel.kexec_load_disabled= is set directly (rather than through
+=security.protectKernelImage=) because the latter also injects
+=nohibernate= into kernel params, which conflicts with
+suspend-then-hibernate.  Since swap is LUKS-encrypted, the hibernate
+image is encrypted at rest and kexec remains blocked.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Secure Boot][Audit nixOS security]].
+
+* Firewall and network stack
+
+The firewall is enabled fleet wide with zero open TCP/UDP ports.
+NetworkManager is the only network management daemon.  SSH is
+explicitly disabled.
+
+Kernel sysctls harden the network stack:
+
+| Sysctl                              | Value | Purpose                                    |
+|--------------------------------------+-------+--------------------------------------------|
+| =net.ipv4.conf.*.rp_filter=         |     1 | Strict reverse path filtering              |
+| =net.ipv4.conf.*.accept_redirects=  | false | Reject ICMP redirects (IPv4)               |
+| =net.ipv6.conf.*.accept_redirects=  | false | Reject ICMP redirects (IPv6)               |
+| =net.ipv4.conf.*.send_redirects=    | false | Never send ICMP redirects                  |
+| =net.ipv4.conf.*.secure_redirects=  | false | Reject even "secure" redirects             |
+| =net.ipv4.conf.*.log_martians=      |  true | Log packets with impossible source address |
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Firewall rules][Audit nixOS security]].
+
+* Kernel hardening
+
+| Sysctl / option                     | Value | Purpose                                   |
+|--------------------------------------+-------+-------------------------------------------|
+| =kernel.yama.ptrace_scope=          |     2 | Restrict ptrace to direct parent only     |
+| =kernel.kptr_restrict=              |     2 | Hide kernel pointers from non-root        |
+| =kernel.sysrq=                      |     0 | Disable Magic SysRq                       |
+| =kernel.unprivileged_bpf_disabled=  |     1 | Block unprivileged BPF                    |
+| =net.core.bpf_jit_harden=          |     2 | Harden BPF JIT                            |
+| =kernel.dmesg_restrict=             |     1 | Restrict dmesg to CAP_SYSLOG              |
+| =kernel.kexec_load_disabled=         |  true | Block kexec (protects Secure Boot chain) |
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Kernel settings][Audit nixOS security]].
+
+* Audit subsystem
+
+The Linux kernel audit framework is enabled via =security.audit.enable=
+and =security.auditd.enable=.  Rules log:
+
+- Every =execve= call (catches unexpected binaries, reverse shells).
+- Write/attribute changes to =/etc/shadow=, =/etc/passwd=, =/etc/group=.
+- Write/attribute changes to =/etc/secureboot= (Secure Boot keys).
+- Write/attribute changes to =/etc/sudoers= and =/etc/sudoers.d=.
+
+Logs live in =/var/log/audit/audit.log= and are rotated automatically.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Audit log review][Audit nixOS security]].
+
+* Crash and coredump capture
+
+Three mechanisms ensure diagnostic data survives crashes:
+
+1. *pstore:* on kernel panic the firmware writes the last dmesg to
+   UEFI NVRAM.  =systemd-pstore= archives it to
+   =/var/lib/systemd/pstore/= on the next boot.  The kernel parameter
+   =printk.always_kmsg_dump=1= flushes the full ring buffer.
+
+2. *systemd-coredump:* userspace crashes produce coredumps stored in
+   =/var/lib/systemd/coredump/= (compressed, capped at 2 GB).
+   Inspect with =coredumpctl list= and =coredumpctl info=.
+
+3. *systemd journal:* persistent by default on NixOS 26.05.  All
+   service failures, OOM kills, and kernel messages are journalled.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Pstore review][Audit nixOS security]].
+
+* User and privilege model
+
+- =users.mutableUsers = false=: =passwd= and =useradd= are no-ops at
+  runtime, and passwords can only be set via =hashedPasswordFile= and
+  =nixos-rebuild=.  This prevents silent drift and ensures the
+  password state is always reproducible.
+- =security.sudo.execWheelOnly = true=: only wheel members can even
+  execute the sudo binary.  The =btrbk= system user is added to
+  =wheel= solely so it can execute sudo; its actual privileges remain
+  limited to =btrfs=, =mkdir=, and =readlink= via NOPASSWD sudoers
+  rules (set by the NixOS btrbk module).
+- =nix.settings.trusted-users= is scoped to =root= and =example=
+  (not the entire wheel group) so future accounts cannot push
+  arbitrary store paths.
+- =nix.settings.allowed-users = [ "@wheel" ]= restricts Nix daemon
+  access to wheel members.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Wheel group][Audit nixOS security]].
+
+* Application sandboxing (Firejail)
+
+VSCode runs through Firejail with a restrictive filesystem whitelist:
+
+- *Allowed:* =~/code=, =~/src=, =~/.config/Code=, =~/.vscode=,
+  =~/Dropbox=, =~/Downloads=.
+- *Blacklisted:* =~/.ssh=, =~/.gnupg=, =~/.config/maestral=.
+- *Capabilities:* all dropped.  =nonewprivs= and =noroot= are set.
+
+This prevents a misbehaving extension or agent from accessing SSH
+keys, GPG secrets, or files outside designated project directories.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Firejail check][Audit nixOS security]].
+
+To allow VSCode access to an additional project directory, edit the
+firejail profile in =hosts/nixOS.nix= under
+=programs.firejail.wrappedBinaries.code.profile= and add a
+=noblacklist= + =whitelist= pair for the new path.
+
+* Service sandboxing (Maestral)
+
+Both the Maestral daemon and the Maestral Qt tray icon run as systemd
+user services with hardening directives:
+
+| Directive                 | maestral | maestral-gui |
+|---------------------------+----------+--------------|
+| ProtectSystem             | full     | (none)       |
+| PrivateTmp                | yes      | (none)       |
+| NoNewPrivileges           | yes      | yes          |
+| RestrictRealtime          | yes      | yes          |
+| RestrictSUIDSGID          | yes      | yes          |
+| ProtectKernelTunables     | yes      | yes          |
+| ProtectKernelModules      | yes      | yes          |
+| ProtectControlGroups      | yes      | yes          |
+| SystemCallArchitectures   | native   | native       |
+
+The daemon sets ~ProtectSystem=full~ rather than =strict= so that
+=/home= stays writable for the sync.  The GUI service has lighter
+restrictions because it needs DBus and display server access.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Maestral sandbox][Audit nixOS security]].
+
+* Automatic updates
+
+=system.autoUpgrade= is enabled with =persistent = true=.  If the
+scheduled trigger at 04:00 is missed (laptop off, hibernated, or
+suspended), systemd catches up on the next boot.
+
+=allowReboot = false=: the system stages the new generation but does
+not reboot.  Updates take effect at the next manual reboot or
+=nixos-rebuild switch=.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Automatic updates][Audit nixOS security]].
+
+* Temporary files
+
+=/tmp= is mounted as tmpfs (RAM backed).  All temporary files vanish
+on reboot, preventing accidental persistence of secrets or cache.
+
+Default size is 50 % of RAM.  For very large build artifacts, use
+=~/tmp= on the Btrfs volume instead.
+
+* Thunderbolt and USB4
+
+=services.hardware.bolt.enable = true= activates the Bolt daemon.
+GNOME prompts the user before authorising new Thunderbolt/USB4
+devices, blocking rogue DMA attacks from freshly plugged peripherals.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Thunderbolt devices][Audit nixOS security]].
+
+* Bluetooth whitelist
+
+A NixOS activation script manages =/var/lib/bluetooth/=.  Only
+explicitly whitelisted devices keep their pairing keys; everything
+else is removed on each =nixos-rebuild switch=.  The list of devices is
+a personal file, =hosts/nixOS/bluetooth-devices.nix=, that this
+repository does not publish: without it nothing manages the pairings.
+[[file:../how-to/nixOS-personalise-a-fresh-install.org::*Bluetooth devices][Personalise a fresh install of nixOS]] shows how to write it.
+
+A defensive guard at the top of the sync script aborts if the adapter
+directory path does not match the expected =/var/lib/bluetooth/XX:XX:XX:XX:XX:XX= pattern.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Bluetooth pairings][Audit nixOS security]].
+
+* SSH client hardening
+
+Home Manager configures SSH with:
+
+- =IdentitiesOnly yes=: only the declared key is offered.
+- =PasswordAuthentication no=: password fallback disabled.
+- =HashKnownHosts yes=: host names in =known_hosts= are hashed.
+- =StrictHostKeyChecking accept-new=: new hosts are accepted once,
+  then pinned.
+- =ForwardAgent no=: agent forwarding off by default.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*SSH client settings][Audit nixOS security]].
+
+* Git supply chain verification
+
+=transfer.fsckObjects=, =fetch.fsckObjects=, and
+=receive.fsckObjects= are enabled.  The cleartext =git://= protocol
+is blocked; only HTTPS and SSH are allowed.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Git object checks][Audit nixOS security]].
+
+* Btrfs snapshots as safety net
+
+Hourly btrbk snapshots of =/home/example= into =/.snapshots/= provide
+rollback for accidental deletions or destructive agent actions.
+Retention: 24 hourly, 5 daily, 3 weekly.  The timer is persistent, so
+missed snapshots are caught up on boot.
+
+A failure alert writes a prominent message to all user-owned PTYs
+and fires a GNOME desktop notification.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Snapshot freshness][Audit nixOS security]].

@@ -1,0 +1,64 @@
+#+title: Rebuild and roll back
+#+author: piotr-yuxuan
+
+Apply a configuration change, list the generations it creates, roll
+back to an earlier one, and reclaim disk space.  The
+[[file:../explanation/architecture.org::*Generations and rollback][generations and rollback]]
+explanation says why rolling back is safe.
+
+* Rebuild after editing
+
+#+begin_src zsh
+# NixOS, from a checkout of this repository
+sudo nixos-rebuild switch --flake '.#nixOS'
+
+# macOS, from the Mac's local flake (~/src/local/macOS)
+sudo darwin-rebuild switch --flake '.#macOS'
+#+end_src
+
+A Mac has no checkout of this repository. What you edit there is its
+local flake, and a change to this repository reaches it with
+=nix flake update base=: see
+[[file:macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]].
+
+* Garbage-collect old generations
+
+A weekly =nh clean= job deletes old generations on both hosts: a
+systemd service on nixOS and a launchd agent on macOS.  It keeps the
+last five generations and anything newer than seven days.  To collect
+garbage manually:
+
+#+begin_src zsh
+sudo nix-collect-garbage --delete-older-than 14d
+
+# Also remove old boot entries (NixOS only)
+sudo nixos-rebuild boot --flake '.#nixOS'
+#+end_src
+
+* List generations
+
+#+begin_src zsh
+# NixOS system generations
+sudo nix-env --list-generations --profile /nix/var/nix/profiles/system
+
+# macOS system generations
+darwin-rebuild --list-generations
+
+# Home Manager generation in use
+readlink ~/.local/state/home-manager/gcroots/current-home
+#+end_src
+
+* Roll back
+
+#+begin_src zsh
+# NixOS: previous generation
+sudo nixos-rebuild switch --rollback
+
+# macOS: previous generation
+sudo darwin-rebuild --rollback
+#+end_src
+
+Home Manager runs inside the system configuration on both hosts, so
+rolling back the system generation also rolls back Home Manager.  It
+keeps no generations of its own: =home-manager generations= and
+=home-manager switch --rollback= do not apply here.

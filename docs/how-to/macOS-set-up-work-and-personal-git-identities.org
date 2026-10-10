@@ -1,0 +1,583 @@
+#+title: Set up work and personal Git identities on macOS
+#+author: piotr-yuxuan
+
+Give this Mac its own personal keys, fill in the work identity, and check
+which identity Git uses where. On the Mac, the work identity is the
+default and the personal identity applies below
+=~/src/github.com/piotr-yuxuan/=:
+
+| Repository                             | Name and email                                        | Signing                                 | SSH key                                                    |
+|----------------------------------------+-------------------------------------------------------+-----------------------------------------+------------------------------------------------------------|
+| below =~/src/github.com/piotr-yuxuan/= | piotr-yuxuan, =piotr-yuxuan@users.noreply.github.com= | this Mac's own OpenPGP key, always      | =~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519=     |
+| anywhere else                          | the work name and email (none until you fill them in) | none, unless you configure work signing | the work key you select, otherwise ssh's default key files |
+
+Everything here is set in =identity.nix= of the Mac's local flake,
+=~/src/local/macOS=, which the [[file:../tutorials/first-day-on-a-new-mac.org][first-day tutorial]] creates from
+[[file:../../templates/macOS/identity.nix][templates/macOS/identity.nix]]. Nothing is edited in this repository, and
+no work value ever goes into it. The steps assume the first switch of
+the tutorial has run.
+
+This guide is untested on a managed Mac. The Git behaviour it describes
+(which value applies where, the error messages, signing with OpenPGP and
+SSH keys) was checked on Linux against the configuration that the
+template generates, with the same Git 2.54 and GnuPG 2.4.9. The GitHub,
+Keychain and pinentry-mac steps have not been run yet.
+
+* Before you start
+
+- The first switch is done: =command -v darwin-rebuild gpg= prints two
+  paths.
+- You know the work forge host, the work commit email, and whether work
+  requires signed commits and in which format (OpenPGP or SSH). If you
+  do not know them yet, do the personal steps now and come back for
+  [[*Fill the work identity][Fill the work identity]].
+- You are in the local flake: =cd ~/src/local/macOS=.
+
+* List the values to fill
+
+#+begin_src zsh
+grep -n FIXME identity.nix
+#+end_src
+
+Before anything is filled, it prints:
+
+#+begin_example
+4:# every FIXME here; nothing about this Mac or its employer goes into the
+15:  # FIXME: uncomment and fill the work identity. If signed commits are
+23:  # FIXME: select the work SSH key. Work forge on github.com: set
+36:          # FIXME: long ID of this Mac's own personal OpenPGP key (one
+38:          signingKey = "FIXME-personal-openpgp-key-id";
+#+end_example
+
+| Line                                 | What to put there                                         | Where in this guide           |
+|--------------------------------------+-----------------------------------------------------------+-------------------------------|
+| header of the file                   | nothing: it introduces the others                         | leave it                      |
+| =programs.git.settings.user=         | the work name and email, work signing if required         | [[*Fill the work identity][Fill the work identity]]        |
+| work SSH key, below the user section | how work repositories select the work key                 | [[*Select the work SSH key][Select the work SSH key]]       |
+| =signingKey= in the personal include | the long ID of this Mac's personal OpenPGP key, two lines | [[*Fill the personal signing key][Fill the personal signing key]] |
+
+Delete each =FIXME= comment once its value is in place, so that the
+search only lists what is left. The account name is not in this file:
+it is =user= in the local =flake.nix=, set in the tutorial.
+
+* Create the personal SSH key
+
+Skip this section if the tutorial already created the key:
+
+#+begin_src zsh
+ls ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519.pub
+#+end_src
+
+Otherwise create it with a passphrase, store the passphrase in the login
+Keychain, and copy the public key:
+
+#+begin_src zsh
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+ssh-keygen -t ed25519 -C piotr-yuxuan@users.noreply.github.com -f ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519
+ssh-add --apple-use-keychain ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519
+pbcopy < ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519.pub
+#+end_src
+
+=--apple-use-keychain= exists only in Apple's =ssh-add=, which is the
+one in use: the configuration installs no other OpenSSH. Paste the key
+at https://github.com/settings/ssh/new on the personal account, with the
+key type "Authentication Key".
+
+Test it:
+
+#+begin_src zsh
+ssh -i ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519 -o IdentitiesOnly=yes -T git@github.com
+#+end_src
+
+Expect =Hi piotr-yuxuan! You've successfully authenticated, but GitHub
+does not provide shell access.= The command exits with status 1 even
+when it succeeds.
+
+The =-i= is required. The SSH configuration has no =Host github.com=
+block and sets =IdentitiesOnly yes= for every host, so a plain
+=ssh -T git@github.com= offers only ssh's default key files. Git picks
+the personal key by directory instead, through =core.sshCommand=.
+
+=StrictHostKeyChecking accept-new= records GitHub's host key on the first
+connection without asking. Compare it with the fingerprint GitHub
+publishes (=ssh_key_fingerprints= in https://api.github.com/meta):
+
+#+begin_src zsh
+ssh-keygen -lF github.com
+#+end_src
+
+The =ED25519= line must end in
+=SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU=. If it does not,
+delete the entry with =ssh-keygen -R github.com= and find out why before
+you connect again.
+
+* Create the personal signing key
+
+Personal commits are signed with an OpenPGP key that belongs to this Mac
+only. Never import a key from another machine.
+
+#+begin_src zsh
+gpg --quick-generate-key 'piotr-yuxuan <piotr-yuxuan@users.noreply.github.com>' ed25519 sign 2y
+gpg --list-secret-keys --keyid-format long
+#+end_src
+
+pinentry-mac asks for the key's passphrase; keep it in the password
+manager. The listing looks like this, with your own values:
+
+#+begin_example
+sec   ed25519/<KEY-ID> <date> [SC] [expires: <date>]
+      Key fingerprint = <FINGERPRINT>
+uid                 [ultimate] piotr-yuxuan <piotr-yuxuan@users.noreply.github.com>
+#+end_example
+
+The long key ID is the 16 hexadecimal digits after =ed25519/=; the rest
+of this guide calls it =<KEY-ID>=. The email in the key must be the
+personal commit email, or GitHub does not mark the commits as Verified.
+
+Publish the public key at https://github.com/settings/gpg/new:
+
+#+begin_src zsh
+gpg --armor --export <KEY-ID> | pbcopy
+#+end_src
+
+GnuPG also wrote a revocation certificate to
+=~/.gnupg/openpgp-revocs.d/<FINGERPRINT>.rev=. Keep a copy in the
+password manager: it lets you revoke the key if this Mac is lost. The key
+expires after two years; =gpg --quick-set-expire <FINGERPRINT> 2y=
+extends it, after which you upload the public key to GitHub again.
+
+* Fill the personal signing key
+
+In =identity.nix=, in the =programs.git.includes= entry for
+=gitdir:~/src/github.com/piotr-yuxuan/=, replace the placeholder with
+your long key ID and delete the =FIXME= comment above it:
+
+#+begin_src nix
+signingKey = "<KEY-ID>";
+#+end_src
+
+Until this is done and applied, every commit below
+=~/src/github.com/piotr-yuxuan/= fails, because the include turns on
+=commit.gpgSign= and =tag.gpgSign=.
+
+* Fill the work identity
+
+** Set the work email and name
+
+In =identity.nix=, uncomment the =programs.git.settings.user= block,
+fill it, and delete the =FIXME= comment:
+
+#+begin_src nix
+programs.git.settings.user = {
+  name = "<the name the employer expects>";
+  email = "<work email>";
+};
+#+end_src
+
+Use the exact address the work forge has verified for your account, or
+the forge does not link commits to you. =useConfigOnly= comes from the
+shared configuration and needs no line here.
+
+** Select the work SSH key
+
+Create one key for work, named after the work email like the personal
+one, and register it on the work forge as an authentication key. Put the
+work email in the first line; the other commands reuse it:
+
+#+begin_src zsh
+WORK_EMAIL='first.last@example.com'
+ssh-keygen -t ed25519 -C "$WORK_EMAIL" -f ~/.ssh/"${WORK_EMAIL}_ed25519"
+ssh-add --apple-use-keychain ~/.ssh/"${WORK_EMAIL}_ed25519"
+pbcopy < ~/.ssh/"${WORK_EMAIL}_ed25519.pub"
+#+end_src
+
+In the Nix snippets below, =<work email>= stands for the same address.
+
+Then tell =identity.nix= when to use it. Pick the case that matches the
+work forge and delete the work SSH =FIXME= comment.
+
+*** Work forge on another host
+
+For GitLab, GitHub Enterprise Server, Bitbucket or any forge that is not
+=github.com=, select the key by host:
+
+#+begin_src nix
+programs.ssh.settings."<forge host>".IdentityFile = "~/.ssh/<work email>_ed25519";
+#+end_src
+
+This generates a =Host <forge host>= block above the =Host *= defaults.
+After the rebuild, =ssh -T git@<forge host>= answers with your work
+account name (GitLab prints =Welcome to GitLab, @<user>!=).
+
+SSH remotes need nothing more. The command-line clients need their own
+login: =glab auth login --hostname <forge host>= for GitLab,
+=gh auth login --hostname <forge host>= for GitHub Enterprise Server.
+The configuration wires =gh= as Git's HTTPS credential helper for
+=github.com= and =gist.github.com= only.
+
+*** Work on github.com with a separate GitHub account
+
+This includes an employer's managed user account on github.com. Both
+accounts live on the same host, so the key cannot be chosen by host:
+make the work key the default for Git, and let the personal include
+override it by directory:
+
+#+begin_src nix
+programs.git.settings.core.sshCommand = "ssh -i ~/.ssh/<work email>_ed25519 -o IdentitiesOnly=yes -o ControlPath=none";
+#+end_src
+
+Below =~/src/github.com/piotr-yuxuan/= the personal include sets its own
+=core.sshCommand=, which comes later in the generated file and wins.
+=ControlPath=none= stops either key from reusing a connection that the
+other one authenticated. Test the work key; GitHub greets the work
+account:
+
+#+begin_src zsh
+ssh -i ~/.ssh/"${WORK_EMAIL}_ed25519" -o IdentitiesOnly=yes -T git@github.com
+#+end_src
+
+The GitHub CLI keeps one login per account. Run =gh auth login= once for
+each account (skip its offer to upload an SSH key; you registered the
+keys yourself), then =gh auth switch= to change the active account and
+=gh auth status= to see which one is active. Git's HTTPS credential
+helper for =github.com= is =gh auth git-credential=, so HTTPS remotes
+use the active account.
+
+*** Work on github.com with the personal account
+
+If the employer adds the personal GitHub account to its organisation,
+use the personal key for work repositories too:
+
+#+begin_src nix
+programs.git.settings.core.sshCommand = "ssh -i ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519 -o IdentitiesOnly=yes -o ControlPath=none";
+#+end_src
+
+Commits outside the personal directory still carry the work email.
+
+** Configure work signing
+
+Skip this if work does not require signed commits. Personal commits stay
+OpenPGP-signed whatever you choose here, because the personal include
+sets =gpg.format = "openpgp"=.
+
+*** With a GPG key (OpenPGP format)
+
+Create a separate work key and publish it on the work forge, using the
+=WORK_EMAIL= variable from the previous section:
+
+#+begin_src zsh
+WORK_NAME='First Last'
+gpg --quick-generate-key "$WORK_NAME <$WORK_EMAIL>" ed25519 sign 2y
+gpg --list-secret-keys --keyid-format long
+gpg --armor --export <WORK-KEY-ID> | pbcopy
+#+end_src
+
+Then add the key to the user section and turn signing on beside it:
+
+#+begin_src nix
+programs.git.settings.user = {
+  name = "<the name the employer expects>";
+  email = "<work email>";
+  signingKey = "<WORK-KEY-ID>";
+};
+programs.git.settings.commit.gpgSign = true;
+programs.git.settings.tag.gpgSign = true;
+#+end_src
+
+*** With an SSH key
+
+Register the work SSH public key on the forge a second time, as a
+signing key (GitHub calls the type "Signing Key"; GitLab offers the
+usage "Signing" or "Authentication & Signing"). Then:
+
+#+begin_src nix
+programs.git.settings.user = {
+  name = "<the name the employer expects>";
+  email = "<work email>";
+  signingKey = "~/.ssh/<work email>_ed25519.pub";
+};
+programs.git.settings.gpg.format = "ssh";
+programs.git.settings.commit.gpgSign = true;
+programs.git.settings.tag.gpgSign = true;
+#+end_src
+
+The forge verifies these signatures. Locally, =git log --show-signature=
+prints =error: gpg.ssh.allowedSignersFile needs to be configured and
+exist for ssh signature verification= until you set
+=gpg.ssh.allowedSignersFile=; that does not affect signing.
+
+* Rebuild
+
+#+begin_src zsh
+cd ~/src/local/macOS
+grep -n FIXME identity.nix
+darwin-rebuild build --flake '.#macOS'
+sudo darwin-rebuild switch --flake '.#macOS'
+rm result
+#+end_src
+
+The search should list only what you deliberately left for later. The
+build evaluates the local flake before anything changes.
+[[file:macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]] says more about that directory, and
+[[file:rebuild-and-roll-back.org][Rebuild and roll back]] covers going back if the switch goes wrong.
+
+The tests of this repository need no change: they check the template
+with its placeholders, not the values of one Mac.
+
+* Verify
+
+The command below lists every identity setting with its scope and the
+file it comes from. Run it in each kind of repository.
+
+#+begin_src zsh
+git config --show-origin --show-scope --get-regexp '^(user\.|core\.sshcommand|commit\.gpgsign|tag\.gpgsign|gpg\.format)'
+#+end_src
+
+** In a personal repository
+
+Create a throwaway repository below the personal directory:
+
+#+begin_src zsh
+mkdir -p ~/src/github.com/piotr-yuxuan/identity-probe
+cd ~/src/github.com/piotr-yuxuan/identity-probe
+git init -q
+#+end_src
+
+There, once the work identity is filled in and without work signing,
+expect output of this shape, with your account name in place of
+=example= (Git prints keys in lower case):
+
+#+begin_example
+global	file:/Users/example/.config/git/config	user.email <work email>
+global	file:/Users/example/.config/git/config	user.name <work name>
+global	file:/Users/example/.config/git/config	user.useconfigonly true
+global	file:/nix/store/...-hm_gitconfig	commit.gpgsign true
+global	file:/nix/store/...-hm_gitconfig	core.sshcommand ssh -i ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519 -o IdentitiesOnly=yes -o ControlPath=none
+global	file:/nix/store/...-hm_gitconfig	gpg.format openpgp
+global	file:/nix/store/...-hm_gitconfig	tag.gpgsign true
+global	file:/nix/store/...-hm_gitconfig	user.email piotr-yuxuan@users.noreply.github.com
+global	file:/nix/store/...-hm_gitconfig	user.name piotr-yuxuan
+global	file:/nix/store/...-hm_gitconfig	user.signingkey <KEY-ID>
+#+end_example
+
+Both files are global: =~/.config/git/config= is the Home Manager file,
+and the =hm_gitconfig= store file is the personal include. A key that
+appears twice takes its last value, so =git config user.email= prints
+the personal email here. Work signing and work SSH lines, if you added
+them, appear in the first group and are overridden the same way.
+
+Then check signing outside Git and inside it, and remove the
+repository:
+
+#+begin_src zsh
+echo probe | gpg --clearsign --local-user <KEY-ID>
+git commit --allow-empty -m probe
+git log --show-signature -1
+cd ~/src/local/macOS && rm -rf ~/src/github.com/piotr-yuxuan/identity-probe
+#+end_src
+
+The first command shows the pinentry-mac dialog unless the passphrase is
+cached, then a signed message. After the commit, expect
+=Good signature from "piotr-yuxuan <piotr-yuxuan@users.noreply.github.com>"=.
+After a push of a real repository, GitHub shows its commits as Verified.
+
+** In a work repository
+
+Any repository outside =~/src/github.com/piotr-yuxuan/= gets the work
+identity, for example a clone under =~/src/<forge host>/=, or the local
+flake itself. To check without one, use a throwaway repository:
+
+#+begin_src zsh
+git init /tmp/identity-probe
+cd /tmp/identity-probe
+git config --show-origin --show-scope --get-regexp '^(user\.|core\.sshcommand|commit\.gpgsign|tag\.gpgsign|gpg\.format)'
+git commit --allow-empty -m probe
+git log -1 --format='%an <%ae> %G?'
+cd - && rm -rf /tmp/identity-probe
+#+end_src
+
+Every line now comes from =~/.config/git/config=: no =hm_gitconfig=
+line, no personal key. The commit succeeds with the work email. The last
+field of the log line is =N= without work signing, =G= with OpenPGP
+signing, and =N= with SSH signing until =gpg.ssh.allowedSignersFile= is
+set.
+
+** In the Emacs configuration
+
+#+begin_src zsh
+git -C ~/.emacs.d config --show-origin user.email
+#+end_src
+
+The tutorial clones the Emacs configuration at =~/.emacs.d=, outside the
+personal directory: expect the work email, from =~/.config/git/config=.
+Git matches the include against the resolved path, so if =~/.emacs.d= is
+instead a symbolic link to a clone below
+=~/src/github.com/piotr-yuxuan/=, expect the personal email from the
+=hm_gitconfig= file. The straight.el package repositories under
+=~/.emacs.d/straight/repos/= follow the same rule.
+
+* Troubleshoot
+
+** "fatal: no email was given and auto-detection is disabled"
+
+The whole message is:
+
+#+begin_example
+Author identity unknown
+
+,*** Please tell me who you are.
+
+Run
+
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+
+to set your account's default identity.
+Omit --global to set the identity only in this repository.
+
+fatal: no email was given and auto-detection is disabled
+#+end_example
+
+Git found no email for this repository: =useConfigOnly= forbids
+guessing one.
+
+- If it is a work repository, the work identity is not filled in, or
+  the switch that applies it has not run. Check with
+  =git config --show-origin user.email=.
+- If you expected the personal identity, the repository is not where you
+  think. =git rev-parse --absolute-git-dir= must print a path that starts
+  with =/Users/example/src/github.com/piotr-yuxuan/=, with your account
+  name in place of =example=. Git compares real paths, so a symbolic
+  link pointing outside that directory does not count.
+
+Do not follow Git's suggestion: =~/.config/git/config= is a read-only
+Home Manager file, and =git config --global= fails with
+=could not lock config file=. As a stopgap for one repository,
+=git config --local user.email <address>= works; remove it later with
+=git config --local --unset user.email=.
+
+While the work identity is missing, everything that creates a commit
+outside the personal directory fails the same way, including
+=git stash= and =git pull= (pull rebases with =rebase.autoStash=).
+
+** "gpg: skipped" and "No secret key"
+
+#+begin_example
+error: gpg failed to sign the data:
+gpg: skipped "FIXME-personal-openpgp-key-id": No secret key
+[GNUPG:] INV_SGNR 9 FIXME-personal-openpgp-key-id
+[GNUPG:] FAILURE sign 17
+gpg: signing failed: No secret key
+
+fatal: failed to write commit object
+#+end_example
+
+The quoted name is the signing key Git asked for.
+
+- =FIXME-personal-openpgp-key-id=: the placeholder is still there, or
+  the switch that replaces it has not run. See
+  [[*Fill the personal signing key][Fill the personal signing key]].
+- A real ID: that key is not in this Mac's keyring. Compare
+  =git config --show-origin user.signingKey= with
+  =gpg --list-secret-keys --keyid-format long=.
+
+** "gpg: signing failed" with "No pinentry", a timeout or no dialog
+
+Restart the agent and test signing outside Git:
+
+#+begin_src zsh
+gpgconf --kill gpg-agent
+echo probe | gpg --clearsign --local-user <KEY-ID>
+#+end_src
+
+=~/.gnupg/gpg-agent.conf= names pinentry-mac by its store path. An agent
+started before a rebuild or a garbage collection may still point at an
+old path; the next =gpg= call starts a fresh agent with the current file.
+
+** "Couldn't load public key" with SSH signing
+
+#+begin_example
+error: Couldn't load public key /Users/example/.ssh/<work email>_ed25519.pub: No such file or directory?
+
+fatal: failed to write commit object
+#+end_example
+
+The work =signingKey= names a file that does not exist. Check the name
+with =ls ~/.ssh/= and fix it in =identity.nix=.
+
+** "Permission denied (publickey)"
+
+Find out which command and key Git used:
+
+#+begin_src zsh
+git config --show-origin core.sshCommand
+GIT_TRACE=1 git fetch 2>&1 | grep run_command
+#+end_src
+
+Then test that key directly, with verbose output:
+
+#+begin_src zsh
+ssh -v -i <key file> -o IdentitiesOnly=yes -T git@github.com
+#+end_src
+
+Common causes:
+
+- The key is not registered on the account the repository belongs to.
+- The command runs outside the personal directory, where Git has no
+  =core.sshCommand= for github.com unless you set a work one. A plain
+  =ssh -T git@github.com=, or =gh repo clone= run elsewhere, offers only
+  ssh's default key files, which this setup does not create. Clone
+  personal repositories into =~/src/github.com/piotr-yuxuan/=: Git
+  applies the include while it clones into that directory.
+- Port 22 is blocked: see below.
+
+** "Repository not found" although the URL is right
+
+You are authenticated as the other GitHub account, which cannot see the
+repository. =ssh -i <key file> -o IdentitiesOnly=yes -T git@github.com=
+prints which account a key belongs to. If a shared connection is to
+blame (a github.com =core.sshCommand= without =ControlPath=none=), close
+it with =ssh -O exit git@github.com=.
+
+** A repository-local value wins
+
+A value set in the repository's own =.git/config= overrides the managed
+ones. List them with =git config --local --list=, or look for =local= in
+the first column of the verification command.
+
+** Port 22 is blocked
+
+Test GitHub's SSH endpoint on port 443:
+
+#+begin_src zsh
+ssh -i ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519 -o IdentitiesOnly=yes -p 443 -T git@ssh.github.com
+#+end_src
+
+If that works, send all github.com SSH traffic there from
+=identity.nix=. The block carries no key, so key selection does not
+change:
+
+#+begin_src nix
+programs.ssh.settings."github.com" = {
+  HostName = "ssh.github.com";
+  Port = 443;
+};
+#+end_src
+
+The first connection records the host key under
+=[ssh.github.com]:443=; check it with
+=ssh-keygen -lF '[ssh.github.com]:443'= against the same published
+fingerprint.
+
+If the network also inspects TLS, see
+[[file:macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]].
+
+* See also
+
+- [[file:macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]], for the directory that holds
+  =identity.nix=.
+- [[file:macOS-troubleshoot-emacs.org][Troubleshoot Emacs on macOS]], for the Emacs configuration clone.
+- [[file:troubleshoot-common-problems.org][Troubleshoot common problems]].
+- [[file:../explanation/macOS-git-identities.org][Why the Mac separates work and personal Git identities]], for why the
+  setup looks like this.
+- [[file:../reference/macOS-configuration.org::*Git identity][macOS configuration]], for the identity table.

@@ -80,7 +80,7 @@ fi
 exit 0
 RTEOF
 	chmod +x "$rt_dir/podman"
-
+	
 	# Restrict PATH so docker, podman, and tier-1 tools are absent,
 	# except for our test harness runtime stub.
 	# Keep only stable directories and prepend fake runtime.

@@ -1,0 +1,84 @@
+#+title: Repository layout
+#+author: piotr-yuxuan
+
+What lives where in this repository, and what the flake outputs.
+
+* Files and directories
+
+#+begin_example
+flake.nix                 # Flake entry point: nixOS, the Mac builder and its template
+disko-config.nix          # LUKS + LVM + Btrfs partitioning (nixOS)
+hardware-configuration.nix
+fonts.nix                 # Font packages shared across hosts
+hosts/
+  nixOS.nix              # NixOS system config (GNOME, Secure Boot, …)
+  nixOS/                 # Bluetooth sync script; personal modules (not published)
+  macOS.nix               # nix-darwin system config (macOS defaults, …)
+home/
+  base.nix                # Cross-platform Home Manager (Zsh, Git, GPG, …)
+  nixOS.nix              # HM overrides for NixOS (Emacs, GUI apps, …)
+  nixOS/                 # Personal Home Manager modules (not published)
+  macOS.nix               # HM overrides for macOS (GitLab, Brewfile, …)
+templates/
+  macOS/                  # Starting point of a Mac's own flake
+    flake.nix             # Input base, account name, machine-local modules
+    identity.nix          # Git identities of that Mac, to fill in
+config/                   # Dotfiles and config snippets
+  Brewfile                # Homebrew casks & formulae (macOS only)
+  before.zshenv           # Sourced in ~/.zshenv
+  after.zshrc             # Sourced in interactive shells
+  …
+packages/                 # Custom Nix derivations
+scripts/                  # Activation helpers
+  publish.py              # Export to the public repository, and its gate
+publish/                  # Export manifest, overlay and private rules (not published)
+tests/                    # BATS and pytest suites (tests/README.org)
+docs/
+  tutorials/              # Lessons from a blank machine to a working one
+  how-to/                 # Directions for a specific goal
+  reference/              # Descriptions of the machinery
+  explanation/            # Background and design rationale
+  work/                   # Plans and changelog (not published)
+#+end_example
+
+The entries marked "not published" exist only in the private
+repository. The public repository is an export of it, made by
+=scripts/publish.py= as [[file:../how-to/publish-to-public.org][Publish to the public repository]] describes.
+The files of =publish/overlay/= land at the public root: the licence,
+=.gitignore= and the =.github/= directory. The personal modules of
+nixOS are imported only when they exist;
+[[file:../how-to/nixOS-personalise-a-fresh-install.org][Personalise a fresh install of nixOS]] shows how to write them.
+
+* Architecture overview
+
+The flake defines five top-level outputs:
+
+- =nixosConfigurations.nixOS=: full NixOS system (kernel, GNOME, Secure
+  Boot via Lanzaboote, LUKS via Disko, hardware tweaks from
+  =nixos-hardware=). Home Manager is loaded as a NixOS module.
+- =lib.mkDarwinHost=: the builder of a nix-darwin system (macOS
+  defaults, Nix daemon, shell registration) with Home Manager loaded as
+  a darwin module. It takes =system=, the account name =user=, and the
+  module lists =extraHmModules= and =extraHostModules=.
+- =templates.macOS=: the starting point of a Mac's own flake. A Mac does
+  not clone this repository: its flake takes this one as the input
+  =base= and calls the builder, so the account name, the identities and
+  any machine-local module stay on that Mac.
+- =darwinConfigurations.macOS=: the template evaluated against this
+  checkout, placeholders included, so that the check and the tests
+  cover what a Mac receives.
+- =checks.<system>.darwin-macOS-eval= for =x86_64-linux= and
+  =aarch64-darwin=: evaluates that macOS configuration so that
+  =nix flake check= covers it without building it.
+
+Both hosts import =home/base.nix= (cross-platform CLI tools, Zsh, Git,
+GPG, Starship, direnv, etc.) plus a host-specific layer
+(=home/nixOS.nix= or =home/macOS.nix=).
+
+The flake pins two channels:
+- =nixpkgs= (stable =nixos-26.05=): system foundation.
+- =nixpkgs-unstable=: bleeding-edge packages passed as =unstable= via
+  =extraSpecialArgs=.
+
+On macOS, GUI apps are managed through Homebrew (=config/Brewfile=): the
+Home Manager activation runs =brew bundle install= automatically.

@@ -1,7 +1,7 @@
 # Home Manager base module (cross-platform).
 #
-# Imported by both linux-laptop (NixOS) and macOS (standalone macOS).
-# Per-host overrides live in home/linux-laptop.nix and home/macOS.nix.
+# Imported by both nixOS (NixOS) and macOS (standalone macOS).
+# Per-host overrides live in home/nixOS.nix and home/macOS.nix.
 #
 # RULE: Only settings that are picked up and applied on *both*
 #       NixOS and macOS belong here.  Platform-specific config
@@ -17,6 +17,7 @@
   ...
 }: let
   engraveFaces = unstable.emacsPackages.engrave-faces;
+  piMcpAdapter = unstable.callPackage ../packages/pi-mcp-adapter.nix {};
 in {
   # Let Home Manager manage itself.
   programs.home-manager.enable = true;
@@ -43,8 +44,8 @@ in {
     unstable.rust-analyzer
 
     # Java runtime (required by Clojure CLI / deps.edn).
-    # temurin-bin-26 is non-LTS (supported until JDK 27, ~Sep 2026); bump then.
-    unstable.temurin-bin-26
+    # temurin-bin-27 is non-LTS (supported until JDK 28, ~Mar 2027); bump then.
+    unstable.temurin-bin-27
     unstable.zig # used by emacs-libgterm (gterm) to compile its dynamic module
 
     # Clojure ecosystem
@@ -61,7 +62,7 @@ in {
     unstable.basedpyright
     unstable.typescript-language-server
     unstable.typescript
-    unstable.ltex-ls
+    unstable.ltex-ls-plus
     unstable.jdt-language-server
     unstable.bash-language-server
     unstable.dockerfile-language-server
@@ -99,11 +100,13 @@ in {
     unstable.bats # shell test framework (tests/ directory)
 
     # CLI utilities
-    unstable.fortune
+    # fortune and enca are not listed here: both need recode, which
+    # fails to build on aarch64-darwin (nixpkgs#568679). nixOS gets them
+    # from Nix (home/nixOS.nix) and macOS from Homebrew (config/Brewfile).
     unstable.macchina
     unstable.yq-go
     unstable.curl
-    unstable.socat # socket and stream diagnostics
+    unstable.socat # stdio bridge for the Emacs MCP Unix socket
     unstable.tokei
     unstable.onefetch
     unstable.scc
@@ -111,7 +114,7 @@ in {
     unstable.bmon
     unstable.coreutils
     unstable.duckdb
-    unstable.enca
+    unstable.postgresql
     unstable.fx
     unstable.qrencode
     unstable.silver-searcher-ng # maintained Silver Searcher fork; provides ag alongside rg
@@ -132,7 +135,6 @@ in {
     unstable.aws-vault # secure AWS credential management
     unstable.ssm-session-manager-plugin
     unstable.git-sizer # repository size metrics and health check
-    unstable.podman
     unstable.podman-compose
     unstable.sops
     unstable.opentofu
@@ -141,6 +143,11 @@ in {
     unstable.tflint
     unstable.terraform-docs
     unstable.terraform-landscape
+
+    # PyCharm is per host: on macOS it would be the only Nix .app, and
+    # Home Manager's app copy then needs App Management permission at
+    # every switch. macOS uses the Homebrew cask (config/Brewfile) and
+    # nixOS uses Nix (home/nixOS.nix).
 
     # CloudFormation
     unstable.rain # CloudFormation deploy / diff CLI
@@ -153,7 +160,7 @@ in {
     # Profiling / flamegraphs
     # visualvm is intentionally not in this shared list: on macOS it is
     # installed via the Homebrew cask (config/Brewfile) for the native
-    # .app, and on linux-laptop via Nix (home/linux-laptop.nix). Listing it here
+    # .app, and on nixOS via Nix (home/nixOS.nix). Listing it here
     # would also put a (redundant) Nix copy on macOS.
     unstable.async-profiler # low-overhead JVM sampling profiler
     unstable.flamegraph # Brendan Gregg's FlameGraph scripts
@@ -163,13 +170,14 @@ in {
 
     # AI coding agent
     unstable.pi-coding-agent
+    piMcpAdapter
 
     # Build tools
     unstable.meson
     unstable.ninja
 
     # Email (mu, mu4e, and isync/mbsync managed via programs.mu and
-    # programs.mbsync; email account config lives in home/linux-laptop.nix)
+    # programs.mbsync; email account config lives in home/nixOS.nix)
 
     # Spell & grammar
     unstable.languagetool # grammar checker (EN, FR, PL, …)
@@ -251,7 +259,8 @@ in {
     package = unstable.starship;
     enableZshIntegration = true;
     settings = lib.recursiveUpdate (builtins.fromTOML (builtins.readFile starship-gruvbox-rainbow)) {
-      os.symbols.NixOS = ""; # nf-linux-nixos
+      os.symbols.NixOS = ""; # nf-linux-nixos
+
       # Replace the gruvbox-rainbow preset's Nerd Font arrow prompt
       # with a POSIX `$` for regular users and `#` for root.  The
       # built-in `character` module has no root detection, so disable
@@ -280,11 +289,6 @@ in {
     lfs.enable = true;
 
     settings = {
-      user = {
-        name = lib.mkDefault "example";
-        email = lib.mkDefault "example@example.invalid";
-      };
-
       init.defaultBranch = "main";
       pull.rebase = true;
       push.autoSetupRemote = true;
@@ -328,10 +332,12 @@ in {
   # selective override is used for other fast-moving user programs,
   # while mature and foundational program defaults remain stable.
   #
-  # `git_protocol = "ssh"` matches the per-host SSH setup in
-  # `home/macOS.nix` and `home/linux-laptop.nix`, both of which pin an
-  # `identityFile` for `github.com`.  `gh repo clone` and
-  # `gh pr checkout` therefore use SSH out of the box.
+  # `git_protocol = "ssh"` matches the per-host SSH setup: the
+  # personal module of nixOS pins an `IdentityFile` for `github.com`,
+  # and the Mac's own flake selects the personal key by directory through
+  # `core.sshCommand`.  `gh repo clone` and `gh pr checkout` therefore
+  # use SSH (on macOS, run them below ~/src/github.com/piotr-yuxuan/ for
+  # personal repositories).
   programs.gh = {
     enable = true;
     package = unstable.gh;
@@ -515,6 +521,22 @@ in {
     lib.hm.dag.entryAfter ["writeBoundary"]
     (lib.fileContents ../scripts/home-layout.sh);
 
+  # bhauman/clojure-mcp: installed via Clojure tools so it is
+  # available as `clojure -Tmcp start` from any directory.  The
+  # install command is idempotent (overwrites on re-run).
+  home.activation.clojureMcpInstall =
+    lib.hm.dag.entryAfter ["writeBoundary"]
+    (builtins.replaceStrings
+      ["@CLOJURE_BIN@" "@GIT_DIR@"]
+      ["${unstable.clojure}/bin/clojure" "${unstable.git}/bin"]
+      (builtins.readFile ../scripts/clojure-mcp-install.sh));
+
+  # Pi deliberately has no built-in MCP client.  Deploy the pinned
+  # adapter as a global extension and keep its server declarations in
+  # the tool-agnostic MCP configuration path.  Pi's mutable
+  # ~/.pi/agent/settings.json remains unmanaged.
+  home.file.".pi/agent/extensions/pi-mcp-adapter".source = "${piMcpAdapter}/lib/node_modules/pi-mcp-adapter";
+  xdg.configFile."mcp/mcp.json".source = ../config/mcp.json;
   programs.ssh = {
     enable = true;
     enableDefaultConfig = false;

@@ -1,0 +1,32 @@
+#+title: nixOS disk layout
+#+author: piotr-yuxuan
+
+What =disko-config.nix= creates on the NVMe drive of nixOS.
+
+* Partitions and volumes
+
+Disko reads =disko-config.nix= and creates:
+
+1. A 1 GB *ESP* partition (FAT32, mounted at =/boot=).
+2. A *LUKS-encrypted* partition spanning the rest of the NVMe.
+3. Inside LUKS, an *LVM volume group* (=vg-nixOS=) containing:
+   - =lv-swap= (72 GB): swap with resume support for hibernate.
+   - =lv-btrfs= (remaining space): Btrfs with subvolumes for =/=,
+     =/home/example=, =.cache=, and =/.snapshots=.
+
+All subvolumes use =compress=zstd= and =noatime=.
+
+* Device tree
+
+#+begin_example
+/dev/nvme0n1
+├── ESP (1 GB, vfat)  → /boot
+└── LUKS (cryptroot)
+    └── LVM vg-nixOS
+        ├── lv-swap (72 GB, swap, resume device for hibernate)
+        └── lv-btrfs (rest)
+            ├── @root         →  /
+            ├── @example       →  /home/example
+            ├── @example-cache →  /home/example/.cache
+            └── @.snapshots   →  /.snapshots
+#+end_example

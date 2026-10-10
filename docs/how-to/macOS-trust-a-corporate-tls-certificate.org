@@ -1,0 +1,374 @@
+#+title: Trust a corporate TLS certificate on macOS
+#+author: piotr-yuxuan
+
+Use this guide when the employer's network inspects TLS: a proxy
+re-signs every HTTPS connection with a corporate root certificate that
+Nix does not know. Nix then fails to download with an error that ends in
+=SSL peer certificate or SSH remote key was not OK=.
+
+The guide makes Nix trust that root without editing =/etc/nix/nix.conf=,
+then declares it in the Mac's local flake so that every later rebuild
+works on its own. It also covers an explicit proxy and the tools that
+keep their own trust store.
+
+*Untested on a managed Mac.* The steps come from the nix-darwin 26.05,
+Nix and Lix installer sources and from evaluating this configuration on
+Linux. If a step behaves differently, write down what you saw so that
+this page can be corrected.
+
+* Before you start
+
+- Nix is installed with the official installer, as in step 2 of
+  [[file:../tutorials/first-day-on-a-new-mac.org][the first-day tutorial]]. To install Lix with the certificate instead,
+  read [[*Alternative: install Lix with the certificate][the Lix alternative]] first.
+- The Mac's local flake, =~/src/local/macOS=, may not exist yet: this
+  guide makes the tutorial's steps 4 and 5 work, then replaces the
+  commands of its steps 6 and 7.
+- You can run =sudo=. Without permanent admin rights, see
+  [[file:../how-to/macOS-work-without-permanent-admin-rights.org][work without permanent admin rights]].
+- Do not edit =/etc/nix/nix.conf=. Before the first activation,
+  nix-darwin compares that file with the hashes of the files the
+  installers write. Any other content aborts the switch with
+  =Unexpected files in /etc=.
+
+* Check whether TLS is inspected
+
+Print the certificate chains that =cache.nixos.org= and =github.com=
+present to this Mac. Nix downloads binaries from the first and flake
+inputs from the second.
+
+#+begin_src zsh
+openssl s_client -showcerts -connect cache.nixos.org:443 -servername cache.nixos.org </dev/null 2>/dev/null | grep -E ' (s|i):'
+openssl s_client -showcerts -connect github.com:443 -servername github.com </dev/null 2>/dev/null | grep -E ' (s|i):'
+#+end_src
+
+Read the =i:= (issuer) lines:
+
+- Public certificate authorities mean no inspection. On 9 October 2026,
+  without a proxy, =cache.nixos.org= chained to Let's Encrypt and ISRG,
+  and =github.com= to Sectigo and USERTrust. Stop here: this guide does
+  not apply.
+- The employer's name or a security vendor (for example Zscaler or
+  Netskope) means TLS is inspected. The last =i:= line names the root
+  certificate to trust. Note its common name, the value after ~CN=~.
+
+* Export the corporate root certificate
+
+IT usually installs the root in the System keychain through a
+configuration profile. Export it as PEM, replacing =<root name>= with
+part of the common name noted above:
+
+#+begin_src zsh
+security find-certificate -a -p -c '<root name>' /Library/Keychains/System.keychain > ~/corporate-root.pem
+grep -c 'BEGIN CERTIFICATE' ~/corporate-root.pem
+openssl x509 -in ~/corporate-root.pem -noout -subject -issuer -enddate
+#+end_src
+
+- The count must be at least 1. Several certificates in the file are
+  fine as long as the root is among them.
+- A root has the same subject and issuer. The end date must be in the
+  future.
+
+With the mouse instead: open Keychain Access (Spotlight finds it),
+select the System keychain and the Certificates category, select the
+root, choose File, Export Items, set the format to Privacy Enhanced
+Mail (.pem) and save it as =corporate-root.pem= in your home folder.
+
+If the root is in no keychain, ask IT for it in PEM format.
+
+* Build a temporary certificate bundle
+
+#+begin_src zsh
+cat /nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt ~/corporate-root.pem > ~/nix-bootstrap-ca.pem
+#+end_src
+
+Keep the bundle directly in your home folder. You only need it until the
+first switch succeeds.
+
+* Fetch flakes with the bundle
+
+Nix fetches a flake and its inputs in your own process, which reads
+=NIX_SSL_CERT_FILE=. Set it for this terminal:
+
+#+begin_src zsh
+export NIX_SSL_CERT_FILE="$HOME/nix-bootstrap-ca.pem"
+#+end_src
+
+In this terminal =nix flake init=, =nix flake lock= and =nix eval= now
+work. If the local flake does not exist yet, run steps 4 and 5 of
+[[file:../tutorials/first-day-on-a-new-mac.org][the first-day tutorial]] here, then come back.
+
+Builds are different: they download through the Nix daemon, which does
+not see your variable. The sections below deal with that.
+
+* Declare the certificate in the local flake
+
+Do this before the first switch. Once nix-darwin is active, the Nix
+daemon reads =/etc/ssl/certs/ca-certificates.crt=, and that file
+contains the corporate root only if the configuration declares it.
+
+1. Copy the certificate beside the local flake's =flake.nix= and stage
+   it. A flake only sees files that Git tracks or stages.
+
+   #+begin_src zsh
+   cd ~/src/local/macOS
+   cp ~/corporate-root.pem corporate-root.pem
+   git add corporate-root.pem
+   #+end_src
+
+2. In the local =flake.nix=, add one entry to =extraHostModules=:
+
+   #+begin_src nix
+   extraHostModules = [
+     # Corporate TLS inspection: trust the employer's root certificate
+     # for Nix, the linux-builder and Nix-built tools.
+     {security.pki.certificateFiles = [./corporate-root.pem];}
+   ];
+   #+end_src
+
+   nix-darwin concatenates it with the Mozilla bundle it already
+   installs, writes the result to =/etc/ssl/certs/ca-certificates.crt=,
+   and points =NIX_SSL_CERT_FILE= at that file for login shells, the
+   =nix-daemon= launchd job and the =linux-builder= job.
+
+3. Check that the configuration sees it. The command prints two paths,
+   the second one ending in =corporate-root.pem=:
+
+   #+begin_src zsh
+   nix --extra-experimental-features 'nix-command flakes' eval '.#darwinConfigurations.macOS.config.security.pki.certificateFiles'
+   #+end_src
+
+The certificate is public, not a secret, but its subject names the
+employer. It stays in the local flake, which never leaves the Mac, and
+never goes into this repository.
+[[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]] says more about machine-local modules.
+
+* Bypass the installer's daemon
+
+The daemon set up by the Nix installer does not trust the corporate
+root, and you must not edit its configuration. Root can bypass it: with
+~NIX_REMOTE=local~, Nix run as root opens the store directly instead of
+asking the daemon, and reads =NIX_SSL_CERT_FILE= from its own
+environment. The build and switch commands below set both.
+
+The switch needs ~NIX_REMOTE=local~ even when the build already
+succeeded: =darwin-rebuild= sends its own build to the daemon unless
+=NIX_REMOTE= is set, so anything it still has to download, for example
+after you edit the local flake to fix an activation check, would go
+through the installer's daemon and fail. The daemon trusts the root
+only once the switch has replaced it with the one nix-darwin
+configures. Like the rest of this page, this is untested on a managed
+Mac.
+
+Check that root can open the store directly:
+
+#+begin_src zsh
+sudo env NIX_REMOTE=local nix --extra-experimental-features nix-command store info
+#+end_src
+
+The first line must read =Store URL: local=.
+
+If =sudo= cannot find =nix=, call it as
+=/nix/var/nix/profiles/default/bin/nix=.
+
+* Build and switch as root
+
+Run the build gate, then the first switch, both with the bundle and
+the local store:
+
+#+begin_src zsh
+cd ~/src/local/macOS
+sudo env NIX_SSL_CERT_FILE="$HOME/nix-bootstrap-ca.pem" NIX_REMOTE=local \
+  nix --extra-experimental-features 'nix-command flakes' \
+  build '.#darwinConfigurations.macOS.system'
+sudo env NIX_SSL_CERT_FILE="$HOME/nix-bootstrap-ca.pem" NIX_REMOTE=local \
+  nix --extra-experimental-features 'nix-command flakes' \
+  run 'nix-darwin/nix-darwin-26.05#darwin-rebuild' -- switch --flake '.#macOS'
+#+end_src
+
+The build leaves a =result= link in the local flake's directory. Delete
+it with =rm result= once the switch has succeeded.
+
+If the switch stops with =Unexpected files in /etc=, move each listed
+file aside as the message says, then run the second command again.
+[[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]] covers this and other activation errors.
+
+Later rebuilds need no prefix: =sudo darwin-rebuild switch --flake '.#macOS'=.
+
+* Verify
+
+Open a new terminal, then:
+
+#+begin_src zsh
+echo "$NIX_SSL_CERT_FILE"
+openssl crl2pkcs7 -nocrl -certfile /etc/ssl/certs/ca-certificates.crt | openssl pkcs7 -print_certs -noout | grep -i '<root name>'
+sudo launchctl print system/org.nixos.nix-daemon | grep NIX_SSL_CERT_FILE
+nix store info --store https://cache.nixos.org
+#+end_src
+
+- The first command prints =/etc/ssl/certs/ca-certificates.crt=.
+- The second prints the subject of the corporate root.
+- The third shows that the daemon uses the same file.
+- The last prints =Store URL: https://cache.nixos.org= without a TLS
+  error.
+
+=nix build --no-link 'nixpkgs#hello'= then exercises the daemon's own
+downloads. When everything passes, delete =~/nix-bootstrap-ca.pem=. If
+you came from the first-day tutorial, go on with the check of its
+step 7.
+
+* Use an explicit proxy
+
+Follow this section only if the network requires a configured proxy.
+Nix downloads through libcurl, which cannot read a PAC file: ask IT for
+the proxy host and port.
+
+- Bootstrap: export the proxy variables beside =NIX_SSL_CERT_FILE= in
+  [[*Fetch flakes with the bundle][the terminal that fetches flakes]], and add them to the =sudo env=
+  prefix of both root commands, for example:
+
+  #+begin_src zsh
+  sudo env NIX_SSL_CERT_FILE="$HOME/nix-bootstrap-ca.pem" NIX_REMOTE=local \
+    https_proxy=http://proxy.example:3128 http_proxy=http://proxy.example:3128 \
+    nix --extra-experimental-features 'nix-command flakes' \
+    build '.#darwinConfigurations.macOS.system'
+  #+end_src
+
+- Nix daemon: add one more entry to =extraHostModules= in the local
+  =flake.nix=. nix-darwin merges it with the variables it already sets
+  for the daemon, =NIX_SSL_CERT_FILE= included.
+
+  #+begin_src nix
+  {
+    launchd.daemons.nix-daemon.serviceConfig.EnvironmentVariables = {
+      http_proxy = "http://proxy.example:3128";
+      https_proxy = "http://proxy.example:3128";
+      no_proxy = "localhost,127.0.0.1";
+    };
+  }
+  #+end_src
+
+- Shells: add the same three variables to =home.sessionVariables= in a
+  Home Manager module of the local flake; =identity.nix= is one.
+- Activation runs with an empty environment, so the Homebrew step of a
+  switch does not see the shell's proxy variables. Run Homebrew from a
+  shell instead, see [[file:../how-to/macOS-manage-homebrew.org][manage Homebrew]].
+- The =linux-builder= job gets the certificate bundle but not these
+  proxy variables (untested).
+
+* Alternative: install Lix with the certificate
+
+Use this instead of the official installer when Nix is not installed
+yet. The Lix installer takes the bundle as an argument. Build it from
+the file macOS ships, because Nix's own bundle does not exist yet:
+
+#+begin_src zsh
+cat /etc/ssl/cert.pem ~/corporate-root.pem > ~/nix-bootstrap-ca.pem
+curl --proto '=https' --tlsv1.2 -sSf -L https://install.lix.systems/lix | sh -s -- install --ssl-cert-file "$HOME/nix-bootstrap-ca.pem"
+#+end_src
+
+Add =--proxy http://proxy.example:3128= when an explicit proxy is
+required.
+
+The installer writes =ssl-cert-file= into =/etc/nix/nix.conf=, so the
+file no longer matches a known installer hash:
+
+1. Create the local flake as the tutorial's steps 4 and 5 say, then
+   [[*Declare the certificate in the local flake][declare the certificate in the local flake]] as above.
+2. Run the first switch. It stops with =Unexpected files in /etc= and
+   lists =/etc/nix/nix.conf=.
+3. Move the file aside, then run the switch again with the =sudo env=
+   prefix from [[*Build and switch as root][build and switch as root]], because =nix.conf= no longer
+   points at the bundle:
+
+   #+begin_src zsh
+   sudo mv /etc/nix/nix.conf /etc/nix/nix.conf.before-nix-darwin
+   #+end_src
+
+4. If the switch then reports custom settings in
+   =/etc/nix/nix.custom.conf=, move that file aside the same way, as its
+   message says.
+
+The first switch replaces the Lix daemon with the Nix that nix-darwin
+installs by default (=nix.package=).
+
+* Other tools
+
+=security.pki= covers Nix and Nix-built programs started from a login
+shell. Other tools keep their own trust store. Fix them only when one
+fails.
+
+- Homebrew :: its =ca-certificates= formula builds its bundle from the
+  System keychain when it is installed. If IT added the root afterwards,
+  run =brew postinstall ca-certificates=.
+- curl and Git :: the Nix-built =curl= and =git= read
+  =NIX_SSL_CERT_FILE=, which nix-darwin sets in login shells. Apple's
+  =/usr/bin/curl= and =/usr/bin/git= use the keychain and usually work.
+- Python and uv :: Nix's Python and its =certifi= read
+  =NIX_SSL_CERT_FILE=. Python downloaded by =uv= may need
+  =SSL_CERT_FILE=, and =requests= installed in a virtual environment
+  needs =REQUESTS_CA_BUNDLE=.
+  =uv= itself reads =SSL_CERT_FILE=, or uses the keychain with
+  ~UV_SYSTEM_CERTS=true~.
+- JavaScript runtimes :: Node reads extra roots from
+  =NODE_EXTRA_CA_CERTS=.
+- Java :: the JDK's truststore sits in the read-only Nix store. Import
+  the root into a copy and point the JVM at it:
+
+  #+begin_src zsh
+  mkdir -p ~/.local/share/java
+  cp "$(dirname "$(readlink -f "$(command -v java)")")/../lib/security/cacerts" ~/.local/share/java/cacerts
+  chmod u+w ~/.local/share/java/cacerts
+  keytool -importcert -noprompt -alias corporate-root \
+    -file ~/src/local/macOS/corporate-root.pem \
+    -keystore ~/.local/share/java/cacerts -storepass changeit
+  export JAVA_TOOL_OPTIONS="-Djavax.net.ssl.trustStore=$HOME/.local/share/java/cacerts"
+  #+end_src
+
+  The copy does not follow JDK updates: repeat it after a JDK bump.
+- Emacs :: Emacs.app reads the files listed in =gnutls-trustfiles=, and
+  the default list starts with =/etc/ssl/certs/ca-certificates.crt=.
+  Check with =M-: (gnutls-trustfiles)= and
+  =M-x eww RET https://cache.nixos.org=. See
+  [[file:../how-to/macOS-troubleshoot-emacs.org][troubleshoot Emacs on macOS]] if it fails.
+- Containers :: images carry their own trust store; this guide does not
+  cover them.
+
+To set the variables for every shell, add them to a Home Manager module
+of the local flake, for example =identity.nix=, and rebuild.
+Applications started from the Dock do not see them.
+
+#+begin_src nix
+home.sessionVariables = {
+  SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt";
+  REQUESTS_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt";
+  NODE_EXTRA_CA_CERTS = "/etc/ssl/certs/ca-certificates.crt";
+};
+#+end_src
+
+* Troubleshooting
+
+- =SSL peer certificate or SSH remote key was not OK= from
+  =nix flake init=, =nix flake lock= or =nix eval= :: the terminal lacks
+  =NIX_SSL_CERT_FILE=. Export it again as in
+  [[*Fetch flakes with the bundle][Fetch flakes with the bundle]].
+- The same error during the root build or switch :: the =sudo env=
+  prefix or its ~NIX_REMOTE=local~ is missing, or the bundle lacks the
+  root. Rerun the =grep -c= and =openssl x509= checks on
+  =~/nix-bootstrap-ca.pem=.
+- An error says =corporate-root.pem= does not exist :: the file is not
+  staged. Run =git add corporate-root.pem= in the local flake.
+- =Unexpected files in /etc= lists =/etc/nix/nix.conf= :: the file was
+  edited, or written by the Lix installer. Move it aside as shown in
+  [[*Alternative: install Lix with the certificate][the Lix alternative]].
+- Nix works as root but your own =nix= commands fail after the switch ::
+  open a new terminal so that =NIX_SSL_CERT_FILE= points at the file
+  nix-darwin wrote, then repeat [[*Verify][the verification]].
+
+* Related
+
+- [[file:../tutorials/first-day-on-a-new-mac.org][First day on a new Mac]]
+- [[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]]
+- [[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts with MDM]]
+- [[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use an IT-managed Nix or Homebrew]]
+- [[file:../explanation/macOS-corporate-machine-considerations.org][Corporate machine considerations]]

@@ -1,0 +1,264 @@
+#+TITLE: macOS security posture
+#+AUTHOR: piotr-yuxuan
+#+STARTUP: overview
+
+Security hardening rationale for the macOS hosts (aarch64-darwin).
+Most measures described here are implemented declaratively through
+nix-darwin (=hosts/macOS.nix=), Home Manager (=home/macOS.nix=,
+=home/base.nix=), and the post-activation script
+(=scripts/darwin-post-activation.sh=).  Since April 2026 that script
+only shows the input menu on the login screen, so FileVault, SIP, ICMP
+redirects, Gatekeeper and part of the remote access lockdown are manual
+audit points that this configuration does not enforce or check.  The
+periodic checklist is in
+[[file:../how-to/macOS-audit-security.org][Audit macOS security]].
+
+* Table of contents :TOC_2_org:
+- [[Full disk encryption (FileVault)][Full disk encryption (FileVault)]]
+- [[System Integrity Protection (SIP)][System Integrity Protection (SIP)]]
+- [[Application Layer Firewall][Application Layer Firewall]]
+- [[ICMP redirect rejection][ICMP redirect rejection]]
+- [[Gatekeeper verification][Gatekeeper verification]]
+- [[Remote access lockdown][Remote access lockdown]]
+- [[Screen lock and idle timeout][Screen lock and idle timeout]]
+- [[Login window hardening][Login window hardening]]
+- [[Siri and assistant disabled][Siri and assistant disabled]]
+- [[AirDrop and Bluetooth sharing][AirDrop and Bluetooth sharing]]
+- [[Nix daemon trust model][Nix daemon trust model]]
+- [[Nix store signature verification][Nix store signature verification]]
+- [[sudo hardening (Touch ID)][sudo hardening (Touch ID)]]
+- [[Homebrew security environment][Homebrew security environment]]
+- [[SSH client hardening][SSH client hardening]]
+- [[Git supply chain verification][Git supply chain verification]]
+- [[Nix input staleness check][Nix input staleness check]]
+- [[Application sandboxing (TCC)][Application sandboxing (TCC)]]
+
+* Full disk encryption (FileVault)
+
+This configuration neither enforces nor checks FileVault.  FileVault
+must be enabled manually through System Settings because nix-darwin
+has no option to toggle it.
+
+Checked in [[file:../how-to/macOS-audit-security.org::*FileVault status][Audit macOS security]].
+
+* System Integrity Protection (SIP)
+
+SIP is a boot-time setting managed by the Recovery OS, so nix-darwin
+cannot enforce it, and this configuration does not check it either.
+It has to be checked by hand, in particular after troubleshooting in
+the Recovery OS, where it is easy to leave it disabled.
+
+Checked in [[file:../how-to/macOS-audit-security.org::*SIP status][Audit macOS security]].
+
+* Application Layer Firewall
+
+=networking.applicationFirewall= in =hosts/macOS.nix= configures the
+macOS Application Layer Firewall:
+
+| Setting             | Value   | Purpose                              |
+|---------------------+---------+--------------------------------------|
+| =enable=            | =true=  | Firewall enabled                     |
+| =enableStealthMode= | =true=  | Stealth mode: drop unsolicited ICMP  |
+| =allowSignedApp=    | =false= | Block incoming for signed downloads  |
+| =blockAllIncoming=  | =true=  | Block incoming to non-essential apps |
+
+Checked in [[file:../how-to/macOS-audit-security.org::*Firewall status][Audit macOS security]].
+
+* ICMP redirect rejection
+
+This configuration does not set =net.inet.icmp.drop_redirect=.
+Setting it to 1 prevents ICMP redirect injection attacks on untrusted
+Wi-Fi networks (coffee shops, conferences).
+
+Checked in [[file:../how-to/macOS-audit-security.org::*ICMP redirect sysctl][Audit macOS security]].
+
+* Gatekeeper verification
+
+Gatekeeper is a macOS boot-time policy and cannot be toggled by
+nix-darwin, and this configuration does not check it either.  Its
+status is a manual audit point.
+
+Checked in [[file:../how-to/macOS-audit-security.org::*Gatekeeper status][Audit macOS security]].
+
+* Remote access lockdown
+
+Only one remote access vector is disabled declaratively:
+
+- *Remote Apple Events:* disabled in =CustomUserPreferences=
+  (=com.apple.AEServer=).
+
+The others are manual audit points that this configuration does not
+enforce:
+
+- *Remote Login (SSH server):* should stay off.
+- *Wake-on-LAN:* should stay off to prevent powering on the machine
+  from the network.
+- *IR receiver:* on Macs that have one, should stay disabled so the
+  machine does not respond to infrared input.
+
+Checked in [[file:../how-to/macOS-audit-security.org::*Remote access][Audit macOS security]].
+
+* Screen lock and idle timeout
+
+=com.apple.screensaver= in =CustomUserPreferences= (=hosts/macOS.nix=)
+configures automatic screen lock:
+
+| Setting                | Value | Purpose                                     |
+|------------------------+-------+---------------------------------------------|
+| =askForPassword=       |     1 | Require password after screensaver or sleep  |
+| =askForPasswordDelay=  |     0 | Immediately (no grace period)                |
+| =idleTime=             |   900 | Screensaver activates after 15 min of idle   |
+
+* Login window hardening
+
+=system.defaults.loginwindow= in =hosts/macOS.nix= restricts the
+login screen:
+
+| Setting                | Value  | Purpose                                    |
+|------------------------+--------+--------------------------------------------|
+| =GuestEnabled=         | =false= | No guest sessions                         |
+| =DisableConsoleAccess= | =true= | Prevent console (=>console=) login         |
+| =SHOWFULLNAME=         | =true= | Username/password fields instead of avatars |
+
+The post-activation script also enables the keyboard input menu on
+the login screen so the layout tracks the last user.
+
+* Siri and assistant disabled
+
+=CustomUserPreferences= in =hosts/macOS.nix= disables Siri and the
+assistant:
+
+- =com.apple.Siri.StatusMenuVisible = false=
+- =com.apple.Siri.UserHasDeclinedEnable = true=
+- =com.apple.assistant.support."Assistant Enabled" = false=
+
+* AirDrop and Bluetooth sharing
+
+=CustomUserPreferences= in =hosts/macOS.nix= restricts wireless
+sharing:
+
+- *AirDrop:* set to contacts only (=com.apple.sharingd.DiscoverableMode=).
+- *Bluetooth sharing:* disabled
+  (=com.apple.Bluetooth.PrefKeyServicesEnabled = false=).
+
+* Nix daemon trust model
+
+=nix.settings.trusted-users= in =hosts/macOS.nix= is set to
+=["root" config.system.primaryUser]=.  The primary user is the =user=
+argument that the Mac's own flake gives to =lib.mkDarwinHost=, the only
+place where the account name is written.  This scopes store
+substitution authority to the machine
+owner, preventing future accounts from pushing arbitrary derivations.
+
+Checked in [[file:../how-to/macOS-audit-security.org::*Nix settings][Audit macOS security]].
+
+* Nix store signature verification
+
+=nix.settings= in =hosts/macOS.nix= enforces binary cache integrity:
+
+- =require-sigs = true=: every store path fetched from a cache must
+  carry a valid cryptographic signature.
+- =trusted-public-keys= is hardcoded to the keys of the two listed
+  substituters, the official =cache.nixos.org= and
+  =nix-wpe-webkit.cachix.org=, so a rogue substituter cannot be
+  silently accepted.
+
+Checked in [[file:../how-to/macOS-audit-security.org::*Nix settings][Audit macOS security]].
+
+* sudo hardening (Touch ID)
+
+=security.pam.services.sudo_local.touchIdAuth = true= in
+=hosts/macOS.nix= enables Touch ID for sudo authentication.  This
+provides biometric gating: shoulder surfing a password is not enough
+to escalate privileges.
+
+* Homebrew security environment
+
+Home Manager (=home/macOS.nix=) sets the following environment
+variables for Homebrew:
+
+| Variable                        | Value            | Purpose                              |
+|---------------------------------+------------------+--------------------------------------|
+| =HOMEBREW_CASK_OPTS=            | =--require-sha=  | Require checksum on every cask       |
+| =HOMEBREW_FORCE_BREWED_CURL=    | =1=              | Use Homebrew's curl (patched)        |
+| =HOMEBREW_NO_ANALYTICS=         | =1=              | Disable telemetry                    |
+| =HOMEBREW_NO_GITHUB_API=        | =1=              | No GitHub API calls                  |
+| =HOMEBREW_NO_INSECURE_REDIRECT= | =1=              | Block HTTP redirects                 |
+| =HOMEBREW_NO_ENV_HINTS=         | =1=              | Suppress hint banners                |
+
+These are Home Manager session variables, so they apply to shells
+only.  nix-darwin runs activation with an empty environment, so the
+=brew bundle= run during =sudo darwin-rebuild switch= does not see them.
+
+Checked in [[file:../how-to/macOS-audit-security.org::*Homebrew integrity][Audit macOS security]].
+
+* SSH client hardening
+
+Shared with nixOS via =home/base.nix=.  Home Manager configures SSH
+with:
+
+- =IdentitiesOnly yes=: only the declared key is offered.
+- =PasswordAuthentication no=: password fallback disabled.
+- =HashKnownHosts yes=: host names in =known_hosts= are hashed.
+- =StrictHostKeyChecking accept-new=: new hosts are accepted once,
+  then pinned.
+- =ForwardAgent no=: agent forwarding off by default.
+
+=home/macOS.nix= adds =UseKeychain yes= to =Host *= so that Apple's
+ssh keeps key passphrases in the login Keychain.  It declares no
+=Host github.com= block: the personal key is selected per directory
+through =core.sshCommand= in the =gitdir:~/src/github.com/piotr-yuxuan/=
+include of the Mac's own =identity.nix=, so it is never offered to work
+repositories.
+
+Checked in [[file:../how-to/macOS-audit-security.org::*SSH client settings][Audit macOS security]].
+
+* Git supply chain verification
+
+Shared with nixOS via =home/base.nix=.  =transfer.fsckObjects=,
+=fetch.fsckObjects=, and =receive.fsckObjects= are enabled.  The
+cleartext =git://= protocol is blocked; only HTTPS and SSH are
+allowed.
+
+Checked in [[file:../how-to/macOS-audit-security.org::*Git object checks][Audit macOS security]].
+
+* Nix input staleness check
+
+A launchd agent (=com.user.nix-staleness-check=) runs weekly on
+Monday at 09:00.  It queries =nix flake metadata= and fires a macOS
+notification if any input was last updated more than 14 days ago.
+
+launchd agents do not inherit shell variables, so the agent gets
+=NH_FLAKE= from the Mac's own =identity.nix=, which sets it to the
+directory of the Mac's local flake, =~/src/local/macOS=.  What the
+check reads is therefore the lock of that flake: the commit of this
+repository in use, and the inputs that commit pins.  The check exits
+silently when the directory does not exist, so the variable must
+follow the local flake if it moves.
+
+launchd runs a calendar trigger missed during sleep when the Mac wakes
+up.  Whether a trigger missed while the Mac was shut down runs later
+is untested on a managed Mac.
+
+Checked in [[file:../how-to/macOS-audit-security.org::*Flake inputs][Audit macOS security]].
+
+* Application sandboxing (TCC)
+
+macOS Transparency, Consent, and Control (TCC) restricts per-app
+access to sensitive directories (Desktop, Documents, Downloads).  For
+side-loaded apps like VSCode that are not subject to the App Store
+sandbox, TCC is the primary containment mechanism.
+
+Recommended manual configuration in System Settings > Privacy &
+Security > Files and Folders:
+
+- Deny VSCode access to Desktop and Documents unless a project lives
+  there.
+- Deny access to Removable Volumes.
+- Allow only the minimum necessary for the code directories you work
+  in.
+
+nix-darwin cannot manage TCC programmatically (it requires user
+consent via the GUI).
+
+Checked in [[file:../how-to/macOS-audit-security.org::*TCC permissions][Audit macOS security]].

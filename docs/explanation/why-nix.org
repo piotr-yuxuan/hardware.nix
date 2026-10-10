@@ -1,0 +1,106 @@
+#+title: Why Nix
+#+author: piotr-yuxuan
+
+This repository is the successor of a literate macOS configuration
+that lived as a single =readme.org= tangled with Emacs Babel. That
+approach served well for years, but moving to NixOS made it clear that
+a purpose-built declarative tool was a better fit.
+
+The core appeal of Nix:
+
+- *Repeatable builds.* A flake lock file pins every input to an exact
+  revision. Two machines (or the same machine six months apart)
+  produce identical results from the same lock: no "works on my
+  laptop" drift.
+- *Declarative system configuration.* A NixOS or nix-darwin rebuild
+  converges the entire system (packages, services, kernel parameters,
+  user environment) to the state described in a handful of =.nix=
+  files. Nothing is left implicit.
+- *Atomic rollback.* Every rebuild creates a generation that can be
+  activated instantly. On NixOS the boot menu lists all recent
+  generations, so a bad change never bricks the machine.
+- *Cross-platform.* The same Home Manager modules run on NixOS and macOS
+  (via nix-darwin), so shared tooling only needs to be written once.
+
+
+* Evolving from Emacs org-mode
+
+The previous repository used org-mode literate programming: one giant
+=readme.org= contained prose, shell snippets, and Emacs Lisp blocks that
+were tangled into dotfiles with =org-babel-tangle=.
+
+What worked:
+
+- Prose and configuration lived side by side, so decisions were
+  documented where they were made.
+- Org tags (=:macos:=, =:tty:=, =:language:=) gave a navigable taxonomy.
+- Evaluating blocks in-place turned the readme into a REPL for system
+  administration.
+
+What didn't scale:
+
+- Tangling is a /generation/ step, not an /enforcement/ step. Nothing
+  stopped the running system from drifting once the files were copied.
+- Adding a new package meant editing prose, adding a =brew install=
+  line, and hoping you'd remember to tangle + copy. Nix makes the
+  package list the source of truth and installs it atomically.
+- Cross-machine differences were handled with =if= guards inside shell
+  blocks. Nix modules compose host-specific overlays cleanly.
+- The whole approach depended on Emacs being available. Bootstrapping
+  a fresh machine required installing Emacs first, cloning the repo,
+  and tangling: a fragile chain for disaster recovery.
+
+The philosophical goals (locality, declarativeness, simplicity)
+haven't changed; only the tool that enforces them has.
+
+* Why not chezmoi or mise
+
+[[https://www.chezmoi.io/][chezmoi]] is a polished dotfile manager. It handles templates, secrets,
+and multi-machine diffs well. But it manages /files/, not /system state/.
+It can place a =.zshrc= but cannot install Zsh, configure a systemd
+service, partition a disk, or pin a kernel version. For a full-system
+declaration, Nix is the right layer.
+
+[[https://mise.jdx.dev/][mise]] (formerly rtx) is a polyglot runtime manager, a modern
+replacement for asdf, nvm, pyenv, and friends. It excels at
+per-project tool versions but doesn't attempt system configuration. On
+NixOS the Nix store already provides hermetic, per-project tool
+versions via =nix develop= / =devenv= / =direnv=, so mise would be a
+redundant layer. On macOS it could complement Nix for teams not ready
+to adopt flakes, but for a personal environment that already runs
+nix-darwin it adds no value.
+
+Both tools solve real problems. They simply solve /different/ problems
+than the ones this repository addresses.
+
+* Other tools to manage configuration
+
+Some aspects of these other tools are interesting. Some aren't as
+friendly; some are about deploying packages when the goal here is only
+to document and ease environment configuration.
+
+** Nix and NixOS
+
+What this repository uses now. The module system and flakes give
+declarativeness and reproducibility for free: no literate tangling
+step needed. The trade-off is a steeper learning curve and a language
+(Nix) that takes getting used to.
+
+** GitHub dotfiles
+
+http://dotfiles.github.io/
+
+** GNU Stow
+
+http://brandon.invergo.net/news/2012-05-26-using-gnu-stow-to-manage-your-dotfiles.html
+
+A sane way to manage symlinks when you don't want a full-blown
+configuration manager.
+
+** vcsh and myrepos
+
+https://blog.tfnico.com/2014/03/managing-dot-files-with-vcsh-and-myrepos.html
+
+** Ansible, Puppet, Chef
+
+https://blog.palcu.ro/2014/06/dotfiles-and-dev-tools-provisioned-by.html

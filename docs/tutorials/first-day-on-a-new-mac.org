@@ -1,0 +1,794 @@
+#+title: First day on a new Mac
+#+author: piotr-yuxuan
+
+This lesson takes a fresh Apple Silicon Mac to the =macOS= configuration
+of this repository. At the end of it you have Nix and nix-darwin
+managing the system, Home Manager managing your shell and tools, the
+Homebrew apps of [[file:../../config/Brewfile][config/Brewfile]] installed, your personal Git identity
+with this Mac's own keys, and Emacs running its usual configuration.
+
+The Mac never clones this repository. It builds from the published copy
+on GitHub and from a small flake of its own, =~/src/local/macOS=, that
+holds what belongs to this Mac only: the account name, the Git
+identities and any machine-local module. You create that flake in
+step 4.
+
+Follow the steps in order. Each step ends with a check. When a check
+fails, the linked how-to guide gets you unstuck; come back to the same
+step afterwards. Plan for most of a day: the downloads alone are
+several gigabytes.
+
+The page has not been run on a Mac yet: nothing here can be run from
+the Linux laptop where this configuration is written. Commands and
+messages quoted here come from the configuration and from the
+nix-darwin 26.05 sources, and the local flake of steps 4 and 5 was
+evaluated on Linux. Steps marked /untested on a managed Mac/ describe
+macOS or IT behaviour that could not be checked in advance.
+
+Run every command in Terminal. Once step 4 has created it, run them from
+the local flake's directory, =~/src/local/macOS=, unless a step says
+otherwise.
+
+* Table of contents :TOC_2_org:
+- [[Before you start][Before you start]]
+- [[1. Install the command line tools][1. Install the command line tools]]
+- [[2. Install Nix][2. Install Nix]]
+- [[3. Install Homebrew][3. Install Homebrew]]
+- [[4. Create the Mac's local flake][4. Create the Mac's local flake]]
+- [[5. Set the account name][5. Set the account name]]
+- [[6. Build without activating][6. Build without activating]]
+- [[7. Switch for the first time][7. Switch for the first time]]
+- [[8. Restart][8. Restart]]
+- [[9. Grant privacy permissions][9. Grant privacy permissions]]
+- [[10. Create the personal SSH key][10. Create the personal SSH key]]
+- [[11. Create the signing key and fill the Git identity][11. Create the signing key and fill the Git identity]]
+- [[12. Keep secrets out of the Nix store][12. Keep secrets out of the Nix store]]
+- [[13. Clone the Emacs configuration][13. Clone the Emacs configuration]]
+- [[14. Start Emacs][14. Start Emacs]]
+- [[15. Run the final checks][15. Run the final checks]]
+- [[What to read next][What to read next]]
+
+* Before you start
+
+Have these at hand: the Mac and its login password, and your password
+manager with the GitHub login and its second factor. This configuration
+installs no authenticator app.
+
+Then run these checks. None of them changes anything.
+
+1. The Mac is Apple Silicon and runs macOS 14 or later, which nixpkgs
+   26.05 requires:
+
+   #+begin_src zsh
+   uname -m
+   sw_vers
+   #+end_src
+
+   Expect =arm64=, and a =ProductVersion= of 14 or more.
+
+2. Note your account name:
+
+   #+begin_src zsh
+   id -un
+   #+end_src
+
+   You write it into the local flake in step 5.
+
+3. You can administer the Mac:
+
+   #+begin_src zsh
+   id -Gn | tr ' ' '\n' | grep -x admin
+   #+end_src
+
+   Expect =admin=. If nothing is printed, read
+   [[file:../how-to/macOS-work-without-permanent-admin-rights.org][Work without permanent admin rights]]
+   first: the Nix install, the Homebrew install and every switch need
+   administrator rights.
+
+4. The disk is encrypted:
+
+   #+begin_src zsh
+   fdesetup status
+   #+end_src
+
+   Expect =FileVault is On.= If it is off, turn it on (System Settings,
+   Privacy & Security, FileVault) or ask IT before step 2: the Nix
+   installer encrypts its =Nix Store= volume only when FileVault is on.
+
+5. Whether IT manages the Mac:
+
+   #+begin_src zsh
+   profiles status -type enrollment
+   #+end_src
+
+   =MDM enrollment: Yes= means IT profiles control some of the settings
+   this configuration also sets. That is expected on a corporate Mac;
+   keep [[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve MDM conflicts]]
+   open for step 7.
+
+6. No Nix and no Homebrew are installed yet:
+
+   #+begin_src zsh
+   ls -d /nix /opt/homebrew /usr/local/bin/determinate-nixd 2>/dev/null
+   #+end_src
+
+   Expect no output. If a path is listed, IT or a previous owner
+   installed Nix or Homebrew: follow
+   [[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use IT-managed Nix or Homebrew]]
+   when you reach the matching step (2 for Nix, 3 for Homebrew).
+
+7. Whether the network inspects TLS (/untested on a managed Mac/):
+
+   #+begin_src zsh
+   /usr/bin/curl -sv -o /dev/null https://cache.nixos.org/nix-cache-info 2>&1 | grep -i 'issuer:'
+   /usr/bin/curl -sv -o /dev/null https://github.com 2>&1 | grep -i 'issuer:'
+   #+end_src
+
+   Expect a public certificate authority: on 9 October 2026 these were
+   Let's Encrypt for cache.nixos.org and Sectigo for github.com. A
+   corporate name instead (Zscaler, Netskope, the employer) means TLS is
+   inspected. macOS tools trust that certificate, but Nix does not:
+   follow [[file:../how-to/macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]]
+   when step 2 or step 4 sends you there.
+
+8. There is room on the disk:
+
+   #+begin_src zsh
+   df -h /
+   #+end_src
+
+   Keep at least 50 GB available. The Nix part of this configuration
+   unpacks to about 17 GiB (measured on 9 October 2026), and the
+   Homebrew apps and TeX Live come on top of it.
+
+* 1. Install the command line tools
+
+The command line tools provide Apple's =git= and the compilers that
+Homebrew needs.
+
+#+begin_src zsh
+xcode-select --install
+#+end_src
+
+A dialog opens. Choose Install and accept the licence. Wait for it to
+finish.
+
+*Check.*
+
+#+begin_src zsh
+xcode-select -p
+git --version
+#+end_src
+
+Expect =/Library/Developer/CommandLineTools=, then a Git version that
+mentions =Apple Git=.
+
+If the installer is refused for lack of rights, see
+[[file:../how-to/macOS-work-without-permanent-admin-rights.org][Work without permanent admin rights]].
+
+* 2. Install Nix
+
+Use the official installer:
+
+#+begin_src zsh
+curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh
+#+end_src
+
+What happens:
+
+- The script downloads Nix (version 2.35.2 on 9 October 2026) and
+  installs it for all users, with a daemon.
+- Because its input is a pipe, it prints =No TTY, assuming you would say
+  yes :)= instead of asking questions. That is expected.
+- It asks for your password through =sudo=. macOS may also ask whether
+  Terminal may administer your computer: allow it (/untested on a
+  managed Mac/).
+- It creates a =Nix Store= volume, the build users and the
+  =org.nixos.nix-daemon= service, then tells you to open a new shell.
+
+Never use the Determinate installer with this configuration. nix-darwin
+manages the Nix daemon here (its settings and the Linux builder), and
+its first activation stops with =Determinate detected, aborting
+activation= when Determinate's own daemon is present.
+
+Close this terminal window and open a new one: the installer added Nix
+to =/etc/zshrc=, which only new shells read.
+
+*Check.*
+
+#+begin_src zsh
+nix --version
+nix --extra-experimental-features 'nix-command flakes' run 'nixpkgs#hello'
+#+end_src
+
+Expect a version line such as =nix (Nix) 2.35.2=, then =Hello, world!=.
+The second command downloads a small program from cache.nixos.org and
+runs it from =/nix/store=. It proves that downloads work and that no
+security software blocks programs in the Nix store.
+
+If it fails:
+
+- An error about certificates, such as =SSL peer certificate or SSH
+  remote key was not OK=: the network inspects TLS, and Nix cannot
+  download anything until it trusts the corporate certificate. Go on
+  with step 3 without this check, then follow
+  [[file:../how-to/macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]]
+  before step 4.
+- The program is killed, or macOS reports that the operation is not
+  permitted: security software blocks the Nix store. Ask IT to allow
+  =/nix/store=;
+  [[file:../explanation/macOS-corporate-machine-considerations.org][Corporate machine considerations]]
+  explains what to ask for.
+- The installer itself fails: the Lix installer also works with this
+  configuration. Run it, open a new terminal and repeat this check. The
+  first switch later replaces Lix with the Nix that nix-darwin manages.
+
+  #+begin_src zsh
+  curl -sSf -L https://install.lix.systems/lix | sh -s -- install
+  #+end_src
+
+* 3. Install Homebrew
+
+The first switch installs the apps from [[file:../../config/Brewfile][config/Brewfile]] only when Homebrew
+is already there. Without it, the switch prints =brewBundle: skipping
+Brewfile activation because Homebrew is not found.= and installs none of
+them.
+
+#+begin_src zsh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+#+end_src
+
+Press RETURN when asked and give your password.
+
+At the end, Homebrew prints "Next steps" with lines to add to
+=~/.zprofile=. Do not run them. After the first switch, your zsh
+configuration lives in =~/.config/zsh= and loads Homebrew itself
+([[file:../../config/brew-shellenv.zsh][config/brew-shellenv.zsh]]); zsh will no longer read =~/.zprofile=.
+For this shell only, run:
+
+#+begin_src zsh
+eval "$(/opt/homebrew/bin/brew shellenv)"
+#+end_src
+
+*Check.*
+
+#+begin_src zsh
+brew --version
+ls -ld /opt/homebrew
+#+end_src
+
+Expect a Homebrew version line, and =/opt/homebrew= owned by your
+account.
+
+If =/opt/homebrew= belongs to another account, or the installer stops
+for lack of rights, see
+[[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use IT-managed Nix or Homebrew]]
+or [[file:../how-to/macOS-work-without-permanent-admin-rights.org][Work without permanent admin rights]].
+
+* 4. Create the Mac's local flake
+
+Create the directory, fill it from the template this repository
+publishes, and make it a Git repository:
+
+#+begin_src zsh
+mkdir -p ~/src/local/macOS && cd ~/src/local/macOS
+nix --extra-experimental-features 'nix-command flakes' flake init -t 'github:piotr-yuxuan/hardware.nix#macOS'
+git init -q && git add .
+#+end_src
+
+The template writes two files:
+
+- =flake.nix= names this repository as the input =base= and calls its
+  =lib.mkDarwinHost= builder with this Mac's account name and modules.
+- =identity.nix= holds this Mac's Git identities, to fill in step 11.
+
+Keep exactly this path: the weekly =nix-staleness-check= agent looks for
+the flake there. A flake in a Git repository only sees the files Git
+tracks, hence =git add=. Staging is enough, and this repository never
+leaves the Mac: it has no remote.
+[[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]] describes it further.
+
+*Check.*
+
+#+begin_src zsh
+git status --short
+#+end_src
+
+Expect two lines, =A  flake.nix= and =A  identity.nix=.
+
+If =nix flake init= fails with an error about certificates, the network
+inspects TLS. Follow
+[[file:../how-to/macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]]:
+it makes this step and the next one work, and gives the commands that
+replace those of steps 6 and 7.
+
+* 5. Set the account name
+
+The template carries the placeholder account name =example=. Print
+yours, then open the flake with =vi flake.nix= and put it in the line
+~user = "example";~:
+
+#+begin_src zsh
+id -un
+vi flake.nix
+#+end_src
+
+Use =vi= for every edit until step 13: after the first switch, the
+default editor would start Emacs before its configuration is in place.
+
+Then pin the shared configuration:
+
+#+begin_src zsh
+nix --extra-experimental-features 'nix-command flakes' flake lock
+git add flake.lock
+#+end_src
+
+=nix flake lock= downloads this repository and writes =flake.lock=. The
+lock records the commit of the shared configuration and, through it,
+the commits of nixpkgs, nix-darwin and Home Manager.
+
+*Check.*
+
+#+begin_src zsh
+nix --extra-experimental-features 'nix-command flakes' eval --raw '.#darwinConfigurations.macOS.config.system.primaryUser'; echo
+#+end_src
+
+Expect the same name as =id -un=. This is also the first evaluation of
+the whole configuration on this Mac: no error means it evaluates here.
+A warning that the Git tree is dirty is expected, here and in the next
+steps: the files are staged, not committed. An error that
+=identity.nix= or =flake.lock= does not exist means the file is not
+staged: run =git add= on it. Any other error sends you to
+[[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]].
+
+* 6. Build without activating
+
+Build the whole system first, without =sudo=. This downloads and builds
+everything but changes nothing on the Mac, so a failure here costs
+nothing.
+
+#+begin_src zsh
+nix --extra-experimental-features 'nix-command flakes' build '.#darwinConfigurations.macOS.system'
+#+end_src
+
+On 9 October 2026 it planned 1580 paths to download (5.1 GiB, 16.9 GiB
+unpacked) and 128 small local builds, mostly wrappers, fonts and
+generated configuration files. Expect it to take a while.
+
+If you followed the TLS guide, run the build command of its section
+[[file:../how-to/macOS-trust-a-corporate-tls-certificate.org::*Build and switch as root][Build and switch as root]] instead.
+
+*Check.*
+
+#+begin_src zsh
+nix --extra-experimental-features nix-command path-info -Sh ./result
+#+end_src
+
+Expect one line: a =darwin-system-26.05= store path and a closure size of
+about 17 GiB.
+
+If the build fails, nothing has changed on the Mac. Read the first error
+and follow
+[[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]].
+
+* 7. Switch for the first time
+
+=darwin-rebuild= does not exist on this Mac yet, so run it from
+nix-darwin's 26.05 branch. On 9 October 2026 the head of that branch was
+=c3e90c8=, the revision this repository's [[file:../../flake.lock][flake.lock]] pinned. Activation
+changes the system, so it runs as root:
+
+#+begin_src zsh
+sudo nix --extra-experimental-features 'nix-command flakes' run 'nix-darwin/nix-darwin-26.05#darwin-rebuild' -- switch --flake '.#macOS'
+#+end_src
+
+If you followed the TLS guide, run the switch command of its section
+[[file:../how-to/macOS-trust-a-corporate-tls-certificate.org::*Build and switch as root][Build and switch as root]] instead, then its
+[[file:../how-to/macOS-trust-a-corporate-tls-certificate.org::*Verify][verification]].
+
+What to expect, in order:
+
+1. A warning that =$HOME ('/Users/example') is not owned by you= (with
+   your account name), falling back to root's home. It comes from
+   running Nix under =sudo= and is harmless.
+2. The warning that the Git tree is dirty, as in step 5.
+3. Building reuses the result of step 6, then activation starts.
+4. nix-darwin takes over some files in =/etc=, among them =/etc/zshrc=
+   and =/etc/bashrc= (which the Nix installer edited) and
+   =/etc/nix/nix.conf=. When it recognises a file's content, it renames
+   the file to =<file>.before-nix-darwin= on its own. When it does not, it
+   stops with =Unexpected files in /etc, aborting activation= and lists
+   them. Rename each listed file, for example:
+
+   #+begin_src zsh
+   sudo mv /etc/zshrc /etc/zshrc.before-nix-darwin
+   #+end_src
+
+   Then run the same switch command again. Do not edit
+   =/etc/nix/nix.conf= by hand: nix-darwin owns it from now on.
+5. nix-darwin takes over the Nix daemon with the Nix it manages (2.34.8
+   from nixpkgs 26.05 on 9 October 2026).
+6. Home Manager runs Homebrew. Lines starting with ===> brewBundle:=
+   show each step: =brew update=, then =brew bundle install= of 28 casks,
+   11 formulae and one VS Code extension. This is the longest part. Some
+   casks install system components and ask for your password, for
+   example =macfuse= (/untested on a managed Mac/).
+7. If Homebrew already holds packages that the Brewfile does not list,
+   a menu reports drift and asks =Choice [u/e/s]:=. Answer =s= on this
+   first run, and read the list it printed: something IT installed may
+   be on it. [[file:../how-to/macOS-manage-homebrew.org][Manage Homebrew]] explains the choices.
+8. Settings change as the switch ends: the Dock restarts with only Emacs
+   in it, and the keyboard, trackpad and Finder follow
+   [[file:../../hosts/macOS.nix][hosts/macOS.nix]].
+
+On a managed Mac, IT profiles can refuse some of these settings, the
+application firewall in particular (/untested on a managed Mac/). If
+macOS asks you to approve a system extension or another permission
+during the switch, decline for now; step 9 and
+[[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve MDM conflicts]]
+come back to it.
+
+*Check.* Open a new terminal window, go back to the local flake and run:
+
+#+begin_src zsh
+cd ~/src/local/macOS
+which darwin-rebuild
+darwin-rebuild --list-generations
+nix --version
+#+end_src
+
+Expect =/run/current-system/sw/bin/darwin-rebuild=, a list of
+generations that ends with one marked =(current)=, and the Nix version
+of item 5.
+
+The =result= link from step 6 is no longer needed; remove it so that Git
+does not list it as an untracked file:
+
+#+begin_src zsh
+rm result
+#+end_src
+
+If the switch stopped with an error, follow
+[[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]],
+then run the command of this step again. A line that says =primary user
+`example` does not exist= means step 5 was skipped.
+
+* 8. Restart
+
+Some settings only take effect at the next login. Open the Apple menu,
+choose Restart, untick "Reopen windows when logging back in" so that no
+window comes back with the environment from before the switch, and
+confirm.
+
+After you log in again:
+
+- Rectangle, NoTunes and Docker Desktop start on their own. Docker
+  Desktop asks you to accept its subscription terms on its first start
+  (/untested on a managed Mac/). You can quit it until you have checked
+  the licence question in
+  [[file:../explanation/macOS-corporate-machine-considerations.org][Corporate machine considerations]].
+- The first terminal window after each login greets you with a system
+  summary and a fortune.
+
+*Check.* In a new terminal:
+
+#+begin_src zsh
+echo $SHELL $ZDOTDIR
+which darwin-rebuild brew
+#+end_src
+
+Expect =/bin/zsh /Users/example/.config/zsh= (with your account name),
+then =/run/current-system/sw/bin/darwin-rebuild= and
+=/opt/homebrew/bin/brew=.
+
+If =ZDOTDIR= is empty, Home Manager's part of the switch did not run:
+see [[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]].
+
+From now on Nix has flakes enabled, so the commands no longer need
+=--extra-experimental-features=. The new shell also treats =#= as a
+pattern character: keep the quotes around ='.#macOS'=.
+
+* 9. Grant privacy permissions
+
+macOS asks the user, not the configuration, for some permissions:
+Rectangle and MiddleClick need Accessibility, and automatic dark mode and
+time zone need Location Services. MiddleClick also needs one manual
+start. Follow
+[[file:../how-to/macOS-grant-privacy-permissions.org][Grant privacy permissions]]
+for each of them. If Rectangle asks which default shortcuts to use,
+choose the recommended ones (/untested on a managed Mac/).
+
+*Check.*
+
+- Press Control Option Left Arrow in any window: Rectangle moves it to
+  the left half of the screen.
+- Tap a Firefox tab with four fingers: MiddleClick turns the tap into a
+  middle click, and the tab closes.
+
+* 10. Create the personal SSH key
+
+On this Mac the work identity is the default, and =identity.nix= applies
+the personal one (email, signing key, SSH key) only to repositories
+below =~/src/github.com/piotr-yuxuan/=.
+[[file:../explanation/macOS-git-identities.org][Git identities on macOS]]
+explains the split. Create the personal SSH key for this Mac only,
+under the name =identity.nix= expects:
+
+#+begin_src zsh
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+ssh-keygen -t ed25519 -C piotr-yuxuan@users.noreply.github.com -f ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519
+ssh-add --apple-use-keychain ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519
+pbcopy < ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519.pub
+#+end_src
+
+Give the key a passphrase; =ssh-add --apple-use-keychain= stores it in
+your login keychain. Then open https://github.com/settings/ssh/new, sign
+in to your personal account, paste the public key as an authentication
+key and name it after this Mac.
+
+ssh does not pick this key on its own because of its name, so name it
+explicitly in the test:
+
+#+begin_src zsh
+ssh -i ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519 -o IdentitiesOnly=yes -T git@github.com
+#+end_src
+
+The first connection records GitHub's host key without asking. Compare
+what it recorded with
+[[https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints][GitHub's published fingerprints]]:
+
+#+begin_src zsh
+ssh-keygen -lF github.com
+#+end_src
+
+*Check.* The =ssh -T= command prints =Hi piotr-yuxuan! You've
+successfully authenticated, but GitHub does not provide shell access.=
+It exits with status 1; that is normal for GitHub.
+
+If you get =Permission denied (publickey)=, the key is missing from the
+personal account or was added to another one. If the connection times
+out, port 22 is probably blocked: see
+[[file:../how-to/macOS-set-up-work-and-personal-git-identities.org][Set up work and personal Git identities]],
+which also covers SSH over port 443.
+
+* 11. Create the signing key and fill the Git identity
+
+Personal commits on this Mac are signed with a key that belongs to this
+Mac only. GnuPG and its macOS passphrase prompt (pinentry-mac) came with
+the first switch.
+
+#+begin_src zsh
+gpg --quick-generate-key 'piotr-yuxuan <piotr-yuxuan@users.noreply.github.com>' ed25519 sign 2y
+gpg --list-secret-keys --keyid-format long
+#+end_src
+
+A dialog asks for a passphrase for the new key. In the listing, the long
+key ID is the 16 hexadecimal digits after =ed25519/= on the =sec= line;
+the commands below call it =<KEY-ID>=. Publish the public key on GitHub:
+
+#+begin_src zsh
+gpg --armor --export <KEY-ID> | pbcopy
+#+end_src
+
+Paste it at https://github.com/settings/gpg/new.
+
+Now fill the Git values in the local flake (=vi identity.nix=):
+
+1. Replace =FIXME-personal-openpgp-key-id= with the key ID, and delete
+   the =FIXME= comment above it.
+2. Leave the work values (name, email, SSH key and signing) and their
+   =FIXME= comments for later, even if you already know them:
+   [[file:../how-to/macOS-set-up-work-and-personal-git-identities.org][Set up work and personal Git identities]]
+   covers each case. Until the work identity is set, commits outside
+   =~/src/github.com/piotr-yuxuan/= fail with =no email was given and
+   auto-detection is disabled=. That is on purpose, so that no commit
+   goes out under a wrong identity.
+
+Apply the change. From now on, =darwin-rebuild= is installed:
+
+#+begin_src zsh
+cd ~/src/local/macOS
+sudo darwin-rebuild switch --flake '.#macOS'
+#+end_src
+
+*Check.* Make a signed commit in a throwaway personal repository:
+
+#+begin_src zsh
+mkdir -p ~/src/github.com/piotr-yuxuan/identity-check
+cd ~/src/github.com/piotr-yuxuan/identity-check
+git init -q
+git config --show-origin --get-regexp '^user\.'
+git commit --allow-empty -m probe
+git log --show-signature -1
+cd ~/src/local/macOS && rm -rf ~/src/github.com/piotr-yuxuan/identity-check
+#+end_src
+
+=git config= lists the personal =user.email= and your key as
+=user.signingkey=, both from a =file:/nix/store/...-hm_gitconfig= origin.
+The commit asks for the key's passphrase if it is not cached yet, and
+the log reports a good signature from
+=piotr-yuxuan <piotr-yuxuan@users.noreply.github.com>=.
+
+If either differs, see the troubleshooting part of
+[[file:../how-to/macOS-set-up-work-and-personal-git-identities.org][Set up work and personal Git identities]].
+
+* 12. Keep secrets out of the Nix store
+
+Tokens never go into the local flake or the Nix store. Every zsh reads
+=~/.zshenv.secrets= if it exists ([[file:../../config/before.zshenv][config/before.zshenv]]). Create it
+readable by you only:
+
+#+begin_src zsh
+touch ~/.zshenv.secrets
+chmod 600 ~/.zshenv.secrets
+#+end_src
+
+Open it with =vi ~/.zshenv.secrets= and add one =export= line per token,
+for example =export GITLAB_PERSONAL_ACCESS_TOKEN='...'=.
+
+*Check.*
+
+#+begin_src zsh
+stat -f '%Sp' ~/.zshenv.secrets
+#+end_src
+
+Expect =-rw-------=. Then, in a new terminal, check a variable you added
+without showing its value:
+=print -r -- ${GITLAB_PERSONAL_ACCESS_TOKEN:+set}= prints =set=.
+
+* 13. Clone the Emacs configuration
+
+Emacs.app came with the first switch, but its configuration is a
+separate repository. Emacs must not have started before this step: its
+first start creates an empty =~/.emacs.d=.
+
+#+begin_src zsh
+test -e ~/.emacs.d && echo exists
+#+end_src
+
+Expect no output. If it prints =exists=, move the directory aside with
+=mv ~/.emacs.d ~/.emacs.d.before-first-day=. Then clone the published
+configuration:
+
+#+begin_src zsh
+git clone https://github.com/piotr-yuxuan/.emacs.d.git ~/.emacs.d
+#+end_src
+
+The clone goes over HTTPS and needs no key. It sits outside the personal
+directory, so Git applies the work identity there; that does not matter
+for a configuration you only pull.
+
+*Check.*
+
+#+begin_src zsh
+git -C ~/.emacs.d status --short --branch
+#+end_src
+
+Expect one line that names the branch and =origin=, and nothing else.
+
+* 14. Start Emacs
+
+#+begin_src zsh
+open -a Emacs
+#+end_src
+
+The first start installs every package: straight.el clones about 200
+repositories, most of them from GitHub, then compiles them. It takes
+several minutes, and the window may not respond meanwhile. Let it
+finish.
+
+*Check.* Open the local flake with =C-x C-f ~/src/local/macOS/flake.nix
+RET=. It opens with Nix syntax highlighting.
+
+Some problems are known on macOS, for example a =jinx= module
+compilation error on every file visit. If Emacs reports errors or the
+=*Warnings*= buffer shows any, look them up in
+[[file:../how-to/macOS-troubleshoot-emacs.org][Troubleshoot Emacs on macOS]].
+
+* 15. Run the final checks
+
+Run these from the local flake's directory.
+
+1. Homebrew matches the Brewfile that the lock pins:
+
+   #+begin_src zsh
+   BREWFILE="$(nix eval --raw --impure --expr '(builtins.getFlake (toString ./.)).inputs.base.outPath')/config/Brewfile"
+   env -u XDG_CONFIG_HOME brew bundle check --file "$BREWFILE"
+   #+end_src
+
+   Expect =The Brewfile's dependencies are satisfied.= Otherwise see
+   [[file:../how-to/macOS-manage-homebrew.org][Manage Homebrew]]. =env -u XDG_CONFIG_HOME= makes =brew= read
+   the trust store that the switch wrote, where the Emacs cask is
+   trusted; your shell's own store starts empty.
+
+2. The login agents are loaded:
+
+   #+begin_src zsh
+   launchctl list | grep -E 'org\.nixos|com\.user|org\.nix-community'
+   #+end_src
+
+   Expect =org.nixos.nh-clean=, =com.user.clear-hushlogin=,
+   =com.user.nix-staleness-check=, =com.user.docker-desktop=,
+   =com.user.notunes=, =com.user.rectangle=,
+   =org.nix-community.home.gpg-agent= and
+   =org.nix-community.home.tldr-update=.
+
+3. The system services are loaded:
+
+   #+begin_src zsh
+   sudo launchctl list | grep org.nixos
+   #+end_src
+
+   Expect =org.nixos.nix-daemon=, =org.nixos.linux-builder=,
+   =org.nixos.nix-optimise= and =org.nixos.activate-system=, plus
+   =org.nixos.darwin-store=, which the Nix installer added to mount the
+   Nix Store volume.
+
+4. Tools from both package managers answer:
+
+   #+begin_src zsh
+   fortune
+   java -version
+   #+end_src
+
+   =fortune= (from Homebrew) prints a quotation, and =java= (Temurin, from
+   Nix) reports version 27.
+
+5. Each directory gets its identity:
+
+   #+begin_src zsh
+   mkdir -p ~/src/github.com/piotr-yuxuan/identity-check /tmp/identity-check
+   git -C ~/src/github.com/piotr-yuxuan/identity-check init -q
+   git -C /tmp/identity-check init -q
+   git -C ~/src/github.com/piotr-yuxuan/identity-check config --show-origin user.email
+   git -C /tmp/identity-check config --show-origin user.email
+   rm -rf ~/src/github.com/piotr-yuxuan/identity-check /tmp/identity-check
+   #+end_src
+
+   Below the personal directory, expect the personal email from the
+   =hm_gitconfig= file. In =/tmp/identity-check=, expect the work email
+   from =~/.config/git/config=, or no output at all until you set it.
+
+6. The signing key exists:
+
+   #+begin_src zsh
+   gpg --list-secret-keys
+   #+end_src
+
+   Expect the key from step 11.
+
+7. The firewall is on:
+
+   #+begin_src zsh
+   /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+   /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall
+   /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode
+   #+end_src
+
+   Expect the firewall enabled, blocking all incoming connections, in
+   stealth mode. On a managed Mac, an IT profile may set these instead
+   (/untested on a managed Mac/); see
+   [[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve MDM conflicts]].
+
+When all seven pass, the Mac runs this configuration.
+
+* What to read next
+
+- The local flake and how to take a newer shared configuration:
+  [[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]].
+- The work identity:
+  [[file:../how-to/macOS-set-up-work-and-personal-git-identities.org][Set up work and personal Git identities]].
+- Everyday work:
+  [[file:../how-to/rebuild-and-roll-back.org][Rebuild and roll back]] and
+  [[file:../how-to/macOS-manage-homebrew.org][Manage Homebrew]].
+- When something breaks:
+  [[file:../how-to/troubleshoot-common-problems.org][Troubleshoot common problems]]
+  and [[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]].
+- What this configuration sets on the Mac:
+  [[file:../reference/macOS-configuration.org][macOS configuration]]
+  and the [[file:../reference/package-guide.org][Package guide]].
+- Why it works this way:
+  [[file:../explanation/macOS-nix-and-homebrew.org][Nix and Homebrew on macOS]],
+  [[file:../explanation/macOS-git-identities.org][Git identities on macOS]],
+  [[file:../explanation/macOS-corporate-machine-considerations.org][Corporate machine considerations]]
+  and [[file:../explanation/macOS-security-posture.org][macOS security posture]].

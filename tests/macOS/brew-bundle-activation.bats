@@ -46,6 +46,7 @@ make_fake_brew() {
     {
         printf '#!/bin/sh\n'
         printf 'echo "brew $*" >> "$HOME/.fake-calls"\n'
+        printf 'echo "HOMEBREW_NO_ASK=${HOMEBREW_NO_ASK:-unset} brew $*" >> "$HOME/.fake-env"\n'
         printf 'if [ "$1" = "shellenv" ]; then\n'
         printf '    printf '"'"'export PATH="%s/bin:$PATH"\n'"'"' "%s"\n' "$prefix" "$prefix"
         printf 'elif [ "$1" = "update" ]; then\n'
@@ -53,6 +54,9 @@ make_fake_brew() {
         printf 'elif [ "$1" = "bundle" ] && [ "$2" = "install" ]; then\n'
         printf '    exit %d\n' "$bundle_install_exit"
         printf 'elif [ "$1" = "bundle" ] && [ "$2" = "cleanup" ]; then\n'
+        # Read only from a pipe or file, never from a terminal, so a
+        # regression fails the stdin test instead of hanging a manual run.
+        printf '    if [ ! -t 0 ] && read -r answer; then echo "cleanup read stdin: $answer" >> "$HOME/.fake-calls"; fi\n'
         printf '    exit %d\n' "$bundle_cleanup_exit"
         printf 'fi\n'
     } > "$prefix/bin/brew"
@@ -149,6 +153,25 @@ run_brew_dry() {
     [[ $(fake_calls) == *"brew bundle cleanup --file $tmpdir/Brewfile"* ]]
     # No --force unless the user accepts uninstall via the TTY prompt.
     [[ $(fake_calls) != *"--force"* ]]
+}
+
+@test "live mode: drift listing gets no stdin, so Homebrew cannot prompt to uninstall" {
+    # Since Homebrew 6, `brew bundle cleanup` without --force offers to
+    # remove the extras when it can read an answer. The listing must stay
+    # read-only; the script's own menu decides.
+    make_fake_brew "$tmpdir/brew"
+    printf 'y\n' | run_brew HOMEBREW_PREFIX="$tmpdir/brew"
+    [[ $(fake_calls) == *"brew bundle cleanup --file $tmpdir/Brewfile"* ]]
+    [[ $(fake_calls) != *"cleanup read stdin"* ]]
+}
+
+@test "live mode: Homebrew ask mode is disabled for bundle and upgrade" {
+    make_fake_brew "$tmpdir/brew"
+    run_brew HOMEBREW_PREFIX="$tmpdir/brew"
+    local env_log; env_log=$(cat "$tmpdir/.fake-env")
+    [[ $env_log == *"HOMEBREW_NO_ASK=1 brew bundle install"* ]]
+    [[ $env_log == *"HOMEBREW_NO_ASK=1 brew upgrade --greedy"* ]]
+    [[ $env_log == *"HOMEBREW_NO_ASK=1 brew bundle cleanup"* ]]
 }
 
 @test "live mode: brew cleanup --prune=all -v is called to tidy cache" {

@@ -1,0 +1,36 @@
+#+title: Home directory layout
+#+author: piotr-yuxuan
+
+The folders of =$HOME= and their short aliases.  =scripts/home-layout.sh=
+creates them on both hosts, =scripts/home-layout-macOS.sh= adds the
+macOS =mov= alias and hides the default folders from Finder, and
+=scripts/home-layout-nixOS.sh= adds the Linux =mov= alias and points
+the standard folders and =~/src= into Dropbox.  The
+[[file:../explanation/goals-and-principles.org::*Organisation of =$HOME=][goals and principles]] say why.
+
+* Tree
+
+#+BEGIN_SRC text
+  "${HOME}"
+  ├── .emacs.d/ (Emacs configuration, its own repository)
+  │   ├── init.el (tangled from README.org)
+  │   └── README.org (literate init.el)
+  ├── Desktop
+  ├── bin/ (binary files or executable scripts)
+  ├── dist/ -> $HOME/.m2/repository/
+  ├── img/ -> Pictures/
+  │   └── screenshots/ (where screenshots are put)
+  ├── man/
+  ├── mov/ -> Movies/ (Videos/ on nixOS)
+  ├── net/ -> Downloads/
+  ├── pkg/
+  ├── pvt -> Documents
+  │   └── todo/ (related notes and documents)
+  │       └── private-org-sync/
+  │           ├── library.org
+  │           └── todo.org
+  ├── snd -> Music/
+  └── src/ (for source code)
+      ├── github.com/ (host/username/repo)
+      └── …
+#+END_SRC

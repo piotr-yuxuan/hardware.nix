@@ -1,0 +1,252 @@
+#+title: Manage Homebrew on macOS
+#+author: piotr-yuxuan
+
+Run the Brewfile by hand, upgrade casks and formulae, repair a broken
+cask, and fix the Homebrew failures that a switch reports.
+
+* Find the Brewfile on the Mac
+
+Homebrew casks and formulae are declared in [[file:../../config/Brewfile][config/Brewfile]] and
+applied automatically on every =sudo darwin-rebuild switch= via a Home
+Manager activation script. The Brewfile is a file of this repository,
+and a Mac has no checkout of it: it uses the copy that the lock of its
+local flake pins. Point a variable at that copy; the commands of this
+page use it:
+
+#+begin_src zsh
+cd ~/src/local/macOS
+BREWFILE="$(nix eval --raw --impure --expr '(builtins.getFlake (toString ./.)).inputs.base.outPath')/config/Brewfile"
+#+end_src
+
+The copy is read-only. A change to the Brewfile is a commit in this
+repository, made on the personal laptop; the Mac takes it with
+=nix flake update base= and a switch, as
+[[file:macOS-maintain-the-local-flake.org::*Update the shared configuration][Update the shared configuration]] shows. The Brewfile has no per-machine
+part.
+
+* Upgrade and repair by hand
+
+To run the Brewfile manually:
+
+#+begin_src zsh
+brew bundle install --file "$BREWFILE"
+#+end_src
+
+To upgrade everything and clean up stale downloads:
+
+#+begin_src zsh
+brew update
+brew upgrade
+HOMEBREW_CASK_OPTS= brew upgrade --cask --greedy   # reinstall latest version of
+                                                   # unversioned casks, which takes more time
+brew cleanup -s
+#+end_src
+
+The greedy line clears =HOMEBREW_CASK_OPTS= for that one command: the
+Google Chrome casks publish no checksum, as
+[[*Run brew bundle by hand][Run brew bundle by hand]] explains. If =brew= in a terminal refuses
+the Emacs cask as untrusted, see
+[[*Trust a third-party tap][Trust a third-party tap]].
+
+When something goes wrong:
+
+#+begin_src zsh
+brew doctor                  # diagnose common problems
+brew reinstall --cask <name> # force-reinstall a broken cask
+#+end_src
+
+* Fix brew bundle failures
+
+Every =sudo darwin-rebuild switch --flake '.#macOS'= runs the =brewBundle=
+activation, which applies [[file:../../config/Brewfile][config/Brewfile]] through
+[[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]]. A Homebrew failure never stops the
+switch: it appears as a =brewBundle:= warning in the switch output and
+the switch carries on. Homebrew 6 (June 2026) and 7 changed several of
+the behaviours below. They were read from the Homebrew source and
+documentation, and are untested on a managed Mac.
+
+** Read the brewBundle output
+
+Before each step the activation prints a ~==> brewBundle:~ banner and
+the command: =brew update=, =brew bundle install --upgrade=,
+=brew upgrade --greedy=, the drift check (=brew bundle cleanup=), then
+=brew cleanup --prune=all -v=. Lines that start with =brewBundle:= are
+warnings. When the script itself ends with an error, the wrapper adds a
+last one:
+
+#+begin_example
+brewBundle: warning: Brewfile activation failed; continuing.
+#+end_example
+
+Activation runs with an empty environment, so the =HOMEBREW_*=
+variables that [[file:../../home/macOS.nix][home/macOS.nix]] sets for shells do not apply during
+a switch, and neither does =XDG_CONFIG_HOME= (see
+[[*Trust a third-party tap][Trust a third-party tap]]). The script exports =HOMEBREW_NO_ASK=1=
+itself.
+
+** Find the failing entries
+
+#+begin_src zsh
+env -u XDG_CONFIG_HOME brew bundle check --file "$BREWFILE" --verbose
+#+end_src
+
+It prints =The Brewfile's dependencies are satisfied.= and exits 0 when
+every entry is installed and current. Otherwise it lists the missing or
+outdated entries. Add =--no-upgrade= to ignore outdated ones.
+=env -u XDG_CONFIG_HOME= makes =brew= read the trust store that a switch
+uses; see [[*Trust a third-party tap][Trust a third-party tap]].
+
+To see whether Homebrew deprecated or disabled a cask, query its entry
+in the Homebrew API:
+
+#+begin_src zsh
+curl -s https://formulae.brew.sh/api/cask/<token>.json \
+  | jq '{deprecated, deprecation_date, deprecation_replacement_cask, disabled, disable_date, disable_reason}'
+#+end_src
+
+** Remove a disabled cask
+
+Symptom in the switch output:
+
+#+begin_example
+`brew bundle` failed! 1 Brewfile dependency failed to install
+brewBundle: brew bundle install failed; continuing.
+#+end_example
+
+Homebrew still installs every other entry: it counts the failures and
+reports them at the end. The script then stops, so
+=brew upgrade --greedy=, the drift check and =brew cleanup= are skipped
+on every switch until no entry fails. A disabled cask causes this, as
+=goldenpassport= did once Homebrew disabled it on 1 September 2026; it
+was then removed from the Brewfile.
+
+The fix is a commit in this repository, on the personal laptop:
+
+1. Delete the =cask "<token>"= line from [[file:../../config/Brewfile][config/Brewfile]], or replace
+   it with the cask Homebrew names as its replacement.
+2. Update its entry in [[file:../reference/package-guide.org][the package guide]].
+3. On the Mac, take the new commit with =nix flake update base=, then
+   run =sudo darwin-rebuild switch --flake '.#macOS'= again.
+4. If the old app is still installed, the drift menu now lists it:
+   answer =u= to uninstall it, or =s= to keep it for now.
+
+Until then the switches on the Mac keep printing the warning, and
+nothing else breaks.
+
+** Replace the deprecated codex-app cask
+
+Homebrew deprecated =codex-app= on 12 July 2026 as discontinued and
+names =chatgpt= as its replacement. It still installs today. Once
+Homebrew disables it, every switch reports the failure above. It is
+kept until its replacement is decided. Then, in this repository:
+
+1. In [[file:../../config/Brewfile][config/Brewfile]], replace =cask "codex-app"= with
+   =cask "chatgpt"=, or delete the line, and delete the comment above
+   it.
+2. Update the package guide.
+3. On the Mac, run =nix flake update base=, switch, and answer =u= in
+   the drift menu to uninstall the old app.
+
+** Trust a third-party tap
+
+Since Homebrew 6, Homebrew loads formulae and casks from a non-official
+tap only when they are trusted. [[file:../../config/Brewfile][config/Brewfile]] declares that trust,
+for the Emacs cask only:
+
+#+begin_src ruby
+tap "jimeh/emacs-builds"
+cask "jimeh/emacs-builds/emacs-app", trusted: true
+#+end_src
+
+To add another third-party formula or cask, give its fully qualified
+name with =trusted: true=, or put =trusted: true= on the =tap= line to
+trust everything that tap provides. Do not rely on a manual
+=brew trust=: an accepted cleanup (=u= in the drift menu, or
+=brew bundle cleanup --force=) resets Homebrew's trust store to what the
+Brewfile declares and drops every other entry.
+
+A switch and your terminals use two different trust stores. Homebrew
+keeps trust in =$XDG_CONFIG_HOME/homebrew/trust.json= when
+=XDG_CONFIG_HOME= is set, and in =~/.homebrew/trust.json= otherwise.
+Activation starts with an empty environment, so a switch records the
+Brewfile's trust in =~/.homebrew/trust.json=. Your shells export
+=XDG_CONFIG_HOME= (=xdg.enable= in [[file:../../home/base.nix][home/base.nix]]), so =brew= in a
+terminal reads =~/.config/homebrew/trust.json=, which starts empty.
+Until that store trusts the Emacs cask, =brew= in a terminal may warn
+about =jimeh/emacs-builds/emacs-app= or refuse to load it (untested on
+a managed Mac).
+
+Check trust with:
+
+#+begin_src zsh
+env -u XDG_CONFIG_HOME brew trust   # what a switch trusts
+brew trust                          # what your terminals trust
+brew untrust                        # untrusted ones
+brew doctor                         # warns about a tap with nothing trusted
+#+end_src
+
+To give your terminals the Brewfile's trust, run the Brewfile once from
+a shell, as in [[*Run brew bundle by hand][Run brew bundle by hand]]: =brew bundle install= records
+every =trusted: true= entry before it installs anything.
+
+** Answer the drift menu
+
+When something is installed that the Brewfile does not declare,
+=brew bundle cleanup= lists it under headings such as
+=Would uninstall casks:= and the script asks on the terminal:
+
+#+begin_example
+brewBundle: drift detected between installed packages and /nix/store/...-Brewfile.
+  [u] uninstall the extras listed above
+  [e] abort so you can edit /nix/store/...-Brewfile and rerun the switch
+  [s] skip and leave the drift in place
+Choice [u/e/s]:
+#+end_example
+
+- =u= runs =brew bundle cleanup --force=: it uninstalls the extras,
+  untaps unused taps and resets the trust store to the Brewfile.
+- =e= ends the =brewBundle= step but does not abort the switch. The
+  wrapper prints its warning, the rest of the activation runs, and only
+  the final =brew cleanup= is skipped. To keep an extra on every Mac,
+  add it to =config/Brewfile= in this repository, on the personal
+  laptop (the path in the menu is a read-only store copy), then take
+  the new commit on the Mac and switch again. To keep it on this Mac
+  only, answer =s= at each switch. The message says
+  =home-manager switch=, which does not apply on this Mac.
+- =s=, any other answer, or no answer leaves the drift in place.
+- Without a readable =/dev/tty=, the script prints
+  =brewBundle: drift detected but no TTY available; leaving as-is.=
+
+** Run brew bundle by hand
+
+Homebrew 6 made ask mode the default: on a terminal, =brew install= and
+=brew upgrade= ask for confirmation first. To install exactly as the
+switch does, without prompts:
+
+#+begin_src zsh
+HOMEBREW_NO_ASK=1 brew bundle install --file "$BREWFILE" --upgrade
+#+end_src
+
+=HOMEBREW_NO_ASK= does not cover =brew bundle cleanup=. Without
+=--force=, it lists the drift, asks on a terminal, and exits 1 when you
+decline. Accepting resets the trust store, like =u=.
+
+Unlike a switch, a shell has ~HOMEBREW_CASK_OPTS=--require-sha~ from
+[[file:../../home/macOS.nix][home/macOS.nix]]. The =google-chrome= and =google-chrome@canary= casks
+publish no checksum, so installing or upgrading them by hand is
+expected to fail (untested on a managed Mac). Clear the option for that
+one command:
+
+#+begin_src zsh
+HOMEBREW_CASK_OPTS= HOMEBREW_NO_ASK=1 brew bundle install --file "$BREWFILE"
+#+end_src
+
+** Confirm the fix
+
+#+begin_src zsh
+env -u XDG_CONFIG_HOME brew bundle check --file "$BREWFILE"
+env -u XDG_CONFIG_HOME brew trust
+#+end_src
+
+The next switch should print no =brewBundle:= warning and should reach
+the ~==> brewBundle: tidying Homebrew cache~ step.

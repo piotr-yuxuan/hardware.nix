@@ -1,0 +1,261 @@
+#+title: Use an IT-managed Nix or Homebrew on macOS
+#+author: piotr-yuxuan
+
+Use this guide when IT installed Nix or Homebrew on the Mac before you,
+or manages them. The configuration assumes that nix-darwin manages Nix
+and that your account owns Homebrew in =/opt/homebrew=. When either is
+not true, the first switch can stop or the Brewfile step can fail.
+Find out what IT installed, then pick one of the options below and
+accept its consequences.
+
+*Untested on a managed Mac.* The Nix part comes from the nix-darwin
+26.05 source and from evaluating this configuration on Linux. The
+Homebrew part comes from [[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]], the
+Homebrew documentation and the Workbrew documentation. If a step behaves
+differently, write down what you saw so that this page can be corrected.
+
+What IT installed is a fact about one Mac. The changes below therefore
+go into that Mac's local flake, =~/src/local/macOS=, as machine-local
+modules; [[file:../how-to/macOS-maintain-the-local-flake.org::*Add a machine-local module][Add a machine-local module]] shows where they go. A few need a
+change to a shared file of this repository, and say so.
+
+* Find out what IT installed
+
+#+begin_src zsh
+ls -l /usr/local/bin/determinate-nixd                            # Determinate Nix
+ls /nix/lix-installer /nix/nix-installer /nix/receipt.json 2>/dev/null
+nix --version
+ls -ld /opt/homebrew                                             # owner of Homebrew
+ls -d /opt/workbrew 2>/dev/null                                  # Workbrew
+which -a brew
+id -Gn                                                           # admin, workbrew_users
+#+end_src
+
+| What you see                               | Section                                    |
+|--------------------------------------------+--------------------------------------------|
+| =/usr/local/bin/determinate-nixd= exists   | [[*Determinate Nix][Determinate Nix]]                            |
+| Nix exists and you did not install it      | [[*Nix installed by IT with another installer][Nix installed by IT with another installer]] |
+| =/opt/homebrew= belongs to another account | [[*Homebrew owned by IT][Homebrew owned by IT]]                       |
+| =/opt/workbrew= exists                     | [[*Homebrew owned by IT][Homebrew owned by IT]]                       |
+
+Tell IT before you change anything they installed: device management
+may install it again, or flag the Mac.
+
+* Determinate Nix
+
+The first switch stops with =error: Determinate detected, aborting activation=.
+nix-darwin manages the Nix installation by default (=nix.enable= is
+true), and it refuses to do so when =/usr/local/bin/determinate-nixd=
+exists, because Determinate runs its own daemon.
+
+** Option A: replace Determinate Nix
+
+Only when IT agrees. Uninstall it with the copy of its installer, then
+install Nix as [[file:../tutorials/first-day-on-a-new-mac.org][the first-day tutorial]] says:
+
+#+begin_src zsh
+/nix/nix-installer uninstall
+#+end_src
+
+Consequences:
+
+- The whole store is deleted; the next build downloads everything again.
+- It needs administrator rights (see
+  [[file:../how-to/macOS-work-without-permanent-admin-rights.org][Work without permanent admin rights]]).
+- Device management may install Determinate again. Then the next switch
+  stops with the same message, and only option B remains.
+
+** Option B: keep Determinate and stop nix-darwin managing Nix
+
+1. Add a nix-darwin module to the local flake, for example
+   =determinate.nix=, and list it in =extraHostModules=:
+
+   #+begin_src nix
+   # IT installs and manages Determinate Nix on this Mac, so nix-darwin
+   # must not manage the Nix installation. This also rules out the
+   # Linux builder and the store optimisation.
+   {lib, ...}: {
+     nix.enable = false;
+     nix.optimise.automatic = lib.mkForce false;
+     nix.linux-builder.enable = lib.mkForce false;
+   }
+   #+end_src
+
+   The Linux builder and the store optimisation both require
+   =nix.enable=; if either stays on, evaluation fails with
+   =nix.optimise.automatic requires nix.enable= or
+   =`nix.linux-builder.enable` requires `nix.enable`=. The =nix.settings=
+   of [[file:../../hosts/macOS.nix][hosts/macOS.nix]] need no override: with =nix.enable = false=
+   nix-darwin no longer writes =/etc/nix/nix.conf=, so they are ignored.
+
+2. Stage, build and switch, from the local flake:
+
+   #+begin_src zsh
+   git add determinate.nix
+   nix --extra-experimental-features 'nix-command flakes' \
+     build '.#darwinConfigurations.macOS.system'
+   sudo nix --extra-experimental-features 'nix-command flakes' \
+     run 'nix-darwin/nix-darwin-26.05#darwin-rebuild' -- switch --flake '.#macOS'
+   #+end_src
+
+   Use =sudo darwin-rebuild switch --flake '.#macOS'= once a switch has
+   succeeded.
+
+Consequences:
+
+- No Linux builder from this configuration: unless IT provides one, the
+  Mac cannot build =aarch64-linux= derivations, and
+  =tests/docker-podman-firewall.nix= cannot run there.
+- The substituters, their public keys, =require-sigs=, =trusted-users=
+  and the experimental features come from Determinate's configuration,
+  not from this repository. Ask IT what they are; if the
+  =nix-wpe-webkit.cachix.org= cache is missing, some builds take longer.
+- nix-darwin no longer installs its own Nix (2.34.8 on 9 October 2026)
+  nor runs the =nix-daemon= service. Determinate decides the Nix
+  version.
+- The weekly store optimisation stops. The =nh-clean= agent still runs.
+- =nix= is no longer in =/run/current-system/sw/bin=, where the weekly
+  staleness agent looks for it. Unless Determinate's =nix= is on
+  launchd's default =PATH=, the agent stays silent.
+- [[file:../explanation/macOS-security-posture.org][The macOS security posture]] describes the Nix daemon trust model as
+  this repository sets it; it no longer applies to this Mac.
+
+To return to option A later, remove the module from the local flake.
+
+* Nix installed by IT with another installer
+
+With =nix.enable = true=, nix-darwin takes over an installation it did
+not create. At the first switch it:
+
+- replaces the =org.nixos.nix-daemon= service with its own, running
+  =nix.package= (Nix 2.34.8 on 9 October 2026);
+- replaces =/etc/nix/nix.conf=, and stops with =Unexpected files in /etc=
+  if IT changed that file;
+- stops with =custom settings in `/etc/nix/nix.custom.conf`= if that file
+  exists with content it does not know.
+
+Pick one:
+
+- Let nix-darwin manage Nix :: copy the settings IT needs (substituters,
+  =ssl-cert-file=, =netrc-file=, proxies) into =nix.settings= in a
+  machine-local module, or follow
+  [[file:../how-to/macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]] for the certificate. Then move the
+  files aside as [[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]] shows. If device
+  management writes those files again later, every following switch
+  stops the same way, and the next option is the better one.
+- Leave Nix to IT :: apply [[*Option B: keep Determinate and stop nix-darwin managing Nix][option B]] above. Its module and consequences
+  are the same for any installer.
+
+* Homebrew owned by IT
+
+** What the Brewfile step assumes
+
+The =brewBundle= activation in [[file:../../home/macOS.nix][home/macOS.nix]] runs
+[[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]] at every switch. It assumes that:
+
+- =brew= is =/opt/homebrew/bin/brew=. When that file is missing, the
+  whole step is skipped with
+  =brewBundle: skipping Brewfile activation because Homebrew is not found.=
+- =brew= runs as your account: Home Manager runs as the primary user,
+  so your account must be able to write to =/opt/homebrew= and, for app
+  casks, to =/Applications=.
+- It may change everything Homebrew manages. It runs =brew update=,
+  =brew bundle install --upgrade=, then =brew upgrade --greedy=, which
+  upgrades every outdated cask, including those IT installed.
+- Whatever is not in [[file:../../config/Brewfile][config/Brewfile]] is drift. The drift prompt offers
+  =[u]= to uninstall it, which would remove the packages IT installed.
+- The shell finds =brew= through
+  [[file:../../config/brew-shellenv.zsh][config/brew-shellenv.zsh]], which evaluates
+  =/opt/homebrew/bin/brew shellenv=.
+
+Every =brew= failure prints a =brewBundle:= warning and the switch goes
+on, so an IT-owned Homebrew never stops a switch: the Brewfile is just
+not applied.
+
+** Symptoms
+
+- =brewBundle: brew update failed; continuing.= and
+  =brewBundle: brew bundle install failed; continuing.= at every switch.
+- With Workbrew, =brew= stops with =Error: conflicting Homebrew wrapper configuration!=
+  Workbrew documents this error when =/opt/homebrew/bin/brew= runs
+  directly instead of its wrapper =/opt/workbrew/bin/brew=. Both the
+  activation script and the shell configuration run it directly.
+- With Workbrew, a warning that the =jimeh/emacs-builds= tap is not
+  trusted. Workbrew documents that a standard account cannot grant tap
+  trust.
+
+** Option A: get brew access and keep the Brewfile step
+
+Ask IT for access first:
+
+- Workbrew :: membership of the =workbrew_users= group (or the
+  administrator group), an Allowed Taps policy for =jimeh/emacs-builds=,
+  and permission to install the casks of [[file:../../config/Brewfile][config/Brewfile]].
+- Another IT-owned prefix :: ownership of =/opt/homebrew= by your
+  account. Homebrew documents how IT can provision that in
+  [[https://docs.brew.sh/Homebrew-for-Mac-Admins][Homebrew for Mac Admins]].
+
+With Workbrew, also make the shell use the wrapper. This is a change to
+a shared file of this repository, made on the personal laptop; it is
+safe for every Mac, because its first branch only applies where
+Workbrew exists. In [[file:../../config/brew-shellenv.zsh][config/brew-shellenv.zsh]], evaluate Workbrew's
+environment when it exists:
+
+#+begin_src zsh
+if [[ -x /opt/workbrew/bin/brew ]]; then
+    eval "$(/opt/workbrew/bin/brew shellenv)"
+elif [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
+#+end_src
+
+The activation script still runs =/opt/homebrew/bin/brew=. Making it use
+the wrapper means changing, in this repository, the =_brew= line of
+[[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]] and its tests in
+=tests/macOS/brew-bundle-activation.bats=; that change is untested.
+
+At every switch, answer =s= at the drift prompt, never =u=. Tell IT that
+=brew upgrade --greedy= upgrades their casks too, or take option B.
+
+** Option B: let IT install the Brewfile and drop the step
+
+1. Send [[file:../../config/Brewfile][config/Brewfile]] to IT. Workbrew can install it as Default
+   Packages.
+2. Replace the =brewBundle= activation with an empty one, in a Home
+   Manager module of the local flake (one listed in =extraHmModules=,
+   such as =identity.nix=, whose first line then also takes =lib=):
+
+   #+begin_src nix
+   home.activation.brewBundle = lib.mkForce (lib.hm.dag.entryAfter ["writeBoundary"] "");
+   #+end_src
+
+   The =defaultApps= and =homeLayoutMacOS= entries name it in their
+   ordering, which still holds.
+3. Run =darwin-rebuild build --flake '.#macOS'=, then switch.
+
+Consequences:
+
+- Every application of the Brewfile, including =enca=, =fortune= and
+  =texlive=, depends on IT, and so does every later change to it.
+- Nothing checks drift between the Brewfile and the Mac any more.
+- The default applications set by =defaultApps= only take effect for the
+  apps IT installed.
+
+** Option C: change nothing
+
+The switch completes and prints =brewBundle:= warnings each time.
+Install what you need through the company's Self Service app or ask IT.
+This is the right choice for the first day; revisit it when you know
+what IT allows.
+
+A second Homebrew under another prefix is not an option here: the
+activation script and the shell configuration only know =/opt/homebrew=.
+
+* Related
+
+- [[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]]
+- [[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]]
+- [[file:../how-to/macOS-work-without-permanent-admin-rights.org][Work without permanent admin rights]]
+- [[file:../how-to/macOS-manage-homebrew.org][Manage Homebrew on macOS]]
+- [[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts with MDM]]
+- [[file:../explanation/macOS-nix-and-homebrew.org][Nix and Homebrew on macOS]]

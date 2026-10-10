@@ -1,0 +1,37 @@
+# What the generic checks of scripts/publish.py would flag and that is
+# fine to publish. Each value is acknowledged by its exact text; nothing
+# here waives the private deny list.
+values = [
+  # The public identity of the owner.
+  "piotr-yuxuan@users.noreply.github.com",
+  # Git remotes.
+  "git@github.com",
+  "git@ssh.github.com",
+  # GNOME Shell extension identifiers.
+  "appindicatorsupport@rgcjonas.gmail.com",
+  "auto-power-profile@dmy3k.github.io",
+  "clipboard-history@alexsaveau.dev",
+  "date-menu-formatter@marcinjakubowski.github.com",
+  "grand-theft-focus@zalckos.github.com",
+  "nightthemeswitcher@romainvigier.fr",
+  # Home directories of the placeholder account.
+  "/home/example",
+  "/home/example.broken",
+  "/Users/example",
+  # Bluetooth addresses of test fixtures and examples.
+  "AA:BB:CC:DD:EE:00",
+  "AA:BB:CC:DD:EE:01",
+  "AA:BB:CC:DD:EE:02",
+  "AA:BB:CC:DD:EE:03",
+  "AA:BB:CC:DD:EE:04",
+  "FF:FF:FF:FF:FF:FF",
+  # Test fixtures of earlier commits.
+  "02:00:00:00:00:01",
+  "02:00:00:00:00:02",
+]
+
+# Binary files and files over 1 MiB, by sha256 digest.
+sha256 = [
+  "dad455719c98c68ddfdb9d2fd62451b628d077108bcaffbd8ffe8533bab61eae", # img/wallpaper.jpg
+  "99f663f257119473766ae83dc402b0d00b26486398f6f2e6f8439d7bf3240003", # img/neomacs.png, an application icon in earlier commits
+]

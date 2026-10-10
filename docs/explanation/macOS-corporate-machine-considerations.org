@@ -1,0 +1,320 @@
+#+title: Running this configuration on a corporate Mac
+#+author: piotr-yuxuan
+
+The =macOS= configuration is meant for a corporate Mac: an Apple
+Silicon machine whose device management, endpoint security, network and
+policies belong to an employer and are unknown when the configuration
+is written. What is certain to break on any such Mac is fixed in the
+configuration. For everything that depends on the employer, the
+decision is to keep the current settings and flag them rather than
+guess. This page explains each flagged item, why it matters on a
+managed machine, and what to ask IT.
+
+The changes themselves are in
+[[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts with device management on macOS]].
+
+* Why keep and flag rather than remove
+
+Nothing can be known in advance about an employer's stack: whether it
+uses AWS or GitLab, licenses Docker Desktop, allows AI tools, or manages
+the firewall. Removing an item later costs one override in the Mac's
+local flake and a switch, or one deleted line in this repository; for a
+cask, the Homebrew drift prompt then offers to uninstall it. Removing
+it in advance could delete something the job turns out to need.
+
+What one employer forbids is not written into this repository either.
+It goes into that Mac's local flake as a machine-local module, as
+[[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]] shows.
+
+Some items are protective on a personal machine and only become a
+question on a managed one, where IT may already enforce the same thing
+differently.
+
+* Questions for IT
+
+Questions 1 to 3 have their own how-to guides; the others have a
+section below.
+
+1. Will your account be a local administrator, or is there a
+   time-limited elevation tool? Installing Nix and Homebrew and every
+   =sudo darwin-rebuild switch= need it. See
+   [[file:../how-to/macOS-work-without-permanent-admin-rights.org][Work without permanent admin rights on macOS]].
+2. Are Nix and Homebrew allowed, and does IT install either itself?
+   See [[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use an IT-managed Nix or Homebrew]].
+3. Does the network inspect TLS, or require a proxy? See
+   [[file:../how-to/macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate on macOS]].
+4. Which endpoint security or application control product runs?
+5. May you use your personal GitHub account, with a personal SSH key
+   and a personal OpenPGP key, on the company's machine?
+6. Which settings does the MDM manage: firewall, quarantine, Dock,
+   default apps, screen lock?
+7. Does the company license Docker Desktop?
+8. Are kernel or system extensions allowed (macFUSE)?
+9. Is a permanently running Linux VM acceptable, and how much memory
+   does the Mac have?
+10. Which AI coding tools and remote MCP servers may touch company
+    code?
+11. Which of the developer tools this configuration installs are
+    useful here?
+
+* Personal repositories on the company's machine
+
+This configuration and the Emacs configuration are public: a Mac
+fetches both over HTTPS, without an account. The Mac still holds a
+personal SSH key and a personal OpenPGP key, to work on personal
+repositories below =~/src/github.com/piotr-yuxuan/=. Employers differ on
+personal accounts and personal data on their devices, and their
+endpoint tools may scan what is on the disk.
+
+Nothing flows the other way. The work name and email, the work forge
+host, key IDs and a corporate CA certificate, whose subject names the
+employer, stay in the Mac's local flake, which has no remote. This
+repository is published, so none of them may be written in it;
+[[file:macOS-git-identities.org][Why the Mac separates work and personal Git identities]] gives the
+reasons.
+
+* Tools that may not fit the job
+
+| Tool                                      | Where                                      |
+|-------------------------------------------+--------------------------------------------|
+| =glab=, =gitlab-runner=                   | =home/macOS.nix=                           |
+| =aws-vault=, =ssm-session-manager-plugin= | =home/base.nix=, shared with nixOS        |
+| Notion and Notion Calendar                | =notion= and =notion-calendar= casks       |
+| Slack, beta channel                       | =slack@beta= cask                          |
+| LikeC4                                    | =likec4= formula and its VS Code extension |
+| jenv                                      | =jenv= formula, beside Nix's Temurin       |
+
+They do no harm by themselves, but they install software IT has not
+approved and may duplicate tools the team mandates. The shell setup
+also still documents a GitLab token in =~/.zshenv.secrets=, which
+[[file:../../config/before.zshenv][config/before.zshenv]] sources. The AWS tools sit in =home/base.nix=
+next to =programs.awscli= and =programs.granted=, so dropping them from
+the Mac alone means moving them to =home/nixOS.nix=, following
+[[file:macOS-nix-and-homebrew.org][the per-host split]], not deleting them.
+
+Two comments also justify settings with production data dumps kept on
+the machine: the firewall block in [[file:../../hosts/macOS.nix][hosts/macOS.nix]] and the Docker
+=daemon.json= in [[file:../../home/macOS.nix][home/macOS.nix]]. Whether that reasoning holds depends
+on what the job keeps on the Mac.
+
+* Docker Desktop and Podman
+
+The configuration installs the =docker-desktop= cask, starts Docker at
+login through the =com.user.docker-desktop= launchd agent, and manages
+=~/.docker/daemon.json=: published ports bind to =127.0.0.1= and the
+build cache is garbage collected above 20 GB. Activation also adopts an
+=/Applications/Docker.app= installed outside Homebrew into the cask, so
+an IT-installed Docker would come under Homebrew's management. That
+adoption path is untested.
+
+Docker Desktop is free only for small businesses (fewer than 250
+employees and less than USD 10 million in annual revenue), personal
+use, education and non-commercial open source. Professional use in a
+larger organisation needs a paid subscription (Docker's licensing page,
+checked on 9 October 2026). On a larger employer's Mac, it is fine
+only if the company provides a licence or installs it itself. Its
+installer also adds a privileged helper, which needs admin rights.
+
+Podman is already there: =unstable.podman= in =home/macOS.nix= and
+=podman-compose= in =home/base.nix=. A Podman machine runs containers
+without Docker Desktop. If the company does not license Docker
+Desktop, removing the cask, the launchd agent and =daemon.json= leaves
+Podman as the container runtime.
+
+* macFUSE and its kernel extension
+
+The =macfuse= cask is in [[file:../../config/Brewfile][config/Brewfile]], but nothing in the repository
+uses it: no sshfs, rclone or other FUSE file system. It installs
+through a pkg installer, which needs admin rights, and its caveat says
+it requires a kernel extension enabled in System Settings, Privacy &
+Security (Homebrew's metadata for version 5.4.0, checked on 9 October
+2026). On Apple Silicon, a third-party kernel extension also needs the
+startup security policy lowered in Recovery, which managed Macs
+usually forbid, and MDM profiles control which extensions may load. On
+a corporate Mac the cask is likely to fail or stay inert, and since
+nothing depends on it, it is the cheapest item to drop.
+
+* The Linux builder
+
+=nix.linux-builder= in =hosts/macOS.nix= runs a small NixOS virtual
+machine (aarch64-linux) that builds Linux derivations and disposable
+NixOS test VMs on the Mac. It is sized at 6 cores and 8192 MB of
+memory, with up to 4 jobs. The launchd daemon that runs it has
+=KeepAlive= and =RunAtLoad= set, so the VM starts at boot and stays up
+whether or not a Linux build is requested. Its image comes prebuilt
+from =cache.nixos.org=, and the core and memory settings are runtime
+QEMU flags that do not change that image.
+
+On a corporate laptop of unknown size, a permanent 8 GiB VM is a real
+cost, and some endpoint policies object to virtual machines. It also
+requires =nix.enable=, which rules out an IT-installed Determinate Nix.
+The options are to keep it, to lower the cores and memory, or to
+disable it until Linux builds or NixOS tests are needed at work.
+
+* AI tools and the remote MCP server
+
+The Mac installs the =claude=, =claude-code=, =codex= and =codex-app=
+casks (=codex-app= is deprecated and kept until its replacement is
+decided), and Nix provides =pi-coding-agent= with =pi-mcp-adapter= and
+=terraform-mcp-server=. Home Manager also deploys [[file:../../config/mcp.json][config/mcp.json]] to
+=~/.config/mcp/mcp.json=, where Pi reads its MCP servers through the
+adapter. Two of its servers are local (=emacs-tools= over a Unix
+socket, =clojure-mcp=); the third, =aws-knowledge=, is a remote server
+at =https://knowledge-mcp.global.api.aws=.
+
+These tools send prompts, and whatever code or files they read, to
+external services. Many employers restrict which AI tools may see
+company code, and a remote MCP server receives every query sent to it.
+The casks need you to sign in before they send anything; the remote
+MCP server needs no sign-in at all. =config/mcp.json= is shared with
+nixOS, so removing the remote server only for the Mac needs a per-host
+file.
+
+* Settings that MDM may own
+
+Where a configuration profile manages a preference, the profile wins
+and the value this repository writes has no effect. Most of the items
+below are therefore harmless at worst. The firewall is the exception,
+because it can stop activation. All of these were read from nix-darwin's
+source and from reports by other users; none was tried on a managed Mac.
+
+** Application firewall
+
+=networking.applicationFirewall= enables the firewall with stealth
+mode, =allowSignedApp = false= and =blockAllIncoming = true=. nix-darwin
+applies it with =socketfilterfw= in its networking phase, which runs
+under =set -e= before =postActivation=, where Home Manager runs.
+According to Jamf community reports, on Macs whose firewall is managed,
+=socketfilterfw= answers "Firewall settings cannot be modified from
+command line on managed Mac computers". Its exit code is unverified. If
+it is not zero, the switch stops before Home Manager, and therefore
+before Homebrew, runs. =blockAllIncoming= also stops LocalSend from
+receiving files. Every option is =null= by default, which leaves the
+firewall unmanaged, so forcing the options back to =null= in the Mac's
+local flake hands it back to IT.
+
+** Quarantine prompt
+
+=system.defaults.LaunchServices.LSQuarantine = false= turns off the
+"Are you sure you want to open this application?" dialog for downloaded
+apps. Security baselines commonly keep that prompt, and an MDM may
+enforce it.
+
+** Dock
+
+=system.defaults.dock.persistent-apps= is set to
+=/Applications/Emacs.app= alone. It replaces the whole list of pinned
+apps, including those IT pins, such as a Self Service or Company Portal
+app. On the first switch, the pin also points at a missing app for a
+while: the defaults phase runs before Home Manager, and Homebrew only
+installs Emacs.app later in the same switch.
+
+** Default applications
+
+At every switch, [[file:../../scripts/set-macos-defaults.sh][scripts/set-macos-defaults.sh]] uses duti to make
+LibreOffice the handler for Word, Excel, PowerPoint and OpenDocument
+files, and Firefox Developer Edition the handler for =http=, =https=
+and HTML. That overrides a corporate office suite or a browser that
+single sign-on depends on. Each association fails silently when the app
+is missing.
+
+** Screen lock, Siri, AirDrop, Bluetooth and remote Apple events
+
+=system.defaults.CustomUserPreferences= asks for the password
+immediately after the screen saver, starts it after 15 minutes, turns
+Siri off, limits AirDrop to contacts, and disables Bluetooth sharing
+and remote Apple events. These are user-level preferences. An MDM
+often manages the same features, in which case these values are
+redundant or ignored; they can still confuse a compliance check.
+
+Removing any of these settings from the configuration does not restore
+the previous value: macOS keeps the last value written.
+[[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts between MDM and the macOS configuration]] gives the
+reset command for each one.
+
+* Endpoint security and the Nix store
+
+Nix lives on its own APFS volume, mounted at =/nix=, and the programs
+in it are built by Nix rather than signed by an identified developer.
+Binary authorisation or endpoint detection products (for example Santa
+in lockdown mode, Jamf Protect or CrowdStrike) can block those programs
+or the creation of the volume. This is an inference: nothing like it
+was observed. Running a single program from Nix, such as =hello=, right
+after installing Nix shows it before the long first build. The same
+products, through privacy profiles, may also forbid granting
+Accessibility or App Management permissions yourself; see
+[[file:../how-to/macOS-grant-privacy-permissions.org][Grant privacy permissions on macOS]].
+
+* What was verified before the first day, and what was not
+
+** The Linux evaluation gate
+
+By itself, =nix flake check= treats =darwinConfigurations= as an unknown
+output and passes while the Mac's configuration cannot even evaluate.
+That happened once: GIMP, which is Linux only, sat in =home/base.nix=,
+and an import from derivation in =home/macOS.nix= needed an
+aarch64-darwin build during evaluation.
+
+[[file:../../flake.nix][flake.nix]] therefore defines =checks.<system>.darwin-macOS-eval= for
+=x86_64-linux= and =aarch64-darwin=. It writes the darwin system's
+derivation path into a text file after discarding its string context.
+Nix must evaluate the whole configuration, Home Manager assertions and
+activation scripts included, but nothing has to be built for
+aarch64-darwin. So =nix flake check= on nixOS proves that the Mac's
+configuration evaluates. What it evaluates is the template of a Mac's
+local flake against this checkout, placeholders included: exactly what
+a Mac receives, and nothing of the modules a Mac adds itself.
+Activation snippets are filled in with =builtins.replaceStrings= at
+evaluation time, because an import from derivation would make
+evaluation on Linux impossible again.
+
+Evaluation catches unavailable packages (GIMP was the first),
+removed options, failed assertions and type errors. It misses:
+
+- Build failures. =recode= evaluates fine and only fails while
+  building, which is why =enca= and =fortune= moved to Homebrew.
+- Activation checks that depend on the machine: a primary user that
+  does not exist, unexpected files in =/etc=, an installed Determinate
+  Nix, a firewall under MDM.
+- Everything Homebrew does, the network, TLS inspection, and privacy
+  permissions.
+
+A dry run, which also works from Linux, complements it by listing what
+the Mac would build and fetch:
+
+#+begin_src zsh
+nix build --dry-run --no-link --no-write-lock-file '.#darwinConfigurations.macOS.system'
+#+end_src
+
+On 9 October 2026 it planned 128 derivations to build and 1580
+paths to fetch (5.1 GiB download, 16.9 GiB unpacked). The only real
+compilations left were =bash-language-server= and =pi-mcp-adapter=
+with its npm dependencies; the rest are wrappers, fonts and generated
+files. These numbers move with every lock update.
+
+** Why the laptop builds nothing for macOS
+
+nixOS is an x86_64-linux machine with no aarch64-darwin builder.
+AGENTS.md asks every commit to build, which this host cannot do for
+darwin; the evaluation gate plus the dry run stand in for it there.
+Homebrew 7's behaviour (ask mode, the cleanup prompt, tap trust) was
+read from its source and documentation only.
+
+A Mac therefore builds before it switches, from its local flake, as
+the [[file:../tutorials/first-day-on-a-new-mac.org][first-day tutorial]] does:
+
+#+begin_src zsh
+nix --extra-experimental-features 'nix-command flakes' build '.#darwinConfigurations.macOS.system'
+#+end_src
+
+It only adds store paths and a =result= link; the system itself is
+untouched, so a failure there costs nothing but time. When it fails,
+see [[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch on macOS]].
+
+* Related pages
+
+- [[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts with device management on macOS]]
+- [[file:macOS-nix-and-homebrew.org][Why the Mac uses both Nix and Homebrew]]
+- [[file:macOS-git-identities.org][Why the Mac separates work and personal Git identities]]
+- [[file:macOS-security-posture.org][macOS security posture]]
+- [[file:../reference/macOS-configuration.org][macOS configuration reference]]

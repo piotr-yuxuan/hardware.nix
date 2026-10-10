@@ -1,0 +1,88 @@
+#+title: Iiyama USB-C display
+
+* Working settings
+
+The external monitor identifies itself as =IVM PL3494WQ=, from the
+ProLite XCB3494WQSN family. It connects directly to the Framework 16 by
+USB-C, using the cable believed to have been supplied with the monitor.
+
+| Where | Setting | Working value |
+|-------+---------+---------------|
+| Physical monitor menu | Extra2 > USB-C | USB 2.0 |
+| GNOME Displays | Resolution | 3440 x 1440 |
+| GNOME Displays | Refresh rate | Fixed 120 Hz |
+| GNOME Displays | Variable Refresh Rate | Off |
+| GNOME Displays | HDR | On, recorded as =bt2100= |
+| GNOME Displays | Scale | 100% |
+
+The physical USB-C setting must be applied using the monitor's buttons.
+Nix records it in comments and this document; it does not control the
+monitor's on-screen menu. The physical FreeSync toggle was not separately
+verified. The successful change was disabling VRR in GNOME.
+
+* Why these settings matter
+
+Two distinct symptoms were isolated on 3 and 4 October 2026:
+
+1. With the monitor's USB-C setting at USB 3.0, selecting 100 or 120 Hz
+   produced a black screen followed by a return to 60 Hz. Switching that
+   setting to USB 2.0 allowed 120 Hz, confirmed by the monitor's own
+   Information readout. The built-in USB hub and Ethernet then connected
+   at USB 2 speed, sharing its lower data bandwidth.
+2. At 120 Hz with VRR enabled, YouTube playback at 720p or above blanked
+   the screen in both Firefox and Chrome. The user reported that disabling
+   VRR resolved this. A subsequent Mutter query confirmed the active mode
+   =3440x1440@120.000= without the =+vrr= suffix.
+
+The second result establishes a working workaround for this setup; it
+does not identify a particular monitor firmware or graphics-driver defect.
+HDR remains part of the captured working profile.
+
+* Recorded layout and matching
+
+Nix installs the profile at =/etc/xdg/monitors.xml= through
+=environment.etc= in [[file:../../hosts/nixOS.nix][the host configuration]]. Mutter's default policy gives
+=~/.config/monitors.xml= priority, so GNOME settings remain editable and
+existing personal profiles are preserved. This is a reproducible fallback,
+not enforcement against later changes such as re-enabling VRR. It also
+provides a default for GDM where the same hardware setup matches.
+
+[[file:../../config/gnome/monitors.xml][The XML profile]] captures the working external-only layout: the Iiyama is
+primary at =(0, 0)= and the built-in BOE panel is disabled. It matches the
+specific monitor identity and =DP-3= connector, together with the built-in
+=eDP-1= panel. It is not a global refresh-rate rule for every display.
+
+Moving the cable to a different port, replacing the monitor, or using a
+different set of connected displays may require a separate profile.
+Configure and verify that setup in GNOME first, then record its matching
+=<configuration>= from =~/.config/monitors.xml=.
+
+* Verification after deployment
+
+After rebuilding, start a new GNOME session when convenient so Mutter
+loads the system profile. The recorded profile does not itself switch
+the running session. A matching user profile takes precedence, including
+the fixed 120 Hz profile already saved during diagnosis.
+
+1. Confirm =Extra2 > USB-C > USB 2.0= using the monitor's physical menu.
+2. Check GNOME Displays shows 3440 x 1440, 120 Hz and VRR off. The monitor's
+   Information readout checks the incoming signal independently of GNOME.
+3. Replay the previously failing video at the same quality and window or
+   full-screen size, for longer than the previous time to failure.
+4. Repeat after reconnecting the monitor and after a new GNOME session.
+   Verify that disconnecting it still enables the laptop's own panel.
+
+To test the fallback itself, use a separate test account with no saved
+monitor profile. With the same connected hardware, check the same display
+settings there. Checking the existing user session alone only verifies
+its working user profile, not that Mutter loaded the system fallback.
+
+* Sources
+
+- [[https://iiyama.com/f/9eaf8cbddbeae628b5253f0f3929f2f6_xcb3494wqsn-usermanual-e.pdf][Iiyama XCB3494WQSN manual]], printed page 21, documents the USB-C data-speed
+  setting and its 100/120 Hz restriction; the Information item reports
+  the received signal.
+- [[https://www.displayport.org/pr/vesa-brings-displayport-new-usb-type-c-connector/][VESA's DisplayPort over USB-C explanation]] describes how USB 3 data shares
+  the high-speed lanes, while USB 2 uses separate pins.
+- [[https://gitlab.gnome.org/GNOME/mutter/-/blob/main/doc/monitor-configuration.md][Mutter's monitor configuration documentation]] describes system and user
+  profiles, matching hardware setups and configuration-file precedence.

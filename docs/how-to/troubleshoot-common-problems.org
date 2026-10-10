@@ -1,0 +1,181 @@
+#+title: Troubleshoot common problems
+#+author: piotr-yuxuan
+
+Find the symptom in the index, then follow its section.
+
+* Symptom index
+
+| Symptom                                                                       | Section                             |
+|-------------------------------------------------------------------------------+-------------------------------------|
+| Nix says the =nix-command= and =flakes= features are not enabled              | [[*"experimental features nix-command flakes are not enabled"][Experimental features]]               |
+| The LUKS passphrase prompt uses the wrong keyboard layout                     | [[*LUKS passphrase prompt uses wrong keyboard layout][LUKS keyboard layout]]                |
+| Home Manager stops because a file already exists                              | [[*Home Manager: "file already exists"][Home Manager file conflicts]]         |
+| Lanzaboote says the firmware is not in Setup mode                             | [[*Secure Boot: "not in Setup mode"][Secure Boot enrolment]]               |
+| The disk fills up with Nix store paths                                        | [[*Nix store disk space][Nix store disk space]]                |
+| =passwd= changes nothing on nixOS                                            | [[*Password change (NixOS)][Password change]]                     |
+| A fresh nixOS install has the =us= layout, no Git identity or no mail        | [[file:nixOS-personalise-a-fresh-install.org][Personalise a fresh install]]         |
+| A nixOS rebuild ignores a personal file that exists                          | [[file:nixOS-personalise-a-fresh-install.org::*Before you start][Stage the personal files]]            |
+| The Iiyama monitor goes black at 100 or 120 Hz and falls back to 60 Hz        | [[file:../explanation/nixOS-iiyama-display.org::*Working settings][Iiyama USB-C display]]                |
+| YouTube video blanks the Iiyama monitor at 120 Hz with VRR on                 | [[file:../explanation/nixOS-iiyama-display.org::*Why these settings matter][Iiyama USB-C display]]                |
+| An installed font does not show up in applications                            | [[*Fonts not showing up][Fonts not showing up]]                |
+| A token is missing from new shells                                            | [[*Secrets file][Secrets file]]                        |
+| A Mac switch fails while building, before any activation                      | [[file:macOS-recover-from-a-failed-switch.org::*Fix a build failure][Fix a build failure]]                 |
+| A Mac switch stops with a line ending in =aborting activation=                | [[file:macOS-recover-from-a-failed-switch.org::*Fix an activation check][Fix an activation check]]             |
+| A Mac switch stops with =primary user `example` does not exist=               | [[file:macOS-maintain-the-local-flake.org::*Change the account name][Change the account name]]             |
+| Nix on the Mac says a file of the local flake does not exist                  | [[file:macOS-maintain-the-local-flake.org::*Apply a change][Apply a change]]                      |
+| The Mac reports outdated flake inputs                                         | [[file:macOS-maintain-the-local-flake.org::*Update the shared configuration][Update the shared configuration]]     |
+| A Mac switch stops with =Unexpected files in /etc=                            | [[file:macOS-recover-from-a-failed-switch.org::*"Unexpected files in /etc"][Unexpected files in /etc]]            |
+| Home Manager on the Mac says =Existing file '...' would be clobbered=         | [[file:macOS-recover-from-a-failed-switch.org::*Home Manager file collisions][Home Manager file collisions]]        |
+| A change broke the Mac and the previous generation should come back           | [[file:macOS-recover-from-a-failed-switch.org::*Roll back to an earlier generation][Roll back on macOS]]                  |
+| The first Mac switch stops with =Determinate detected=                        | [[file:macOS-use-it-managed-nix-or-homebrew.org::*Determinate Nix][Determinate Nix]]                     |
+| =/opt/homebrew= belongs to IT, or Workbrew manages =brew=                     | [[file:macOS-use-it-managed-nix-or-homebrew.org::*Homebrew owned by IT][Homebrew owned by IT]]                |
+| A Mac step needs administrator rights that you do not have                    | [[file:macOS-work-without-permanent-admin-rights.org][Work without permanent admin rights]] |
+| =permission denied when trying to update apps=                                | [[file:macOS-grant-privacy-permissions.org::*App Management for the terminal][App Management]]                      |
+| Rectangle or MiddleClick does nothing                                         | [[file:macOS-grant-privacy-permissions.org::*Accessibility for Rectangle and MiddleClick][Accessibility]]                       |
+| The Mac's time zone or appearance ignores its location                        | [[file:macOS-grant-privacy-permissions.org::*Location Services for the time zone and appearance][Location Services]]                   |
+| The Mac never shows the outdated flake inputs notification                    | [[file:macOS-grant-privacy-permissions.org::*Notifications from the staleness agent][Staleness notifications]]             |
+| Nix on the Mac fails with =SSL peer certificate or SSH remote key was not OK= | [[file:macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]]   |
+| A Mac switch stops at the application firewall on a managed Mac               | [[file:macOS-resolve-mdm-conflicts.org::*Application firewall][Application firewall under MDM]]      |
+| =Unexpected files in /etc= lists =/etc/pam.d/sudo_local=                      | [[file:macOS-resolve-mdm-conflicts.org::*Touch ID for sudo][Touch ID for sudo]]                   |
+| A macOS setting ignores the configuration or flips back                       | [[file:macOS-resolve-mdm-conflicts.org][Resolve MDM conflicts]]               |
+| A commit fails with "no email was given and auto-detection is disabled"       | [[file:macOS-set-up-work-and-personal-git-identities.org::*"fatal: no email was given and auto-detection is disabled"][Git identities on macOS]]             |
+| A commit fails with "gpg failed to sign the data"                             | [[file:macOS-set-up-work-and-personal-git-identities.org::*"gpg: skipped" and "No secret key"][Git identities on macOS]]             |
+| Git over SSH says "Permission denied (publickey)" on the Mac                  | [[file:macOS-set-up-work-and-personal-git-identities.org::*"Permission denied (publickey)"][Git identities on macOS]]             |
+| Emacs on the Mac reports errors or a feature does not work                    | [[file:macOS-troubleshoot-emacs.org::*Symptom index][Troubleshoot Emacs on macOS]]         |
+| A switch prints =brewBundle:= warnings or =`brew bundle` failed!=             | [[file:macOS-manage-homebrew.org::*Fix brew bundle failures][Fix brew bundle failures]]            |
+| A switch asks =Choice [u/e/s]:=                                               | [[file:macOS-manage-homebrew.org::*Answer the drift menu][Answer the drift menu]]               |
+| =brew= in a Mac terminal refuses the Emacs cask as untrusted                  | [[file:macOS-manage-homebrew.org::*Trust a third-party tap][Trust a third-party tap]]             |
+
+* "experimental features nix-command flakes are not enabled"
+
+Pass it inline:
+
+#+begin_src zsh
+nix --experimental-features "nix-command flakes" <command>
+#+end_src
+
+Or persist it:
+
+#+begin_src zsh
+mkdir -p ~/.config/nix
+echo 'experimental-features = nix-command flakes' >> ~/.config/nix/nix.conf
+#+end_src
+
+* LUKS passphrase prompt uses wrong keyboard layout
+
+Rebuild and reboot:
+
+#+begin_src zsh
+sudo nixos-rebuild boot --flake '.#nixOS' && sudo reboot
+#+end_src
+
+If the prompt still uses the =us= layout, no layout is configured: the
+published configuration sets none. Add yours as
+[[file:nixOS-personalise-a-fresh-install.org::*System settings][Personalise a fresh install of nixOS]] shows.
+
+** How the keyboard layout reaches the initrd
+
+=console.useXkbConfig = true= derives the console keymap from
+=services.xserver.xkb=, which the personal module
+=hosts/nixOS/personal.nix= sets.
+=console.earlySetup = true= ensures this keymap is baked into the initrd
+so it is available before the root filesystem is mounted, i.e. at the
+LUKS passphrase prompt.
+
+* Home Manager: "file already exists"
+
+Home Manager backs up conflicting files as =*.hm-backup=:
+
+#+begin_src zsh
+# List backups
+find ~ -name '*.hm-backup' -ls
+
+# Remove them once verified
+find ~ -name '*.hm-backup' -delete
+#+end_src
+
+If HM refuses to proceed entirely, remove the offending file manually
+and re-run the switch.
+
+* Secure Boot: "not in Setup mode"
+
+Lanzaboote auto-generates and enrols Secure Boot keys on the first boot.
+After rebooting, =sbctl status= should show "Secure Boot: enabled" with
+keys enrolled and the database signed.
+
+If the keys are *not* enrolled:
+
+1. Reboot into UEFI firmware settings (*F2* during POST).
+2. Navigate to the Secure Boot section and *clear/reset the keys* (puts
+   the firmware into "Setup Mode").
+3. Save and reboot; Lanzaboote will automatically enrol its keys.
+4. Enter UEFI once more and *enable Secure Boot*.
+
+* Nix store disk space
+
+#+begin_src zsh
+sudo btrfs filesystem usage /
+sudo nix-collect-garbage --delete-older-than 7d
+sudo nix store optimise
+#+end_src
+
+** Btrfs compression ratio
+
+The Btrfs subvolumes use =compress=zstd=.  To see the actual
+compression ratio:
+
+#+begin_src zsh
+sudo compsize /
+#+end_src
+
+This shows how much physical space each subvolume occupies versus its
+logical size.
+
+* Password change (NixOS)
+
+=passwd= is a no-op (=mutableUsers = false=).  Change the hashed
+password file and rebuild:
+
+#+begin_src zsh
+echo "new-password" | mkpasswd -m sha-512 -s \
+  | sudo tee /etc/secrets/example-password > /dev/null
+sudo nixos-rebuild switch --flake .#nixOS
+#+end_src
+
+* Fonts not showing up
+
+#+begin_src zsh
+fc-cache -rf
+# LuaLaTeX font cache (TeX Live: texliveFull from Nix on nixOS, the texlive formula on macOS)
+luaotfload-tool --cache=erase
+luaotfload-tool --update
+
+fc-list | grep -i iosevka
+#+end_src
+
+** Platform-specific font troubleshooting
+
+*NixOS*: Fonts are installed via Home Manager (=home.packages=) and
+made available through fontconfig.  Rebuild and *log out / log in*
+for GNOME to reload fontconfig on session start.
+
+*macOS*: nix-darwin copies font files to =/Library/Fonts/Nix Fonts/=.
+macOS Core Text discovers them after =sudo darwin-rebuild switch=.  If a
+font still doesn't appear, try restarting the app or running:
+
+#+begin_src zsh
+sudo atsutil databases -remove  # reset font caches
+#+end_src
+
+* Secrets file
+
+Tokens are loaded from =~/.zshenv.secrets= (sourced in every Zsh
+session).  This file is *gitignored*, so create it manually:
+
+#+begin_src zsh
+cat > ~/.zshenv.secrets << 'EOF'
+export GITLAB_PERSONAL_ACCESS_TOKEN='glpat-…'
+# add other tokens here
+EOF
+chmod 600 ~/.zshenv.secrets
+#+end_src

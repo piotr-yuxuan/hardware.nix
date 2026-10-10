@@ -1,0 +1,81 @@
+#+title: Connect to ProtonVPN on nixOS
+#+author: piotr-yuxuan
+
+nixOS uses NetworkManager (=networking.networkmanager.enable = true= in
+=flake.nix=), which has native WireGuard support.  ProtonVPN connections
+are imported at runtime as NetworkManager profiles rather than declared
+in Nix.  Once imported, they appear in GNOME Settings > Network > VPN
+and persist across reboots in
+=/etc/NetworkManager/system-connections/=.
+
+* Downloading a WireGuard config
+
+1. Log into [[https://account.protonvpn.com/downloads#wireguard-configuration][account.protonvpn.com]] > Downloads > WireGuard configuration.
+2. Pick a country/server and platform (Linux).
+3. Save the =.conf= file (e.g. =protonvpn-nl-42.conf=).
+
+* Importing and using the connection
+
+#+begin_src sh
+# Import the config as a NetworkManager connection
+nmcli connection import type wireguard file protonvpn-nl-42.conf
+
+# Prevent it from activating automatically at boot
+nmcli connection modify protonvpn-nl-42 autoconnect no
+
+# Connect
+nmcli connection up protonvpn-nl-42
+
+# Disconnect
+nmcli connection down protonvpn-nl-42
+
+# Check status
+nmcli connection show --active
+
+# Remove the connection entirely
+nmcli connection delete protonvpn-nl-42
+#+end_src
+
+The connection can also be toggled from the GNOME network menu in the
+top panel (the VPN toggle appears once at least one VPN connection is
+imported).
+
+* DNS leak prevention
+
+NetworkManager sets DNS servers from the WireGuard config automatically.
+Verify that DNS queries go through the tunnel:
+#+begin_src sh
+resolvectl status           # check which DNS server is active per interface
+resolvectl query example.com  # confirm resolution goes through the VPN DNS
+#+end_src
+
+If =systemd-resolved= is active (it is on nixOS), NetworkManager
+routes DNS through the tunnel interface by default when the VPN
+connection has =ipv4.dns-priority= set lower (more negative) than other
+connections.  ProtonVPN configs ship with their own DNS servers so this
+works out of the box.
+
+* Multiple servers
+
+You can import several configs (different countries, different server
+load) and switch between them:
+#+begin_src sh
+nmcli connection import type wireguard file protonvpn-ch-15.conf
+nmcli connection modify protonvpn-ch-15 autoconnect no
+nmcli connection down protonvpn-nl-42 && nmcli connection up protonvpn-ch-15
+#+end_src
+
+* Interaction with the Tor transparent proxy
+
+Do not run both at the same time.  The Tor transparent proxy captures
+all outbound TCP/DNS at the nftables level, which would conflict with
+the WireGuard tunnel.  Stop one before starting the other:
+#+begin_src sh
+# Switch from Tor to VPN
+sudo systemctl stop tor-transparent-proxy
+nmcli connection up protonvpn-nl-42
+
+# Switch from VPN to Tor
+nmcli connection down protonvpn-nl-42
+sudo systemctl start tor-transparent-proxy
+#+end_src

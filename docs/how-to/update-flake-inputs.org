@@ -1,0 +1,134 @@
+#+title: Update flake inputs
+#+author: piotr-yuxuan
+
+Advance the pinned inputs, update firmware and the kernel, and move to
+a new NixOS release.
+
+* Update flake inputs
+
+Each input URL in =flake.nix= pins a specific branch (e.g.
+=github:NixOS/nixpkgs/nixos-26.05=).  =nix flake update= advances
+every input to the latest commit on its current branch.  It will never
+jump to a new release: only security patches and bug fixes land on a
+stable branch.
+
+#+begin_src zsh
+# Update everything (nixpkgs, home-manager, disko, lanzaboote, …)
+nix flake update
+
+# Update only specific inputs
+nix flake update nixpkgs nixpkgs-unstable
+#+end_src
+
+Then rebuild and switch to apply.  nixOS cannot build the macOS
+configuration, so before merging a lock update,
+[[file:test-a-change.org::*Verify the macOS configuration from Linux][verify the macOS configuration from Linux]].
+
+These commands run in a checkout of this repository, on the personal
+laptop.  A Mac locks none of these inputs itself: see
+[[*Update a Mac][Update a Mac]].
+
+Updating =nixpkgs-unstable= alone is a low risk way to refresh user
+tools without touching the system foundation:
+
+#+begin_src zsh
+nix flake update nixpkgs-unstable
+#+end_src
+
+There is no coupling that forces kernel and unstable to move in
+lockstep.  A routine "upgrade day" with =nix flake update= (all
+inputs) followed by a rebuild is perfectly fine as well.
+
+*Note:* the older =nix flake lock --update-input nixpkgs= syntax still
+works but is deprecated.  Use positional arguments instead:
+=nix flake update nixpkgs=.
+
+* Update a Mac
+
+The local flake of a Mac has one input, =base=, which is this
+repository.  Its lock takes nixpkgs, nix-darwin and Home Manager at the
+commits this repository locked, so a Mac never updates them one by
+one.  Once an update made here is published, take it on the Mac:
+
+#+begin_src zsh
+cd ~/src/local/macOS
+nix flake update base
+sudo darwin-rebuild switch --flake '.#macOS'
+#+end_src
+
+[[file:macOS-maintain-the-local-flake.org::*Update the shared configuration][Update the shared configuration]] shows how to build and compare first.
+
+* Firmware and kernel updates
+
+Three layers of firmware/kernel updates exist, each independent.
+
+** Linux kernel and CPU microcode
+
+Both come from the stable channel (=nixpkgs=).  Bumping the stable
+input and rebuilding is enough:
+
+#+begin_src zsh
+nix flake update nixpkgs
+sudo nixos-rebuild switch --flake .#nixOS
+#+end_src
+
+=boot.kernelPackages = pkgs.linuxPackages_6_18= in
+=hosts/nixOS.nix= follows the 6.18 kernel series: bumping =nixpkgs=
+brings its point releases, and a newer series needs an edit of that
+line.  AMD microcode is handled by =hardware-configuration.nix=
+(=hardware.cpu.amd.updateMicrocode=).
+
+** Device firmware (UEFI, SSD, etc.) via fwupd
+
+fwupd manages UEFI and peripheral firmware independently of Nix
+channel updates.  The Framework 16 profile from =nixos-hardware=
+enables =services.fwupd=, so on nixOS:
+
+#+begin_src zsh
+fwupdmgr refresh
+fwupdmgr update
+#+end_src
+
+** User packages (nixpkgs-unstable)
+
+See "Update flake inputs" above.  =nix flake update nixpkgs-unstable=
+bumps user facing tools without touching the kernel or system
+foundation.
+
+* Bump to a new NixOS release
+
+When a new stable release lands (e.g. 26.11), update the channel URLs
+in =flake.nix=.  Three inputs carry a version suffix:
+
+#+begin_src nix
+# nixpkgs
+nixpkgs.url = "github:NixOS/nixpkgs/nixos-<NEW>";
+# Home Manager
+home-manager.url = "github:nix-community/home-manager/release-<NEW>";
+# nix-darwin
+nix-darwin.url = "github:nix-darwin/nix-darwin/nix-darwin-<NEW>";
+#+end_src
+
+=nixpkgs-unstable=, =disko=, =lanzaboote=, and =nixos-hardware= have
+no version suffix and need no change.
+
+Then lock, validate, and rebuild:
+
+#+begin_src zsh
+nix flake update
+nix flake check
+# NixOS
+sudo nixos-rebuild switch --flake '.#nixOS'
+#+end_src
+
+A Mac follows once the change is published, as in [[*Update a Mac][Update a Mac]]. The
+commands of the first switch in
+[[file:../tutorials/first-day-on-a-new-mac.org][First day on a new Mac]] name the nix-darwin release branch: update
+them in the same change.
+
+*Do not change =stateVersion=.*  The
+[[file:../explanation/architecture.org::*State versions][state versions]]
+explanation says why.
+
+Always read the release notes on nixos.org for breaking changes or
+required manual migrations before switching.

@@ -3,7 +3,8 @@
 #   • hosts/macOS.nix (fonts.packages, macOS Core Text via /Library/Fonts)
 #
 # Usage:  import ../fonts.nix { inherit unstable; }
-{unstable}: [
+{unstable}:
+[
   # Nerd Fonts (terminal / code)
   unstable.nerd-fonts.iosevka
   unstable.nerd-fonts.iosevka-term
@@ -31,7 +32,12 @@
   unstable.tex-gyre.chorus # free Zapf Chancery (same design lineage as Zapfino)
   unstable.dancing-script # lively informal calligraphic script
   unstable.lxgw-wenkai # CJK calligraphic Kai based on Klee One
+]
+# macOS ships its own Zapfino.
+++ unstable.lib.optionals unstable.stdenv.hostPlatform.isLinux [
   (unstable.callPackage ./packages/zapfino.nix {})
+]
+++ [
   (unstable.callPackage ./packages/tw-moe-fonts.nix {})
 
   # CJK fallback

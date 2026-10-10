@@ -1,0 +1,238 @@
+#+title: Grant privacy permissions on macOS
+#+author: piotr-yuxuan
+
+Use this guide after the first switch, or when a switch or an app stops
+because macOS refused it a permission. nix-darwin cannot grant privacy
+permissions: macOS asks the user, or device management decides. The
+sections below give, for each permission this configuration relies on,
+when it is needed, how to grant it, and how to check it.
+
+*Untested on a managed Mac.* The error messages come from the
+nix-darwin 26.05 and Home Manager 26.05 sources, the Homebrew source and
+the Rectangle and MiddleClick documentation. System Settings labels are
+those of macOS 15 and may differ on the Mac's release. If something
+differs, write down what you saw so that this page can be corrected.
+
+* Before you start
+
+- Permissions belong to an application. For anything a switch does, that
+  is the terminal you run it from: Terminal before the first switch,
+  Ghostty once its cask is installed. Grant again when you change
+  terminal.
+- System Settings may ask for an administrator's name and password. See
+  [[file:../how-to/macOS-work-without-permanent-admin-rights.org][Work without permanent admin rights]].
+- When a toggle in System Settings is greyed out or flips back, a
+  device management profile owns it. Ask IT, and see
+  [[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts with MDM]].
+
+* App Management for the terminal
+
+** When it is needed
+
+- A switch stops with
+  =permission denied when trying to update apps, aborting activation=.
+  nix-darwin checks the apps in =/Applications/Nix Apps= and Home
+  Manager checks those in =~/Applications/Home Manager Apps=; each check
+  fails only when its folder already contains an app that the terminal
+  may not modify. Today neither folder receives an app: PyCharm, the
+  only Nix package with an app on macOS, moved to a Homebrew cask for
+  this reason. The permission becomes necessary again as soon as a
+  Nix package with an app is added.
+- Homebrew upgrades casks at every switch (=brew upgrade --greedy=).
+  With App Management, it updates an app in place. Without it, Homebrew
+  deletes the app and installs it again, which macOS treats as an
+  uninstallation: the app may lose data such as its notification
+  settings or its place in the Dock.
+
+** Grant it
+
+1. Open System Settings > Privacy & Security > App Management.
+2. Add or enable the terminal.
+3. Quit the terminal and open it again, then run the switch again if it
+   had stopped.
+
+When the check fails in a graphical session, nix-darwin and Home
+Manager first run =tccutil reset SystemPolicyAppBundles=, which clears
+App Management for every app so that macOS shows its prompt again.
+Accepting the prompt is enough; grant the permission again to any other
+app that had it.
+
+** Check it
+
+Run the test Homebrew runs, on an app the Brewfile installed:
+
+#+begin_src zsh
+touch /Applications/Rectangle.app/.homebrew-write-test &&
+  rm /Applications/Rectangle.app/.homebrew-write-test && echo granted
+#+end_src
+
+=Operation not permitted= means the terminal lacks the permission. To
+see whether a Nix app arrived since the last switch:
+
+#+begin_src zsh
+ls "/Applications/Nix Apps" ~/Applications/"Home Manager Apps"
+#+end_src
+
+* Full Disk Access, only when asked
+
+A local switch does not need Full Disk Access. nix-darwin asks for it
+in two cases only:
+
+- =permission denied when trying to create user _nixbld1= :: nix-darwin
+  had to create the Nix build users and macOS refused. Accept the dialog
+  macOS shows and run the switch again. If no dialog appears, grant Full
+  Disk Access to the terminal in System Settings > Privacy & Security >
+  Full Disk Access, run the switch, then remove it again.
+- A message that ends in =over SSH= :: you ran the switch over SSH, for
+  example in a virtual machine. Run it from the graphical session, or
+  enable "Allow full disk access for remote users" in System Settings >
+  General > Sharing, with the i button next to Remote Login.
+
+* Accessibility for Rectangle and MiddleClick
+
+Both apps move windows or post clicks on behalf of other apps, which
+macOS allows only with Accessibility. A Homebrew upgrade can make macOS
+forget the permission; repeat the steps below when an app stops working
+after a switch.
+
+** Rectangle
+
+The =com.user.rectangle= agent from [[file:../../home/macOS.nix][home/macOS.nix]] starts Rectangle at
+login, and [[file:../../hosts/macOS.nix][hosts/macOS.nix]] hides its menu bar icon
+(=hideStatusItem=).
+
+1. Run =open -a Rectangle= and accept its request for Accessibility, or
+   enable Rectangle in System Settings > Privacy & Security >
+   Accessibility.
+2. Check: drag a window's title bar against the top edge of the screen.
+   Rectangle should maximise it.
+
+If Rectangle stays inert although it is enabled, reset its permission
+as its documentation says, then open it again and accept:
+
+#+begin_src zsh
+osascript -e 'quit app "Rectangle"'
+tccutil reset All com.knollsoft.Rectangle
+open -a Rectangle
+#+end_src
+
+** MiddleClick
+
+MiddleClick turns a four-finger tap into a middle click
+(=art.ginzburg.MiddleClick= =fingers = 4= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]; four
+because three-finger drag is on). Its autostart and its menu bar icon
+are set in the app, not in Nix. Once, after the first switch:
+
+1. Open =/Applications/MiddleClick.app= and grant Accessibility in
+   System Settings > Privacy & Security > Accessibility.
+2. In the MiddleClick menu, tick "Launch at login". This registers a
+   login item through =SMAppService=.
+3. Hide the menu bar icon: hold =⌘= and drag the icon off the menu bar
+   until a cross appears, then release. To bring it back, open
+   MiddleClick again while it runs.
+4. Check: a four-finger tap on a Firefox tab closes the tab.
+
+If the tap stops working after an update, MiddleClick's documentation
+says to quit it, remove it from the Accessibility list with the minus
+button, and open it again so that it asks anew.
+
+* Location Services for the time zone and appearance
+
+The configuration leaves =time.timeZone= unset so that macOS follows the
+current location, and sets =AppleInterfaceStyleSwitchesAutomatically=
+so that the appearance follows sunrise and sunset. Both need Location
+Services. The automatic time zone itself is not set by the
+configuration since commit 5545128 removed it from
+[[file:../../scripts/darwin-post-activation.sh][scripts/darwin-post-activation.sh]], so turn it on by hand:
+
+1. System Settings > Privacy & Security > Location Services: turn
+   Location Services on.
+2. In the same pane, open System Services (Details) and turn on Setting
+   time zone.
+3. System Settings > General > Date & Time: turn on "Set time zone
+   automatically using your current location".
+
+Check:
+
+#+begin_src zsh
+defaults read /Library/Preferences/com.apple.timezone.auto Active  # 1
+readlink /etc/localtime                                           # current zone
+defaults read -g AppleInterfaceStyleSwitchesAutomatically         # 1
+#+end_src
+
+If device management keeps Location Services off, choose the time zone
+in Date & Time by hand. The automatic appearance may then no longer
+follow sunrise and sunset.
+
+* Notifications from the staleness agent
+
+The =com.user.nix-staleness-check= agent runs on Mondays at 09:00 and
+posts a notification titled "Nix flake inputs are outdated" with
+=osascript= when an input in the =flake.lock= of the Mac's local flake
+is older than 14 days. On 9 October 2026 several inputs of this
+repository already were (nix-darwin dated from 11 July 2026), so a
+manual run should post one at once:
+
+#+begin_src zsh
+launchctl kickstart "gui/$(id -u)/com.user.nix-staleness-check"
+#+end_src
+
+If nothing appears:
+
+1. Post a test notification from the terminal:
+
+   #+begin_src zsh
+   osascript -e 'display notification "test" with title "Notification test"'
+   #+end_src
+
+2. Open System Settings > Notifications, find the entry that posted it,
+   and allow its notifications. On recent macOS releases this entry is
+   reported to be Script Editor rather than the terminal; check which
+   one appears. Check also that no Focus mode hides notifications.
+3. Read the agent's last exit status with
+   =launchctl print "gui/$(id -u)/com.user.nix-staleness-check"=. Its
+   output goes to =/dev/null=.
+4. The agent finds =nix= and =jq= on launchd's minimal =PATH= plus
+   =/run/current-system/sw/bin=. Check that both resolve there:
+
+   #+begin_src zsh
+   env -i PATH=/run/current-system/sw/bin:/usr/bin:/bin:/usr/sbin:/sbin \
+     /bin/sh -c 'command -v nix jq'
+   #+end_src
+
+   The configuration does not install =jq= system-wide; the agent relies
+   on the =jq= that recent macOS releases ship in =/usr/bin=. When the
+   second line is missing, the agent sees no input dates and stays
+   silent.
+5. The agent reads the directory that its =NH_FLAKE= variable names,
+   =~/src/local/macOS= unless you changed it, and stays silent when
+   that directory does not exist. See
+   [[file:macOS-maintain-the-local-flake.org::*Where the staleness check looks][Where the staleness check looks]].
+
+* Background items
+
+macOS may notify that background items were added when the first
+switch loads the launchd agents. Leave them allowed in System Settings >
+General > Login Items & Extensions: when one is turned off, its agent
+no longer starts. The configuration declares =com.user.rectangle=,
+=com.user.notunes=, =com.user.docker-desktop=,
+=com.user.clear-hushlogin=, =com.user.nix-staleness-check=,
+=org.nix-community.home.gpg-agent=,
+=org.nix-community.home.tldr-update= and =org.nixos.nh-clean=.
+
+* Files and folders
+
+macOS asks once per app before it reads the Desktop, Documents or
+Downloads folders. The home layout step of a switch hides those
+folders from Finder with =chflags hidden=, and its failures are
+ignored, so refusing does not break the switch. Answer each prompt
+according to what the app needs, and review the list from time to time
+as [[file:../how-to/macOS-audit-security.org][Audit macOS security]] describes. The reasons are in
+[[file:../explanation/macOS-security-posture.org][the macOS security posture]].
+
+* Related
+
+- [[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]]
+- [[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts with MDM]]
+- [[file:../reference/package-guide.org][Package guide]]
+- [[file:../explanation/macOS-nix-and-homebrew.org][Nix and Homebrew on macOS]]

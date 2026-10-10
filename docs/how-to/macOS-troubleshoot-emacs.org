@@ -1,0 +1,357 @@
+#+title: Troubleshoot Emacs on macOS
+#+author: piotr-yuxuan
+
+Known problems of the Emacs configuration on the Mac, each with its
+symptom, its cause and a workaround. Emacs.app comes from the
+=jimeh/emacs-builds/emacs-app= cask in [[file:../../config/Brewfile][config/Brewfile]]; its configuration
+is a separate repository, cloned at =~/.emacs.d= as the
+[[file:../tutorials/first-day-on-a-new-mac.org][first-day tutorial]] does.
+
+This repository does not change =~/.emacs.d=. Every workaround below
+lives either in a terminal or in =~/.emacs.d/local.el=, a file that
+Git ignores and that =init.el= loads last.
+
+The entries were checked against the Emacs configuration as it stood
+on 7 October 2026, and line numbers refer to that state. The
+configuration changes often: look at the cited lines before you apply
+a workaround.
+
+Everything here is untested on a managed Mac. Causes come from reading
+the code of the configuration and of the packages at their pinned
+versions. Symptoms marked /(inferred)/ follow from that reading and have
+not been seen on a Mac yet.
+
+* Symptom index
+
+| Symptom                                                       | Section                                       |
+|---------------------------------------------------------------+-----------------------------------------------|
+| =*jinx module compilation*= pops up when you open files       | [[*Jinx fails to compile its module][Jinx fails to compile its module]]              |
+| Installing a tree-sitter grammar fails with undefined symbols | [[*Tree-sitter grammars fail to link][Tree-sitter grammars fail to link]]             |
+| A tool works in a terminal but not in Emacs.app               | [[*GUI Emacs misses the Home Manager environment][GUI Emacs misses the Home Manager environment]] |
+| =M-x gterm= or =my/btop= fails in =*gterm-compile*=           | [[*Gterm fails to build its module][Gterm fails to build its module]]               |
+| Org export to LaTeX or PDF cannot load =vellum=               | [[*Org export cannot load vellum][Org export cannot load vellum]]                 |
+| Dired shows an =ls= error about =--group-directories-first=   | [[*Dired rejects the listing switches][Dired rejects the listing switches]]            |
+| Icons show as empty boxes                                     | [[*Icons show as empty boxes][Icons show as empty boxes]]                     |
+| No option completion in Nix files                             | [[*Nixd completes no options from this flake][Nixd completes no options from this flake]]     |
+| =emacs -nw= cannot copy to or paste from the macOS clipboard  | [[*Terminal Emacs has no clipboard][Terminal Emacs has no clipboard]]               |
+| An MCP client reaches no Emacs, or the wrong one              | [[*MCP clients reach the wrong Emacs][MCP clients reach the wrong Emacs]]             |
+
+* Where workarounds go
+
+Create =~/.emacs.d/local.el= if it does not exist; =local.el.example= in
+the same directory shows its shape. Git ignores it (=.gitignore= line
+24), and =init.el= loads it at the very end (lines 3246 to 3249), before
+=emacs-startup-hook= runs. Restart Emacs after editing it.
+
+* Jinx fails to compile its module
+
+*Symptom.* When you open a text, code or configuration file, a
+=*jinx module compilation*= window pops up and Emacs reports
+=Jinx: Compilation of jinx-mod.dylib failed=. The buffer shows a
+compiler command and linker errors such as
+=Undefined symbols for architecture arm64: "_free", "_malloc", "_strlen"=.
+It happens again in every new buffer, because jinx retries while its
+module is missing. Spell-checking does not work.
+
+*Cause.* jinx compiles =jinx-mod.dylib= on first use with =$CC= if it
+is set, otherwise with the first of =gcc=, =clang= and =cc= it finds.
+[[file:../../home/base.nix][home/base.nix]] enables =programs.gcc= on both hosts, so =gcc= is
+Nix GCC, built against the nixpkgs Apple SDK.
+Emacs.app from jimeh/emacs-builds sets =LIBRARY_PATH= to its own GCC
+framework and the Xcode Command Line Tools SDK, for native compilation.
+The linker then mixes the two SDKs and libc symbols come out undefined.
+The Emacs configuration used to rewrite =LIBRARY_PATH= around jinx's
+compilation; the merge commit =ac44771= (28 July 2026) removed that
+code, and =init.el= now starts =global-jinx-mode= from
+=emacs-startup-hook= with no guard (lines 2783 to 2790). The comment
+above =PKG_CONFIG_PATH= in [[file:../../home/base.nix][home/base.nix]] still describes the removed
+workaround.
+
+*Workaround.* Build the module once from a terminal, where Emacs.app's
+=LIBRARY_PATH= is absent and Home Manager's =PKG_CONFIG_PATH= and
+=LIBRARY_PATH= point at Nix's enchant. The flags are the ones jinx passes
+itself:
+
+#+begin_src zsh
+cd ~/.emacs.d/straight/build/jinx
+gcc -I. -O2 -Wall -Wextra -fPIC -shared -o jinx-mod.dylib jinx-mod.c $(pkg-config --cflags --libs enchant-2)
+#+end_src
+
+Restart Emacs: jinx finds =jinx-mod.dylib= on its load path and loads it
+without compiling. If a later package update rebuilds jinx and the error
+comes back, run the same commands again.
+
+To stop the pop-ups until then, turn the mode off for the session with
+=M-x global-jinx-mode=, or keep it off at startup with this line in
+=local.el=:
+
+#+begin_src emacs-lisp
+(remove-hook 'emacs-startup-hook #'global-jinx-mode)
+#+end_src
+
+* Tree-sitter grammars fail to link
+
+*Symptom* /(inferred)/. =M-x treesit-install-language-grammar= fails
+while linking, with libc symbols such as =malloc= or =iswspace= reported
+as undefined. The Emacs repository's =README.org= describes this exact
+failure.
+
+*Cause.* The same =LIBRARY_PATH= conflict as jinx. Emacs 31.1 compiles
+grammars with the first of =cc=, =gcc= and =c99=, which is Nix GCC once
+the Nix profile is on =exec-path=. Commit =ac44771= also removed the
+advice that stripped =LIBRARY_PATH= during grammar compilation; the
+=README.org= text that describes it remains.
+
+*Workaround.* Put the removed advice back locally, in =local.el=:
+
+#+begin_src emacs-lisp
+(when (eq system-type 'darwin)
+  (define-advice treesit-install-language-grammar
+      (:around (orig-fn &rest args) local-strip-library-path)
+    (let ((process-environment
+           (seq-remove (lambda (entry) (string-prefix-p "LIBRARY_PATH=" entry))
+                       process-environment)))
+      (apply orig-fn args))))
+#+end_src
+
+Grammars only need libc, which Nix GCC finds through its own SDK. They
+land in =~/.emacs.d/tree-sitter/=, which Git ignores.
+
+* GUI Emacs misses the Home Manager environment
+
+*Symptom* /(inferred)/. In Emacs.app started from the Dock or Finder,
+some tools behave as if unconfigured: =consult-ripgrep= ignores
+=~/.config/ripgrep/ripgreprc=, Mermaid diagrams fail because =mmdc=
+looks for its own Chromium, spelling dictionaries are missing, and Org
+export cannot find =engrave-faces=. In such an Emacs,
+=M-: (getenv "RIPGREP_CONFIG_PATH")= returns =nil=.
+
+*Cause.* Home Manager writes its variables into the shell startup files
+only; nothing passes them to apps that launchd starts. =init.el= copies
+the shell environment with =exec-path-from-shell= on a one-second idle
+timer (lines 626 to 639), and that package copies only =PATH= and
+=MANPATH= by default. So Emacs.app lacks =PKG_CONFIG_PATH=,
+=C_INCLUDE_PATH=, =DICPATH=, =RIPGREP_CONFIG_PATH= and =EMACSLOADPATH=
+from [[file:../../home/base.nix][home/base.nix]], and =PUPPETEER_EXECUTABLE_PATH= and
+=PUPPETEER_SKIP_DOWNLOAD= from [[file:../../home/macOS.nix][home/macOS.nix]] (whose comment says Emacs
+picks them up through =exec-path-from-shell=; it does not). During the
+first second after start, even =PATH= is the macOS default.
+
+*Workaround.* Either start Emacs.app from a terminal, so it inherits the
+whole environment:
+
+#+begin_src zsh
+nohup /Applications/Emacs.app/Contents/MacOS/Emacs >/dev/null 2>&1 &
+#+end_src
+
+This is the only way =EMACSLOADPATH= takes effect, because Emacs reads
+it once at startup.
+
+Or copy more variables in =local.el=:
+
+#+begin_src emacs-lisp
+(when (eq system-type 'darwin)
+  (with-eval-after-load 'exec-path-from-shell
+    (dolist (var '("PKG_CONFIG_PATH" "C_INCLUDE_PATH" "DICPATH"
+                   "RIPGREP_CONFIG_PATH"
+                   "PUPPETEER_EXECUTABLE_PATH" "PUPPETEER_SKIP_DOWNLOAD"))
+      (add-to-list 'exec-path-from-shell-variables var))))
+#+end_src
+
+Never add =LIBRARY_PATH= to that list: it would replace the value
+Emacs.app sets for its own native compilation. Check the result with
+=M-: (getenv "RIPGREP_CONFIG_PATH")= a few seconds after startup.
+
+* Gterm fails to build its module
+
+*Symptom* /(inferred)/. The first =M-x gterm=, or =M-x my/btop= which
+uses it, clones Ghostty, then fails with
+=gterm: compilation failed (exit code N). See *gterm-compile* buffer=,
+and that buffer shows a Zig build error.
+
+*Cause.* When =straight/repos/emacs-libgterm/vendor/ghostty= is missing,
+gterm clones Ghostty's current main branch. That branch requires Zig
+0.16.0, while emacs-libgterm, both the pinned =5f5516d= and its main
+branch on 9 October 2026, declares Zig 0.15.1. Nix provides Zig 0.16.0.
+On nixOS the module was built on 18 April against a Ghostty clone at
+=ca7516b=, and gterm only compiles when the module file is missing, so
+the problem never shows there.
+
+*Workaround.* Use the other terminals the configuration sets up:
+=C-c t= opens mistty, =M-x eat= opens eat, and =btop= runs in either.
+If you need gterm, try the Ghostty revision nixOS uses before the first
+=M-x gterm= (whether Zig 0.16 builds it has not been checked):
+
+#+begin_src zsh
+cd ~/.emacs.d/straight/repos/emacs-libgterm
+rm -rf vendor/ghostty
+git clone https://github.com/ghostty-org/ghostty.git vendor/ghostty
+git -C vendor/ghostty checkout ca7516b
+#+end_src
+
+* Org export cannot load vellum
+
+*Symptom* /(inferred)/. Exporting an Org file to LaTeX or PDF stops with
+=Cannot open load file: No such file or directory, vellum=.
+
+*Cause.* =init.el= adds =~/texmf/tex/latex/vellum= to the load path and
+requires =vellum= as soon as =ox-latex= loads, with no check that it
+exists (lines 1093 to 1095). Nothing in this repository installs vellum:
+on nixOS that directory holds symbolic links, made by hand, into a
+clone of =piotr-yuxuan/vellum=. vellum also makes Org use
+=engrave-faces= for source blocks, and that package reaches Emacs only
+through =EMACSLOADPATH= (see
+[[*GUI Emacs misses the Home Manager environment][GUI Emacs misses the Home Manager environment]]).
+
+*Workaround.* Clone vellum below the personal directory, so that the
+personal SSH key applies, then follow the manual installation in its
+=README.md=:
+
+#+begin_src zsh
+git clone git@github.com:piotr-yuxuan/vellum.git ~/src/github.com/piotr-yuxuan/vellum
+REPO=~/src/github.com/piotr-yuxuan/vellum
+mkdir -p ~/texmf/tex/latex/vellum
+ln -sf "$REPO/tex"/*.tex ~/texmf/tex/latex/vellum/
+ln -sf "$REPO/tex/vellum-setup.org" ~/texmf/tex/latex/vellum/
+ln -sf "$REPO/elisp/vellum.el" ~/texmf/tex/latex/vellum/
+mktexlsr ~/texmf
+kpsewhich vellum.tex
+#+end_src
+
+The last command must print the linked =vellum.tex=. If it prints
+nothing, compare =kpsewhich -var-value TEXMFHOME= with =~/texmf=:
+whether Homebrew's TeX Live uses =~/texmf= on macOS has not been
+checked. For =engrave-faces=, start Emacs.app from a terminal as shown
+in the previous section.
+
+* Dired rejects the listing switches
+
+*Symptom* /(inferred)/. Opening Dired or Dirvish soon after Emacs starts
+fails, and the error mentions =ls= and the option
+=--group-directories-first=.
+
+*Cause.* =init.el= sets =dired-listing-switches= to
+=-l -A --group-directories-first= (line 1134), which only GNU =ls=
+understands. On macOS, Emacs 31.1 uses =gls= when it exists and =ls=
+otherwise. Nix's coreutils installs GNU =ls= as plain =ls=, which wins
+only once =exec-path-from-shell= has put the Nix profile first, one
+second after startup. Before that, or if the import fails, macOS's
+=/bin/ls= runs.
+
+*Workaround.* Wait a moment and open Dired again, or point Emacs at GNU
+=ls= directly in =local.el=:
+
+#+begin_src emacs-lisp
+(when (eq system-type 'darwin)
+  (setq insert-directory-program
+        (format "/etc/profiles/per-user/%s/bin/ls" user-login-name)))
+#+end_src
+
+Home Manager installs user packages into that profile on this Mac;
+=ls -l /etc/profiles/per-user/$USER/bin/ls= confirms the path.
+
+* Icons show as empty boxes
+
+*Symptom.* Icons in the mode line, Dirvish, Corfu popups and completion
+lists show as empty boxes or missing glyphs.
+
+*Cause.* nerd-icons draws them with the "Symbols Nerd Font Mono" font.
+[[file:../../fonts.nix][fonts.nix]] installs the Iosevka, Iosevka Term, Fira Code and Inconsolata
+Nerd Fonts, but not the symbols-only one. On nixOS it was installed by
+hand with =M-x nerd-icons-install-fonts=.
+
+*Workaround.* Run =M-x nerd-icons-install-fonts=. On macOS it downloads
+the font from =raw.githubusercontent.com= into =~/Library/Fonts/=.
+Restart Emacs, then check with
+=M-: (find-font (font-spec :family "Symbols Nerd Font Mono"))=, which
+returns a font object instead of =nil=. The declarative alternative is
+=unstable.nerd-fonts.symbols-only= in =fonts.nix=, which this
+configuration does not have yet.
+
+* Nixd completes no options from this flake
+
+*Symptom.* In Nix files, nixd, the only Nix language server installed,
+offers no nix-darwin, NixOS or Home Manager option completion. This
+affects nixOS too.
+
+*Cause.* =init.el= sets nixd's option expressions inside
+=(with-eval-after-load 'lsp-nix-nixd ...)= (lines 2739 to 2748), but
+lsp-mode's Nix client provides the feature =lsp-nix=, so that block never
+runs. Its expressions also name a checkout and a host of the NixOS
+laptop, which do not exist on the Mac.
+
+*Workaround.* Point nixd at the macOS options of the Mac's local flake
+in =local.el=, then run =M-x lsp-workspace-restart= in a Nix buffer:
+
+#+begin_src emacs-lisp
+(with-eval-after-load 'lsp-nix
+  (let ((options (format "(builtins.getFlake \"%s\").darwinConfigurations.macOS.options"
+                         (expand-file-name "~/src/local/macOS"))))
+    (setq lsp-nix-nixd-nixos-options-expr options
+          lsp-nix-nixd-home-manager-options-expr
+          (concat options ".home-manager.users.type.getSubOptions []"))))
+#+end_src
+
+lsp-mode only offers a NixOS slot and a Home Manager slot, so the
+nix-darwin options go in the NixOS one. Both attribute paths evaluate in
+a local flake created from the template.
+
+* Terminal Emacs has no clipboard
+
+*Symptom.* In =emacs -nw=, which is the =ALTERNATE_EDITOR= in
+[[file:../../config/before.zshenv][config/before.zshenv]], killed text does not reach the macOS clipboard and
+yanking does not see it. Emacs.app is not affected.
+
+*Cause.* =init.el= connects terminal Emacs to the clipboard only on Linux
+under Wayland, through =wl-copy= and =wl-paste= (lines 215 to 231). There
+is no macOS equivalent.
+
+*Workaround.* For a one-off, copy the region with =M-| pbcopy RET= and
+insert the clipboard with =C-u M-! pbpaste RET=. For the whole session,
+mirror the Linux code with =pbcopy= and =pbpaste= in =local.el=:
+
+#+begin_src emacs-lisp
+(when (and (eq system-type 'darwin) (not (display-graphic-p)))
+  (setq interprogram-cut-function
+        (lambda (text)
+          (let* ((process-connection-type nil)
+                 (proc (start-process "pbcopy" nil "pbcopy")))
+            (process-send-string proc text)
+            (process-send-eof proc)))
+        interprogram-paste-function
+        (lambda () (shell-command-to-string "pbpaste"))))
+#+end_src
+
+* MCP clients reach the wrong Emacs
+
+*Symptom.* An MCP client set up through =~/.config/mcp/mcp.json= cannot
+connect to Emacs, or acts on another Emacs session than the one you are
+using. =~/.emacs.d/var/mcp-server/= holds numbered sockets such as
+=emacs-mcp-server-1.sock= next to =emacs-mcp-server.sock=. This affects
+nixOS too, where 52 numbered sockets have accumulated.
+
+*Cause.* The client bridge in [[file:../../config/mcp.json][config/mcp.json]] always connects to
+=$HOME/.emacs.d/var/mcp-server/emacs-mcp-server.sock=. Every Emacs starts
+the MCP server from =emacs-startup-hook= (=init.el= lines 3174 to 3181).
+When that socket belongs to a running Emacs, the next one, for example
+=emacs -nw= next to Emacs.app, takes =emacs-mcp-server-1.sock= and so on,
+and the bridge cannot reach it. A base socket that no process listens on
+any more is removed and reused, but numbered sockets left by sessions
+that did not clean up stay behind.
+
+*Workaround.* Keep one Emacs running with the MCP server. To reset, quit
+every Emacs, graphical and terminal, then remove the sockets and start
+one Emacs:
+
+#+begin_src zsh
+rm -f ~/.emacs.d/var/mcp-server/emacs-mcp-server*.sock
+open -a Emacs
+#+end_src
+
+Afterwards =ls ~/.emacs.d/var/mcp-server/= lists only
+=emacs-mcp-server.sock=.
+
+* See also
+
+- [[file:../explanation/macOS-nix-and-homebrew.org][Why the Mac uses both Nix and Homebrew]], for why Emacs.app comes from
+  a Homebrew cask rather than from Nix.

@@ -1,0 +1,145 @@
+#+title: Install NixOS on the Framework 16
+#+author: piotr-yuxuan
+
+Full walkthrough for installing NixOS on a Framework 16 AMD 7040 laptop
+from an Ubuntu live USB session.
+
+* Prerequisites
+
+- A USB drive flashed with the latest *Ubuntu Desktop ISO*.
+- A network connection (Ethernet dongle or Wi-Fi).
+- This repository, which step 4 clones from GitHub (or a copy of it on
+  the USB drive).
+
+* 1. Boot the live USB
+
+Power on the Framework, press *F12* during POST to select the USB drive.
+Choose *"Try Ubuntu"*.
+
+* 2. Connect to the internet
+
+#+begin_src zsh
+ping -c3 nixos.org
+#+end_src
+
+* 3. Install Nix
+
+#+begin_src zsh
+sh <(curl -L https://nixos.org/nix/install) --daemon
+#+end_src
+
+Open a *new terminal* (or =source /etc/profile=) so =nix= is on =PATH=.
+
+* 4. Partition the disk with Disko
+
+#+begin_src zsh
+nix-shell -p git --run "git clone https://github.com/piotr-yuxuan/hardware.nix.git /tmp/nixos"
+cd /tmp/nixos
+
+# ⚠ This ERASES /dev/nvme0n1
+sudo nix --experimental-features "nix-command flakes" run \
+  github:nix-community/disko -- --mode disko ./disko-config.nix
+#+end_src
+
+You will be prompted for a *LUKS passphrase*, choose a strong one.
+The [[file:../reference/nixOS-disk-layout.org][nixOS disk layout]] reference lists what Disko creates.
+
+The installed system asks for that passphrase with the =us= keyboard
+layout unless you say otherwise. If you type on another layout, create
+=hosts/nixOS/personal.nix= in =/tmp/nixos= before step 7, as the
+"System settings" section of
+[[file:../how-to/nixOS-personalise-a-fresh-install.org][Personalise a fresh install of nixOS]] shows, and stage it, because a
+flake only sees the files Git tracks:
+
+#+begin_src zsh
+nix-shell -p git --run "git -C /tmp/nixos add hosts/nixOS/personal.nix"
+#+end_src
+
+If =disko= fails to find the disk, verify the device name with =lsblk=
+and edit =disko-config.nix= if it differs from =/dev/nvme0n1=.
+
+* 5. Generate hardware configuration
+
+#+begin_src zsh
+sudo nixos-generate-config --no-filesystems --root /mnt
+cp /mnt/etc/nixos/hardware-configuration.nix /tmp/nixos/hardware-configuration.nix
+#+end_src
+
+The [[file:../explanation/architecture.org::*nixOS installation choices][installation choices]] explanation says why
+=--no-filesystems= is needed.
+
+* 6. Create the password file
+
+#+begin_src zsh
+sudo mkdir -p /mnt/etc/secrets
+echo "your-password" | mkpasswd -m sha-512 -s \
+  | sudo tee /mnt/etc/secrets/example-password > /dev/null
+sudo chmod 600 /mnt/etc/secrets/example-password
+#+end_src
+
+The [[file:../explanation/nixOS-security-posture.org::*User and privilege model][user and privilege model]] says why the password lives
+in a hashed file.
+
+* 7. Install NixOS
+
+#+begin_src zsh
+cd /tmp/nixos
+sudo nixos-install --flake .#nixOS --root /mnt
+#+end_src
+
+You will be asked to set the *root password*. The first build downloads
+and compiles everything; it takes a while.
+
+* 8. Reboot into NixOS
+
+#+begin_src zsh
+sudo reboot
+#+end_src
+
+Remove the USB drive. The system boots into *GDM*. Log in as =example=.
+
+* 9. Clone repositories
+
+=~/src= becomes a link into Dropbox once Maestral has synced
+(=scripts/home-layout-nixOS.sh=), and a non-empty =~/src= blocks that
+link.  If Dropbox already holds these repositories, run =maestral setup=
+from the post-install checklist first and skip this step.
+
+Otherwise clone this repository, from which later rebuilds run, and the
+Emacs configuration. Both clones go over HTTPS and need no key:
+
+#+begin_src zsh
+git clone https://github.com/piotr-yuxuan/hardware.nix.git \
+  ~/src/github.com/piotr-yuxuan/hardware.nix
+git clone https://github.com/piotr-yuxuan/.emacs.d.git ~/.emacs.d
+#+end_src
+
+Copy what you changed in =/tmp/nixos= into the new clone:
+=hardware-configuration.nix= if step 5 changed it, and
+=hosts/nixOS/personal.nix= if you created it. Run =git add= on the
+latter there too.
+
+The system carries no personal setting yet: no Git identity, no SSH key
+for a forge, the =us= keyboard layout. Add yours with
+[[file:../how-to/nixOS-personalise-a-fresh-install.org][Personalise a fresh install of nixOS]].
+
+* 10. Enrol Secure Boot keys
+
+#+begin_src zsh
+sudo sbctl status
+sudo sbctl verify
+#+end_src
+
+=sbctl status= should show "Secure Boot: enabled" with keys enrolled
+and the database signed.  If the keys are *not* enrolled, follow
+[[file:../how-to/troubleshoot-common-problems.org::*Secure Boot: "not in Setup mode"][Secure Boot enrolment]].
+
+* Post-install checklist
+
+- [ ] Verify Wi-Fi: =nmcli device wifi list=
+- [ ] Set up Maestral (Dropbox): =maestral setup=
+- [ ] Add your personal settings: [[file:../how-to/nixOS-personalise-a-fresh-install.org][Personalise a fresh install of nixOS]]
+- [ ] Import GPG keys: =gpg --import <key-file>=
+- [ ] Create =~/.zshenv.secrets= with any tokens (gitignored)
+- [ ] Configure SSH keys in =~/.ssh/=
+- [ ] Launch Emacs and let it install packages: =emacs=

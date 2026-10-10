@@ -1,0 +1,43 @@
+<monitors version="2">
+  <!--
+    nixOS with the Iiyama PL3494WQ on DP-3, captured on 2026-10-04.
+    Physical monitor menu: Extra2 > USB-C > USB 2.0. USB 3.0 prevents
+    3440x1440 at 100/120 Hz over USB-C on this monitor.
+    Fixed 120 Hz avoids the reported YouTube blanking with VRR enabled.
+    System default only: GNOME's saved user profiles take precedence.
+    See docs/explanation/nixOS-iiyama-display.org for the hardware setup
+    and verification.
+  -->
+  <configuration>
+    <layoutmode>logical</layoutmode>
+    <logicalmonitor>
+      <x>0</x>
+      <y>0</y>
+      <scale>1</scale>
+      <primary>yes</primary>
+      <monitor>
+        <monitorspec>
+          <connector>DP-3</connector>
+          <vendor>IVM</vendor>
+          <product>PL3494WQ</product>
+          <serial>0000000000000</serial>
+        </monitorspec>
+        <mode>
+          <width>3440</width>
+          <height>1440</height>
+          <rate>120.000</rate>
+          <ratemode>fixed</ratemode>
+        </mode>
+        <colormode>bt2100</colormode>
+      </monitor>
+    </logicalmonitor>
+    <disabled>
+      <monitorspec>
+        <connector>eDP-1</connector>
+        <vendor>BOE</vendor>
+        <product>0x0bc9</product>
+        <serial>0x00000000</serial>
+      </monitorspec>
+    </disabled>
+  </configuration>
+</monitors>

@@ -1,6 +1,5 @@
 # Used by Home Manager and should stay in sync with it.
 
-tap "brunobonacci/lazy-tools"
 tap "jimeh/emacs-builds"
 
 # curl: forced by HOMEBREW_FORCE_BREWED_CURL=1 (home/macOS.nix), so
@@ -8,9 +7,11 @@ tap "jimeh/emacs-builds"
 # curl on PATH still comes from Nix (unstable.curl). Declared here so
 # brew bundle cleanup does not flag it (and its libssh2 dep) as drift.
 brew "curl"
+brew "enca" # nixpkgs enca needs recode, broken on aarch64-darwin (nixpkgs#568679)
 brew "enchant" # Spellchecker wrapping library (also in nixpkgs; keep in sync)
+brew "fortune" # nixpkgs fortune-mod needs recode, broken on aarch64-darwin (nixpkgs#568679)
 brew "jenv" # Consider pkgs.jdk + home-manager PATH management
-brew "lft" # kept because it's not found in nixpkgs 25.11
+brew "lft" # kept because nixpkgs does not package it (checked on 26.05)
 brew "likec4" # vs-code extension dependency
 brew "meson" # Fast and user friendly build system
 brew "pkgconf" # pkg-config implementation (Homebrew name)
@@ -29,7 +30,9 @@ brew "zsh-autocomplete" # No equivalent home-manager module
 # jimeh/emacs-builds, which provides nightly and release .app bundles
 # with native compilation and macOS-native UI optimisations. See:
 # https://github.com/jimeh/emacs-builds
-cask "jimeh/emacs-builds/emacs-app"
+# Homebrew 6 requires trust for third-party taps. Declare it here: an
+# accepted `brew bundle cleanup` resets the trust store to this file.
+cask "jimeh/emacs-builds/emacs-app", trusted: true
 cask "appcleaner"
 cask "firefox@developer-edition"
 cask "flux-app"
@@ -42,29 +45,34 @@ cask "itraffic"
 cask "libreoffice"
 cask "macfuse"
 cask "notunes"
-# The pinned Nix PyCharm package uses an absent Cython path on Darwin.
-# Use the native app here; Linux keeps the Nix package.
-cask "pycharm"
 cask "rectangle"
 cask "slack@beta"
 cask "visual-studio-code" # macOS GUI install; extensions managed via vscode "..." below
 cask "vlc"
-cask "goldenpassport" # Google Authenticator clone (TOTP)
 cask "localsend" # Cross-platform AirDrop alternative
 cask "middleclick" # Three/four-finger trackpad tap → middle click
 cask "notion" # Notes/wiki
 cask "notion-calendar" # Calendar
 cask "gimp"
 
-# AI coding tools — not packaged in nixpkgs, so the Homebrew cask is the
-# canonical install on macOS.
+# AI coding tools: the vendors' casks are the canonical install on macOS.
+# nixpkgs unstable now also packages claude-code and codex; switching is
+# a separate decision.
 cask "claude" # Claude desktop app
 cask "claude-code" # Claude Code CLI
-cask "codex" # OpenAI Codex CLI (depends on the ripgrep formula)
+cask "codex" # OpenAI Codex CLI
+# codex-app: deprecated by Homebrew on 2026-07-12 (discontinued; its
+# replacement is the chatgpt cask). Kept until the switch is decided.
+# Once Homebrew disables it, brew bundle reports a failure on every switch.
 cask "codex-app" # Codex desktop app
 
+# pycharm: installed via this cask on macOS; on nixOS it comes from
+# nixpkgs (home/nixOS.nix). A Nix .app on macOS would make every Home
+# Manager switch depend on the App Management permission.
+cask "pycharm"
+
 # visualvm: installed via this cask on macOS (native VisualVM.app); on
-# linux-laptop (Linux) it comes from nixpkgs (home/linux-laptop.nix). Splitting the
+# nixOS (Linux) it comes from nixpkgs (home/nixOS.nix). Splitting the
 # two mechanisms avoids a duplicate Nix copy on macOS.
 cask "visualvm"
 vscode "likec4.likec4-vscode"

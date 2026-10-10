@@ -1,0 +1,96 @@
+#+TITLE: Audit macOS security
+#+AUTHOR: piotr-yuxuan
+
+Periodic checks for the macOS host.  The rationale for each measure is
+in [[file:../explanation/macOS-security-posture.org][macOS security posture]].
+
+* Flake inputs
+
+Run =nix flake metadata= in the Mac's local flake, =~/src/local/macOS=,
+and review the dates of each input.  If any are more than two weeks
+old, run =nix flake update base= and rebuild, as
+[[file:macOS-maintain-the-local-flake.org::*Update the shared configuration][Update the shared configuration]] shows.  An input that stays old after
+that is old in this repository: update it there, on the personal
+laptop.  The staleness agent should warn you
+automatically: =launchctl list | grep staleness= prints a line for
+=com.user.nix-staleness-check= when it is loaded.
+
+* Firewall status
+
+Run =/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate=
+and verify it reports enabled.  Alternatively, open System Settings >
+Network > Firewall and confirm it shows "Firewall is active."
+
+* Listening ports
+
+Run =lsof -iTCP -sTCP:LISTEN -P -n= and verify nothing unexpected is
+listening.
+
+* Remote access
+
+Open System Settings > General > Sharing and check that Remote Login
+is off.  Run =pmset -g | grep womp= and check that Wake-on-LAN is 0.
+
+* FileVault status
+
+Run =fdesetup status= and confirm it prints "FileVault is On."
+
+* Gatekeeper status
+
+Run =spctl --status= and confirm assessments are enabled.
+
+* SIP status
+
+Run =csrutil status= and confirm System Integrity Protection is
+enabled.  Check again after any troubleshooting session in the
+Recovery OS.
+
+* ICMP redirect sysctl
+
+Run =sysctl net.inet.icmp.drop_redirect= and check whether the value
+is 1.  This configuration does not set it, and a value set with
+=sysctl -w= does not persist across reboots.
+
+* OpenBSM audit logs
+
+Review audit logs with
+=sudo praudit -l /var/audit/current | tail -50=.
+
+* Homebrew integrity
+
+Run =env | grep HOMEBREW= in a new terminal and verify that
+=HOMEBREW_CASK_OPTS=, =HOMEBREW_FORCE_BREWED_CURL=,
+=HOMEBREW_NO_ANALYTICS=, =HOMEBREW_NO_GITHUB_API=,
+=HOMEBREW_NO_INSECURE_REDIRECT= and =HOMEBREW_NO_ENV_HINTS= are set.
+Run =brew doctor= and review any warnings about insecure
+configurations or outdated formulae; a warning about a tap with nothing
+trusted is explained in
+[[file:macOS-manage-homebrew.org::*Trust a third-party tap][Trust a third-party tap]].
+Run =brew update && brew outdated= to check for lagging packages.
+
+* Nix settings
+
+Run =nix config show trusted-users= and verify that only =root= and
+your account are listed.  Run =nix config show require-sigs= and verify
+it prints =true=.
+
+* Nix store trust
+
+Run =nix path-info --sigs /run/current-system= (if available) and
+verify signatures come from trusted keys.
+
+* SSH client settings
+
+Run =ssh -G github.com= and verify that =identitiesonly yes=,
+=passwordauthentication no=, =hashknownhosts yes=,
+=stricthostkeychecking accept-new= and =forwardagent no= appear.
+
+* Git object checks
+
+Run =git config --global --get transfer.fsckObjects= and verify it
+prints =true=.
+
+* TCC permissions
+
+Open System Settings > Privacy & Security > Files and Folders.  Review
+per-app access and revoke anything no longer needed.

@@ -6,10 +6,6 @@
 /.pytest_cache/
 __pycache__/
 *.pyc
-/job-logs.txt
-/prompts/
-/todo.org
-/todo.org_archive
 *.authinfo*
 .env
 .env.*

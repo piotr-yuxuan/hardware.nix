@@ -2,8 +2,9 @@
 #
 # Manages Nix, shells, security hardening, and macOS default preferences.
 #
-# Apply: darwin-rebuild switch --flake .#macOS
+# Apply: sudo darwin-rebuild switch --flake .#macOS
 {
+  config,
   lib,
   unstable,
   ...
@@ -23,22 +24,46 @@
       # substituters entry is ever added without a matching key here.
       trusted-public-keys = [
         "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+        "nix-wpe-webkit.cachix.org-1:ItCjHkz1Y5QcwqI9cTGNWHzcox4EqcXqKvOygxpwYHE="
       ];
       substituters = [
         "https://cache.nixos.org"
+        "https://nix-wpe-webkit.cachix.org"
       ];
-      # Only root may override the daemon trust settings.
-      trusted-users = ["root"];
+      # Scoped to the machine owner so future accounts cannot push
+      # arbitrary store paths bypassing signature verification.
+      trusted-users = ["root" config.system.primaryUser];
     };
     gc = {
       automatic = false; # replaced by the nh-clean launchd agent below
     };
   };
 
+  # Linux builder
+  # A lightweight NixOS VM (aarch64-linux) that lets this Apple Silicon Mac
+  # build and run Linux derivations, including disposable NixOS test VMs.
+  # nix-darwin registers it automatically as an aarch64-linux build machine;
+  # it is only consulted when a Linux build is requested, so it stays inert
+  # for normal darwin work. The VM image is fetched prebuilt from
+  # cache.nixos.org, so no local Linux build is needed to bootstrap it.
+  # memorySize/cores are runtime QEMU flags and do NOT change the cached
+  # image's store path (diskSize would, so it is left at the default).
+  # Revert by deleting this block and running `sudo darwin-rebuild switch`.
+  nix.linux-builder = {
+    enable = true;
+    maxJobs = 4;
+    config = {
+      virtualisation = {
+        cores = 6;
+        darwin-builder.memorySize = 8192; # MB; headroom for nested test VMs
+      };
+    };
+  };
+
   # nh: weekly garbage collection via a launchd user agent.
   # nix-darwin has no programs.nh module, so the periodic job is wired
   # manually.  Runs every Sunday at 03:00, keeping the last 5 generations
-  # and anything newer than 7 days (mirrors the linux-laptop policy exactly).
+  # and anything newer than 7 days (mirrors the nixOS policy exactly).
   # nh clean also removes gcroots, unlike plain nix-collect-garbage.
   launchd.user.agents.nh-clean = {
     serviceConfig = {
@@ -176,8 +201,8 @@
     disable-shadow = true; # cleaner window captures
   };
 
-  # Preserve quarantine checks for downloaded applications.
-  system.defaults.LaunchServices.LSQuarantine = true;
+  # Disable "Are you sure you want to open this application?" quarantine dialog.
+  system.defaults.LaunchServices.LSQuarantine = false;
 
   # Reduce entrypoints for Spaces.
   system.defaults.spaces.spans-displays = false;
@@ -353,8 +378,9 @@
     enable = true;
     enableStealthMode = true; # drop unsolicited ICMP
     allowSignedApp = false;
-    # Block inbound connections to non-essential apps, including app listeners
-    # exposed to the LAN. Set false if a legitimate inbound service requires it.
+    # Block all inbound to non-essential apps. Strongest ALF posture, chosen
+    # because prod data dumps live on this machine; also shields LAN-exposed
+    # app listeners. Set false if it blocks a legitimate inbound service.
     blockAllIncoming = true;
   };
 
@@ -362,7 +388,8 @@
   # Do NOT set networking.hostName or networking.computerName.
 
   # Users
-  # The primary user is declared in flake.nix (example).
+  # The primary user is the `user` argument of lib.mkDarwinHost
+  # (flake.nix), given by the Mac's own flake.
 
   # Fonts
   # nix-darwin copies these into /Library/Fonts/Nix Fonts/ so that

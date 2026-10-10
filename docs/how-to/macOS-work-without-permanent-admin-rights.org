@@ -1,0 +1,173 @@
+#+title: Work without permanent admin rights on macOS
+#+author: piotr-yuxuan
+
+Use this guide when your account on the corporate Mac is a standard
+account, or gets administrator rights only for a limited time through
+an elevation tool. It lists the steps that need administrator rights,
+orders the work around a short elevation window, says what you can do
+as a standard user, and what to ask IT for.
+
+*Untested on a managed Mac.* The requirements come from the
+nix-darwin 26.05 source, the Homebrew installer and documentation, the
+cask definitions of =config/Brewfile=, and this repository. Elevation
+tools differ between companies. If a step behaves differently, write
+down what you saw so that this page can be corrected.
+
+* Check whether you are an administrator now
+
+#+begin_src zsh
+id -Gn | tr ' ' '\n' | grep -qx admin && echo admin || echo standard
+#+end_src
+
+* Know which steps need administrator rights
+
+| Step                                                         | Why                                                                                                                  |
+|--------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------|
+| =xcode-select --install=                                     | Software Update installs the command line tools for the whole system and usually asks for an administrator password. |
+| Installing Nix                                               | Every installer creates the =/nix= volume, the build users and a root daemon.                                        |
+| Installing Homebrew                                          | The installer needs =sudo= to create =/opt/homebrew=, unless that directory already exists and belongs to you.       |
+| =darwin-rebuild switch=, =--rollback=, =--switch-generation= | =darwin-rebuild= refuses them unless it runs as root, with =system activation must now be run as root=.              |
+| =darwin-rebuild check= and =activate=                        | The same rule.                                                                                                       |
+| App casks in [[file:../../config/Brewfile][config/Brewfile]]                                 | They move applications into =/Applications=, which a standard account cannot write.                                  |
+| The =macfuse= and =docker-desktop= casks                     | =macfuse= runs a =.pkg= installer and =docker-desktop= links its commands into =/usr/local/bin=: both call =sudo=.   |
+| Some System Settings panes                                   | Location Services, Date & Time and the Privacy & Security lists can ask for an administrator's name and password.    |
+
+The Home Manager step and the Brewfile step run as your account during
+the switch, not as root: nix-darwin starts them with =sudo -u= for the
+primary user. Your account therefore needs the administrator group
+while the switch runs, not only =sudo=, or the cask installations fail.
+
+* Order the work around an elevation window
+
+The idea is to do every long step as a standard user and to elevate
+only for installers and switches. The steps follow
+[[file:../tutorials/first-day-on-a-new-mac.org][the first-day tutorial]]; this section only says when to be an
+administrator.
+
+1. *Elevated.* Request administrator rights from the elevation tool
+   (for example SAP's Privileges app or a "make me an administrator"
+   item in the company's Self Service app). Install the command line
+   tools, Nix and Homebrew, then check:
+
+   #+begin_src zsh
+   nix --version
+   /opt/homebrew/bin/brew --version
+   ls -ld /opt/homebrew   # the owner must be your account
+   #+end_src
+
+   =/opt/homebrew= stays yours when the elevation ends, and Homebrew
+   needs no =sudo= afterwards to install formulae.
+
+2. *Standard.* Create the Mac's local flake and set the account name
+   (steps 4 and 5 of the tutorial), then build the whole system without
+   activating it. This is the long part, about 5 GiB of downloads on
+   the first build, and it needs no administrator rights:
+
+   #+begin_src zsh
+   cd ~/src/local/macOS
+   nix --extra-experimental-features 'nix-command flakes' \
+     build '.#darwinConfigurations.macOS.system'
+   #+end_src
+
+3. *Elevated.* Request a window long enough for the whole switch: the
+   first one installs every cask of the Brewfile. Then switch with the
+   =darwin-rebuild= from the build:
+
+   #+begin_src zsh
+   sudo ./result/sw/bin/darwin-rebuild switch --flake '.#macOS'
+   #+end_src
+
+   If the network inspects TLS, use the build and switch commands of
+   [[file:../how-to/macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate]] instead. Casks such as =macfuse=
+   may ask for your password during the switch. Touch ID works for
+   =sudo= only after the first switch has completed, through
+   =security.pam.services.sudo_local.touchIdAuth=.
+
+4. *Standard.* Check the result with =darwin-rebuild --list-generations=,
+   then with the final checks of the tutorial.
+
+For every later change, build as a standard user, then elevate only for
+the switch:
+
+#+begin_src zsh
+darwin-rebuild build --flake '.#macOS'      # standard account
+sudo darwin-rebuild switch --flake '.#macOS' # elevated
+#+end_src
+
+If the elevation ends before the switch finishes, the cask installations
+that remain fail with =brewBundle:= warnings and the switch completes
+anyway. Run the switch again during the next elevation. Other failures
+are covered in [[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]].
+
+* Work as a standard user
+
+Once Nix and Homebrew exist, a standard account can still:
+
+- build and dry-run the configuration from the local flake:
+  =nix build --dry-run '.#darwinConfigurations.macOS.system'=, and
+  =darwin-rebuild build --flake '.#macOS'= after the first switch;
+- list generations with =darwin-rebuild --list-generations=;
+- use a tool once with =nix shell nixpkgs#<package>=;
+- install Homebrew formulae, when =/opt/homebrew= belongs to the
+  account;
+- install an app cask into =~/Applications= with
+  =brew install --cask --appdir="$HOME/Applications" <cask>=.
+
+A standard account cannot apply this configuration at all. Every
+activation runs as root, the flake has no standalone Home Manager
+output, and Home Manager installs your packages into
+=/etc/profiles/per-user/<account>=, which only the root activation
+creates. A user-only setup would be a new design, not covered here.
+
+** Keep the Brewfile working without the administrator group
+
+If you stay a standard account but own =/opt/homebrew=, the app casks
+can go to =~/Applications= instead. This is a change to a shared file
+of this repository, made on the personal laptop, and it applies to
+every Mac that takes it. Add this line at the top of
+[[file:../../config/Brewfile][config/Brewfile]]:
+
+#+begin_src ruby
+cask_args appdir: "~/Applications"
+#+end_src
+
+Consequences:
+
+- =macfuse= and =docker-desktop= still need =sudo=. Remove them from
+  the Brewfile or ask IT to deploy them.
+- The Dock entry =persistent-apps = ["/Applications/Emacs.app"]= in
+  [[file:../../hosts/macOS.nix][hosts/macOS.nix]] and =PUPPETEER_EXECUTABLE_PATH= in
+  [[file:../../home/macOS.nix][home/macOS.nix]] point into =/Applications=: change both to
+  =~/Applications= in the same commit.
+- The Docker.app adoption in
+  [[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]] only looks in =/Applications=.
+
+* Ask IT
+
+Send IT the requests that match your situation:
+
+- A time-limited elevation tool, or someone to run the Nix and Homebrew
+  installers with you.
+- Nix installed with the installer named in the tutorial, not
+  Determinate Nix: nix-darwin cannot manage a Determinate installation
+  (see [[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use an IT-managed Nix or Homebrew]]).
+- Homebrew provisioned for your standard account, so that
+  =/opt/homebrew= belongs to you. Homebrew documents both ways for IT:
+  its =.pkg= installer with =HOMEBREW_PKG_USER=, or its shell installer
+  run as root for that account, in
+  [[https://docs.brew.sh/Homebrew-for-Mac-Admins][Homebrew for Mac Admins]].
+- The right to run =sudo darwin-rebuild switch=. Tell IT plainly that a
+  =sudo= rule limited to =darwin-rebuild= amounts to full root: the
+  switch runs the activation built from the flake as root.
+- Approval of the macFUSE kernel extension, which the =macfuse= cask
+  says it needs, or agreement to drop that cask.
+- The privacy permissions in
+  [[file:../how-to/macOS-grant-privacy-permissions.org][Grant privacy permissions]], if device management decides them.
+
+* Related
+
+- [[file:../tutorials/first-day-on-a-new-mac.org][First day on a new Mac]]
+- [[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]]
+- [[file:../how-to/macOS-use-it-managed-nix-or-homebrew.org][Use an IT-managed Nix or Homebrew]]
+- [[file:../how-to/macOS-resolve-mdm-conflicts.org][Resolve conflicts with MDM]]
+- [[file:../explanation/macOS-corporate-machine-considerations.org][Corporate machine considerations]]

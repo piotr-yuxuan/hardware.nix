@@ -3,7 +3,7 @@
 #
 # Creates short-named aliases (symlinks) pointing at the standard user
 # directories, and plain working directories for source code, binaries,
-# and documentation, as declared in readme.org §Organisation of $HOME.
+# and documentation, as declared in docs/reference/home-directory-layout.org.
 #
 # Sourced as a Home Manager activation snippet on every switch.
 # $DRY_RUN_CMD is provided by Home Manager (empty in normal mode,

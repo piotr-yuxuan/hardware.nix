@@ -1,0 +1,348 @@
+#+title: macOS configuration
+#+author: piotr-yuxuan
+
+What the =macOS= configuration manages on an Apple Silicon Mac: the
+files that define it, the order in which a switch applies it, the
+launchd jobs it installs, what it writes outside the Nix store, the
+values each Mac fills in, and its evaluation check. A Mac builds the
+configuration from a small flake of its own that calls this
+repository's builder; this repository never holds a value of one Mac.
+Values were checked against the configuration on 10 October 2026, by
+evaluation on Linux. For the reasons behind them,
+see [[file:../explanation/macOS-nix-and-homebrew.org][Why the Mac uses both Nix and Homebrew]] and
+[[file:../explanation/macOS-git-identities.org][Why the Mac separates work and personal Git identities]]. For procedures, see
+[[file:../tutorials/first-day-on-a-new-mac.org][First day on a new Mac]] and the =macOS-= how-to guides.
+
+* Host and user
+
+| Item                           | Value                                                                                                         | Defined in                |
+|--------------------------------+---------------------------------------------------------------------------------------------------------------+---------------------------|
+| Builder                        | =lib.mkDarwinHost=                                                                                            | [[file:../../flake.nix][flake.nix]]                 |
+| Builder arguments              | =system=, =user=, =extraHmModules ? []=, =extraHostModules ? []=                                              | [[file:../../flake.nix][flake.nix]]                 |
+| Template of a Mac's flake      | =templates.macOS=, the directory =templates/macOS=                                                            | [[file:../../flake.nix][flake.nix]]                 |
+| A Mac's flake output           | =darwinConfigurations.macOS=, one call to =base.lib.mkDarwinHost= with =system = "aarch64-darwin"=            | [[file:../../templates/macOS/flake.nix][templates/macOS/flake.nix]] |
+| This repository's flake output | =darwinConfigurations.macOS=: the template evaluated with =base= set to this checkout, placeholders included  | [[file:../../flake.nix][flake.nix]]                 |
+| nix-darwin input               | =github:nix-darwin/nix-darwin/nix-darwin-26.05=                                                               | [[file:../../flake.nix][flake.nix]]                 |
+| Home Manager input             | =github:nix-community/home-manager/release-26.05=                                                             | [[file:../../flake.nix][flake.nix]]                 |
+| System package set             | =nixpkgs= (=nixos-26.05=); nix-darwin and Home Manager follow it                                              | [[file:../../flake.nix][flake.nix]]                 |
+| User package set               | =unstable=: =nixpkgs-unstable= for =aarch64-darwin=, unfree allowed                                           | [[file:../../flake.nix][flake.nix]]                 |
+| Account name                   | The =user= argument; the placeholder =example= in the template                                                | [[file:../../templates/macOS/flake.nix][templates/macOS/flake.nix]] |
+| Home directory                 | =/Users/${user}=                                                                                              | [[file:../../flake.nix][flake.nix]]                 |
+| =system.primaryUser=           | =user=                                                                                                        | [[file:../../flake.nix][flake.nix]]                 |
+| Machine-local modules          | =extraHmModules= (Home Manager) and =extraHostModules= (nix-darwin), appended after this repository's modules | [[file:../../flake.nix][flake.nix]]                 |
+| Home Manager options           | =useGlobalPkgs=, =useUserPackages=, =backupFileExtension = "hm-backup"=                                       | [[file:../../flake.nix][flake.nix]]                 |
+| =home.stateVersion=            | ="25.11"=                                                                                                     | [[file:../../flake.nix][flake.nix]]                 |
+| =system.stateVersion=          | =6=, never to be changed                                                                                      | [[file:../../hosts/macOS.nix][hosts/macOS.nix]]           |
+| Nix run by the daemon          | nix-darwin default =nix.package=: =nix-2.34.8+1= on 9 October 2026                                            | nix-darwin                |
+
+=user= is the only place the account name is written. The Nix trusted
+users, the home directory and the Home Manager user derive from it.
+
+* Files and their roles
+
+| File                                  | Role on the Mac                                                                                                                                                               |
+|---------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [[file:../../flake.nix][flake.nix]]                             | Inputs, =lib.mkDarwinHost=, =templates.macOS=, =darwinConfigurations.macOS= and =checks.<system>.darwin-macOS-eval=                                                           |
+| [[file:../../templates/macOS/flake.nix][templates/macOS/flake.nix]]             | Template of a Mac's own =flake.nix=: the input =base=, the account name, the machine-local module lists                                                                       |
+| [[file:../../templates/macOS/identity.nix][templates/macOS/identity.nix]]          | Template of a Mac's own =identity.nix=, a Home Manager module: work identity, personal identity by directory, =NH_FLAKE=                                                      |
+| [[file:../../hosts/macOS.nix][hosts/macOS.nix]]                       | nix-darwin system module: Nix daemon, Linux builder, =nh-clean= agent, zsh, =system.defaults=, post-activation, Touch ID for sudo, firewall, fonts                            |
+| [[file:../../home/base.nix][home/base.nix]]                         | Home Manager module shared with nixOS: packages, programs (Git, SSH, GnuPG, gh, ...), =homeLayout= and =clojureMcpInstall= activations                                       |
+| [[file:../../home/macOS.nix][home/macOS.nix]]                        | Home Manager overrides for the Mac: extra packages, Git =useConfigOnly=, SSH =UseKeychain=, Homebrew variables, zsh, activations, launchd agents, Docker and Ghostty settings |
+| [[file:../../fonts.nix][fonts.nix]]                             | Font list. On the Mac only =fonts.packages= in =hosts/macOS.nix= imports it                                                                                                   |
+| [[file:../../config/Brewfile][config/Brewfile]]                       | Homebrew tap, formulae, casks and VS Code extension installed by the =brewBundle= activation                                                                                  |
+| [[file:../../config/brew-shellenv.zsh][config/brew-shellenv.zsh]]              | =programs.zsh.profileExtra=: runs =/opt/homebrew/bin/brew shellenv= when Homebrew is installed                                                                                |
+| [[file:../../config/macos-zshrc.zsh][config/macos-zshrc.zsh]]                | =programs.zsh.initContent=: restores the parts of Apple's =/etc/zshrc= that nix-darwin's replaces                                                                             |
+| [[file:../../config/ghostty/config][config/ghostty/config]]                 | Shared Ghostty configuration; =home/macOS.nix= appends the font size and shell integration                                                                                    |
+| [[file:../../scripts/darwin-post-activation.sh][scripts/darwin-post-activation.sh]]     | =system.activationScripts.postActivation=, run as root: login window input menu                                                                                               |
+| [[file:../../scripts/hm-activation/brew-bundle.sh][scripts/hm-activation/brew-bundle.sh]]  | =brewBundle= activation: sets =BREWFILE=, runs =brew-bundle-activation.sh=, turns its failure into a warning                                                                  |
+| [[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]]     | The Homebrew steps run at every switch (see [[Homebrew steps][Homebrew steps]])                                                                                                                   |
+| [[file:../../scripts/hm-activation/default-apps.sh][scripts/hm-activation/default-apps.sh]] | =defaultApps= activation: sets =DUTI_BIN=, runs =set-macos-defaults.sh=, turns its failure into a warning                                                                     |
+| [[file:../../scripts/set-macos-defaults.sh][scripts/set-macos-defaults.sh]]         | =duti= handlers: audio to VLC, text and source to Emacs, office files to LibreOffice, web to Firefox Developer Edition                                                        |
+| [[file:../../scripts/home-layout.sh][scripts/home-layout.sh]]                | =homeLayout= activation, both hosts: working directories and short alias links in =$HOME=                                                                                     |
+| [[file:../../scripts/home-layout-macOS.sh][scripts/home-layout-macOS.sh]]          | =homeLayoutMacOS= activation: =~/mov= link and hidden default folders                                                                                                         |
+| [[file:../../scripts/clojure-mcp-install.sh][scripts/clojure-mcp-install.sh]]        | =clojureMcpInstall= activation: =clojure -Ttools install-latest= of =io.github.bhauman/clojure-mcp= as =mcp=                                                                  |
+| [[file:../../scripts/nix-staleness-check.sh][scripts/nix-staleness-check.sh]]        | Body of the =com.user.nix-staleness-check= agent                                                                                                                              |
+| [[file:../../tests/macOS/][tests/macOS/]]                          | Bats suites for the scripts above and for the generated configuration                                                                                                         |
+
+* Activation order
+
+=sudo darwin-rebuild switch --flake '.#macOS'=, run from the Mac's
+local flake, builds the system, then runs its =activate= script as
+root. The script starts from an empty
+environment (=#!/usr/bin/env -i=) and sets its own =PATH=, so variables
+from the calling shell, such as =HOMEBREW_*= or a proxy, do not reach
+activation.
+
+** nix-darwin steps
+
+The steps run in this order. Steps that have nothing to do in this
+configuration (=extraActivation=, =patches=, =time=, =power=,
+=keyboard=, =nvram= and =homebrew=, since =homebrew.enable= is false)
+are left out.
+
+| Step             | Effect in this configuration                                                                                                                                  |
+|------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| =preActivation=  | Creates =/var/lib/linux-builder=                                                                                                                              |
+| =checks=         | Aborts on a missing primary user, a Determinate Nix install, build users or group with unexpected IDs, a single-user install, or unrecognised files in =/etc= |
+| =createRun=      | Ensures =/run= through a =run= line in =/etc/synthetic.conf=                                                                                                  |
+| =groups=         | Group =nixbld= (GID 350)                                                                                                                                      |
+| =users=          | Build users =_nixbld1= to =_nixbld32= (UIDs from 351)                                                                                                         |
+| =applications=   | Copies =.app= bundles from =environment.systemPackages= to =/Applications/Nix Apps=                                                                           |
+| =pam=            | =/etc/pam.d/sudo_local= with Touch ID                                                                                                                         |
+| =openssh=        | Generates =/etc/ssh/ssh_host_{rsa,ecdsa,ed25519}_key= when missing                                                                                            |
+| =etc=            | Points =/etc/static= at the new system and links the managed =/etc= files                                                                                     |
+| =defaults=       | System preference domains (=/Library/Preferences/com.apple.loginwindow=)                                                                                      |
+| =userDefaults=   | Preference domains of the primary user: every other =system.defaults= domain                                                                                  |
+| =launchd=        | Daemons in =/Library/LaunchDaemons=                                                                                                                           |
+| =userLaunchd=    | nix-darwin user agents in =~/Library/LaunchAgents=                                                                                                            |
+| =nix-daemon=     | Renames =/etc/nix/nix.custom.conf= if present; reloads the daemon when =nix.conf= or =machines= changed                                                       |
+| =networking=     | Application firewall settings through =socketfilterfw=                                                                                                        |
+| =fonts=          | Copies the =fonts.packages= fonts to =/Library/Fonts/Nix Fonts=                                                                                               |
+| =postActivation= | Runs =scripts/darwin-post-activation.sh=, then the Home Manager activation of the primary user                                                                |
+
+The script then points =/run/current-system= at the new generation.
+
+** Home Manager activation
+
+The last part of =postActivation= runs the Home Manager activation as
+the primary user, through =launchctl asuser= and =sudo -u= with the
+user's home. Its entries run in this evaluated order:
+
+| Order | Entry                          | Constraint                                | Source                               |
+|-------+--------------------------------+-------------------------------------------+--------------------------------------|
+|     1 | =checkFilesChanged=            | before =linkGeneration=                   | Home Manager                         |
+|     2 | =checkLinkTargets=             | before =writeBoundary=                    | Home Manager                         |
+|     3 | =writeBoundary=                |                                           | Home Manager                         |
+|     4 | =createGpgHomedir=             | after =writeBoundary=                     | =programs.gpg=                       |
+|     5 | =migrateGhAccounts=            | after =writeBoundary=                     | =programs.gh=                        |
+|     6 | =linkGeneration=               | after =writeBoundary=                     | Home Manager: links managed files    |
+|     7 | =batCache=                     | after =linkGeneration=                    | =programs.bat=                       |
+|     8 | =brewBundle=                   | after =writeBoundary=                     | [[file:../../home/macOS.nix][home/macOS.nix]]                       |
+|     9 | =checkAppManagementPermission= | before =copyApps=                         | =targets.darwin.copyApps=            |
+|    10 | =clojureMcpInstall=            | after =writeBoundary=                     | [[file:../../home/base.nix][home/base.nix]]                        |
+|    11 | =installPackages=              | after =writeBoundary=                     | Home Manager                         |
+|    12 | =copyApps=                     | after =installPackages=, =linkGeneration= | =targets.darwin.copyApps=            |
+|    13 | =defaultApps=                  | after =brewBundle=                        | [[file:../../home/macOS.nix][home/macOS.nix]]                       |
+|    14 | =homeLayout=                   | after =writeBoundary=                     | [[file:../../home/base.nix][home/base.nix]]                        |
+|    15 | =homeLayoutMacOS=              | after =brewBundle=, =writeBoundary=       | [[file:../../home/macOS.nix][home/macOS.nix]]                       |
+|    16 | =onFilesChange=                | after =linkGeneration=                    | Home Manager: =onChange= hooks       |
+|    17 | =runMuInit=                    | after =writeBoundary=                     | =programs.mu=                        |
+|    18 | =setupLaunchAgents=            | after =writeBoundary=                     | Home Manager: loads =launchd.agents= |
+
+Home Manager guarantees only the declared constraints. The relative
+order of unconstrained entries, for example =defaultApps= and
+=homeLayoutMacOS=, comes from the sort and is not a contract.
+
+** Homebrew steps
+
+=brewBundle= runs [[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]] with =BREWFILE=
+set to the store copy of =config/Brewfile=. In order:
+
+1. Skips everything, successfully, when =/opt/homebrew/bin/brew= does
+   not exist.
+2. Exports =HOMEBREW_NO_ASK=1=.
+3. =brew update=; a failure is reported and ignored.
+4. =brew install --cask --adopt docker-desktop= when
+   =/Applications/Docker.app= exists but the cask is not installed.
+5. =brew bundle install --file "$BREWFILE" --upgrade=. On failure the
+   script stops here with success, so steps 6 to 8 do not run.
+6. =brew upgrade --greedy=; a failure is reported and ignored.
+7. =brew bundle cleanup --file "$BREWFILE"= with no standard input. When
+   it reports drift and =/dev/tty= is readable, a menu offers =[u]=,
+   =[e]= and =[s]=.
+8. =brew cleanup --prune=all -v=; a failure is reported and ignored.
+
+Each step is announced by a ~==> brewBundle:~ banner and an indented
+=$ <command>= line. The script's own warnings start with =brewBundle:=,
+and Homebrew's output appears in between. The wrapper never fails the
+switch. Failure handling is in
+[[file:../how-to/macOS-manage-homebrew.org][Manage Homebrew on macOS]].
+
+* Launchd jobs
+
+** Daemons
+
+Installed in =/Library/LaunchDaemons=, run as root.
+
+| Label                       | Declared by                                 | Schedule                 | Runs                                                                                                                 |
+|-----------------------------+---------------------------------------------+--------------------------+----------------------------------------------------------------------------------------------------------------------|
+| =org.nixos.activate-system= | nix-darwin (always present)                 | At boot                  | Relinks =/run/current-system=, reruns the =checks=, =etc= and =keyboard= steps                                       |
+| =org.nixos.nix-daemon=      | nix-darwin                                  | Kept alive               | =nix-daemon=                                                                                                         |
+| =org.nixos.linux-builder=   | =nix.linux-builder= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]      | At boot, kept alive      | =aarch64-linux= NixOS VM: 6 cores, 8192 MB; build machine =linux-builder=, 4 jobs; state in =/var/lib/linux-builder= |
+| =org.nixos.nix-optimise=    | =nix.optimise.automatic= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]] | Weekday 7 (Sunday) 04:15 | =nix-store --optimise=                                                                                               |
+
+** Agents of the primary user
+
+Installed in =~/Library/LaunchAgents=, run as the primary user.
+
+| Label                                | Declared by                                              | Schedule                 | Runs                                                                                                                                                          |
+|--------------------------------------+----------------------------------------------------------+--------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| =org.nixos.nh-clean=                 | =launchd.user.agents.nh-clean= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]        | Weekday 0 (Sunday) 03:00 | =nh clean all --keep 5 --keep-since 7d=, log in =/tmp/nh-clean.log=                                                                                           |
+| =com.user.nix-staleness-check=       | =launchd.agents.nix-staleness-check= in [[file:../../home/macOS.nix][home/macOS.nix]]   | Weekday 1 (Monday) 09:00 | [[file:../../scripts/nix-staleness-check.sh][scripts/nix-staleness-check.sh]] with =NH_FLAKE=, which the Mac's =identity.nix= sets to =~/src/local/macOS=; notifies when a flake input is older than 14 days |
+| =com.user.clear-hushlogin=           | =launchd.agents.clear-hushlogin= in [[file:../../home/macOS.nix][home/macOS.nix]]       | At login                 | =/bin/rm -f "$HOME/.hushlogin"=                                                                                                                               |
+| =com.user.docker-desktop=            | =launchd.agents.docker-desktop= in [[file:../../home/macOS.nix][home/macOS.nix]]        | At login                 | =/usr/bin/open -g -j -a Docker=                                                                                                                               |
+| =com.user.notunes=                   | =launchd.agents.notunes= in [[file:../../home/macOS.nix][home/macOS.nix]]               | At login                 | =/usr/bin/open -a NoTunes=                                                                                                                                    |
+| =com.user.rectangle=                 | =launchd.agents.rectangle= in [[file:../../home/macOS.nix][home/macOS.nix]]             | At login                 | =/usr/bin/open -a Rectangle=                                                                                                                                  |
+| =org.nix-community.home.gpg-agent=   | =services.gpg-agent= in [[file:../../home/base.nix][home/base.nix]]                    | On socket use            | =gpg-agent --supervised=                                                                                                                                      |
+| =org.nix-community.home.tldr-update= | =programs.tealdeer= in [[file:../../home/base.nix][home/base.nix]] (automatic updates) | Weekday 1 (Monday) 00:00 | =tldr --update=                                                                                                                                               |
+
+launchd treats weekdays 0 and 7 as Sunday.
+
+* Files and state outside the store
+
+** System, written as root
+
+| Path                                               | Written by                                                                                                                                                             |
+|----------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| =/nix/var/nix/profiles/system= and its generations | =darwin-rebuild switch=                                                                                                                                                |
+| =/run/current-system=                              | End of activation, =activate-system=                                                                                                                                   |
+| =/etc/synthetic.conf= (=run= line)                 | =createRun= step                                                                                                                                                       |
+| =/etc/static= and the =/etc= links listed below    | =etc= step                                                                                                                                                             |
+| =/etc/<file>.before-nix-darwin=                    | =etc= step, for files whose content it recognises; you, when the =checks= step reports unrecognised =/etc= files; the =nix-daemon= step for =/etc/nix/nix.custom.conf= |
+| =/etc/ssh/ssh_host_*_key=, only when missing       | =openssh= step                                                                                                                                                         |
+| Users =_nixbld1= to =_nixbld32=, group =nixbld=    | =users= and =groups= steps                                                                                                                                             |
+| =/Applications/Nix Apps/=                          | =applications= step                                                                                                                                                    |
+| =/Library/Fonts/Nix Fonts/=                        | =fonts= step                                                                                                                                                           |
+| =/Library/LaunchDaemons/org.nixos.*.plist=         | =launchd= step                                                                                                                                                         |
+| =/Library/Preferences/com.apple.loginwindow=       | =defaults= step and =scripts/darwin-post-activation.sh= (=ShowInputMenu=)                                                                                              |
+| Application firewall state                         | =networking= step                                                                                                                                                      |
+| =/var/lib/linux-builder/=                          | =preActivation= step; =org.nixos.linux-builder= keeps the VM disk image there                                                                                          |
+
+The =etc= step manages these paths below =/etc=: =bashrc=, =zshrc=,
+=zprofile=, =zshenv=, =nix/nix.conf=, =nix/machines=,
+=nix/registry.json=, =pam.d/sudo_local=, =ssl/certs/ca-certificates.crt=,
+=ssh/ssh_config.d/100-linux-builder.conf=,
+=ssh/ssh_config.d/100-nix-darwin.conf=,
+=ssh/sshd_config.d/099-host-keys.conf=,
+=ssh/sshd_config.d/100-nix-darwin.conf=,
+=ssh/sshd_config.d/101-authorized-keys.conf=,
+=sudoers.d/10-nix-darwin-extra-config=, =terminfo= and
+=profiles/per-user/<account>=.
+
+** User, written as the primary user
+
+| Path                                                                                                                                                                | Written by                                                                   |
+|---------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------|
+| Preference domains under =~/Library/Preferences=, and =ByHost/com.apple.controlcenter=                                                                              | =userDefaults= step                                                          |
+| =~/Library/LaunchAgents/org.nixos.nh-clean.plist=                                                                                                                   | =userLaunchd= step (copied)                                                  |
+| =~/Library/LaunchAgents/com.user.*.plist= and =org.nix-community.home.*.plist=                                                                                      | =setupLaunchAgents=                                                          |
+| Links for every =home.file= and =xdg.configFile= entry, for example =~/.ssh/config=, =~/.config/git/config=, =~/.docker/daemon.json= and =~/.config/ghostty/config= | =linkGeneration=; a conflicting file is renamed with the =.hm-backup= suffix |
+| =~/.local/state/home-manager/gcroots/current-home=                                                                                                                  | Home Manager activation (the generation in use)                              |
+| =~/Applications/Home Manager Apps/=                                                                                                                                 | =copyApps=, for =.app= bundles in =home.packages=                            |
+| =~/Library/Fonts/HomeManager/=                                                                                                                                      | =onFilesChange=, for fonts in =home.packages=                                |
+| =~/.gnupg/=                                                                                                                                                         | =createGpgHomedir=                                                           |
+| =~/bin=, =~/man=, =~/pkg=, =~/src=, =~/src/github.com=, =~/Pictures/screenshots=                                                                                    | =homeLayout=                                                                 |
+| Links =~/img=, =~/net=, =~/pvt=, =~/snd=, =~/dist=                                                                                                                  | =homeLayout=                                                                 |
+| Link =~/mov=; hidden flag on =~/Desktop=, =~/Documents=, =~/Downloads=, =~/Movies=, =~/Music=, =~/Pictures=, =~/Public=                                             | =homeLayoutMacOS=                                                            |
+| =/opt/homebrew=, casks in =/Applications=, Homebrew cache, Homebrew trust store =~/.homebrew/trust.json=                                                            | =brewBundle=                                                                 |
+| LaunchServices handlers for the file types and URL schemes in =scripts/set-macos-defaults.sh=                                                                       | =defaultApps=                                                                |
+| The =mcp= Clojure tool                                                                                                                                              | =clojureMcpInstall=                                                          |
+| Removal of =~/.hushlogin= at each login                                                                                                                             | =com.user.clear-hushlogin=                                                   |
+| =/tmp/nh-clean.log=                                                                                                                                                 | =org.nixos.nh-clean=                                                         |
+
+Existing links are never replaced by =homeLayout= and =homeLayoutMacOS=:
+each link or directory is created only when nothing exists at that path.
+
+No Home Manager profile is written: =home-manager.enableLegacyProfileManagement=
+is left at =false=, so nix-darwin runs the Home Manager activation with
+=--driver-version 1=.
+
+* Git identity
+
+This repository defines no identity for the Mac. [[file:../../home/base.nix][home/base.nix]] sets
+none, and [[file:../../home/macOS.nix][home/macOS.nix]] only sets
+=programs.git.settings.user.useConfigOnly = true=, so that Git refuses
+to guess one. The identities come from the Mac's own =identity.nix=.
+As [[file:../../templates/macOS/identity.nix][templates/macOS/identity.nix]] ships it:
+
+| Scope          | Selector                                            | Name              | Email                                   | Signing                                                                                       | SSH key                                                                                                                    |
+|----------------+-----------------------------------------------------+-------------------+-----------------------------------------+-----------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------|
+| Work (default) | Global =~/.config/git/config=                       | None until filled | None until filled                       | None until filled                                                                             | None selected until filled                                                                                                 |
+| Personal       | =includeIf "gitdir:~/src/github.com/piotr-yuxuan/"= | =piotr-yuxuan=    | =piotr-yuxuan@users.noreply.github.com= | OpenPGP, =commit.gpgSign= and =tag.gpgSign=, key =FIXME-personal-openpgp-key-id= until filled | =core.sshCommand= with =-i ~/.ssh/piotr-yuxuan@users.noreply.github.com_ed25519 -o IdentitiesOnly=yes -o ControlPath=none= |
+
+SSH client settings: [[file:../../home/base.nix][home/base.nix]] sets =Host *= (including
+=IdentitiesOnly yes= and connection sharing through =ControlMaster=);
+[[file:../../home/macOS.nix][home/macOS.nix]] adds =UseKeychain yes= to =Host *=. There is no
+=Host github.com= block. Procedures are in
+[[file:../how-to/macOS-set-up-work-and-personal-git-identities.org][Set up work and personal Git identities on macOS]].
+
+* Values to fill in
+
+Every value of one Mac lives in that Mac's local flake, by default
+=~/src/local/macOS=, never in this repository. The files below are the
+Mac's own copies of the template:
+
+| File           | Location                                    | Value                                                                                               | Effect while unfilled                                                                                      |
+|----------------+---------------------------------------------+-----------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------|
+| =flake.nix=    | =user=                                      | Account short name, as printed by =id -un=                                                          | Activation aborts: =error: primary user `example` does not exist, aborting activation=                     |
+| =flake.nix=    | =extraHostModules=                          | Machine-local nix-darwin modules, for example a corporate certificate                               | Nothing: the list is empty by default                                                                      |
+| =identity.nix= | =programs.git.settings.user=, commented out | Work name and =email=; work signing settings if required                                            | Commits outside =~/src/github.com/piotr-yuxuan/= fail: =no email was given and auto-detection is disabled= |
+| =identity.nix= | Comment above =programs.git.includes=       | Work SSH key: =core.sshCommand= for github.com, or a =programs.ssh.settings= block for another host | No key is selected for work remotes                                                                        |
+| =identity.nix= | =signingKey= in the personal include        | Long ID of this Mac's personal OpenPGP key, replacing =FIXME-personal-openpgp-key-id=               | Signed commits in personal repositories fail                                                               |
+| =identity.nix= | =NH_FLAKE= of the staleness agent           | The local flake's directory, when it is not =~/src/local/macOS=                                     | The agent finds no flake and stays silent                                                                  |
+
+The values of =identity.nix= to fill carry a =FIXME= comment; list them
+with =grep -n FIXME identity.nix= in the local flake, and delete each
+comment once its value is filled in.
+[[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]] gives the procedures.
+
+* The darwin-macOS-eval check
+
+| Item           | Value                                                                                                                 |
+|----------------+-----------------------------------------------------------------------------------------------------------------------|
+| Attributes     | =checks.x86_64-linux.darwin-macOS-eval= and =checks.aarch64-darwin.darwin-macOS-eval=                                 |
+| Defined in     | [[file:../../flake.nix][flake.nix]]                                                                                                             |
+| Builds         | A text file named =darwin-macOS-eval= containing the =.drv= path of the darwin toplevel                               |
+| Mechanism      | =builtins.unsafeDiscardStringContext= on =self.darwinConfigurations.macOS.config.system.build.toplevel.drvPath=       |
+| Run by         | =nix flake check=, for the current system only                                                                        |
+| Proves         | The template and the whole macOS configuration evaluate, Home Manager assertions and activation scripts included      |
+| Does not prove | That any =aarch64-darwin= derivation builds, that activation succeeds on a Mac, or anything about a Mac's own modules |
+
+The file holds the same path as
+=nix eval --raw '.#darwinConfigurations.macOS.system.drvPath'=, for
+example =/nix/store/<hash>-darwin-system-26.05.c3e90c8.drv=. The path
+changes only when a file the macOS configuration reads changes,
+comments included. A local flake created from the template and left
+unchanged evaluates to the same path: the check covers exactly what a
+Mac receives before it fills its own values.
+
+The Bats suite [[file:../../tests/macOS/darwin-generated-config.bats][tests/macOS/darwin-generated-config.bats]] complements the
+check: it evaluates the same output and runs Git against the identity
+settings the template generates. How to run both is in
+[[file:../how-to/test-a-change.org][Test a change]].
+
+* Where to make a change
+
+| To change                                                          | Edit                                                                                                                 |
+|--------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------|
+| The account name, the Git identities, anything for one Mac only    | That Mac's local flake; see [[file:../how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]]                                                           |
+| What a new Mac starts from                                         | [[file:../../templates/macOS/flake.nix][templates/macOS/flake.nix]] and [[file:../../templates/macOS/identity.nix][templates/macOS/identity.nix]]                                                           |
+| Nix settings, substituters, trusted keys                           | =nix.settings= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]                                                                                    |
+| Garbage collection schedule or retention                           | =launchd.user.agents.nh-clean= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]                                                                    |
+| Linux builder size or jobs                                         | =nix.linux-builder= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]                                                                               |
+| Keyboard, trackpad, Dock, Finder, screenshots, login window, clock | =system.defaults.*= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]                                                                               |
+| A preference domain with no nix-darwin option                      | =system.defaults.CustomUserPreferences= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]                                                           |
+| A root-only setting with no option                                 | [[file:../../scripts/darwin-post-activation.sh][scripts/darwin-post-activation.sh]]                                                                                    |
+| Application firewall                                               | =networking.applicationFirewall= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]                                                                  |
+| Touch ID for sudo                                                  | =security.pam.services.sudo_local.touchIdAuth= in [[file:../../hosts/macOS.nix][hosts/macOS.nix]]                                                    |
+| Trusted certificate authorities (none added here)                  | =security.pki.certificateFiles= in a module of the Mac's local flake; see [[file:../how-to/macOS-trust-a-corporate-tls-certificate.org][Trust a corporate TLS certificate on macOS]] |
+| Fonts                                                              | [[file:../../fonts.nix][fonts.nix]] (both hosts)                                                                                               |
+| A Nix package on both hosts                                        | =home.packages= in [[file:../../home/base.nix][home/base.nix]]                                                                                     |
+| A Nix package on the Mac only                                      | =home.packages= in [[file:../../home/macOS.nix][home/macOS.nix]]                                                                                    |
+| A GUI app, or a tool Nix cannot provide on =aarch64-darwin=        | [[file:../../config/Brewfile][config/Brewfile]]                                                                                                      |
+| What Homebrew does at each switch                                  | [[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]]                                                                                    |
+| Homebrew variables in shells                                       | =home.sessionVariables= in [[file:../../home/macOS.nix][home/macOS.nix]]                                                                            |
+| Default applications for file types and URL schemes                | [[file:../../scripts/set-macos-defaults.sh][scripts/set-macos-defaults.sh]]                                                                                        |
+| Directories and links in =$HOME=                                   | [[file:../../scripts/home-layout.sh][scripts/home-layout.sh]] (both hosts), [[file:../../scripts/home-layout-macOS.sh][scripts/home-layout-macOS.sh]]                                                    |
+| Apps started at login                                              | =launchd.agents= in [[file:../../home/macOS.nix][home/macOS.nix]]                                                                                   |
+| Staleness threshold or schedule                                    | [[file:../../scripts/nix-staleness-check.sh][scripts/nix-staleness-check.sh]], =launchd.agents.nix-staleness-check= in [[file:../../home/macOS.nix][home/macOS.nix]]                               |
+| Work Git identity, personal directory, personal signing key        | =programs.git.settings.user= and =programs.git.includes= in the Mac's own =identity.nix=                             |
+| SSH client options                                                 | =programs.ssh.settings= in [[file:../../home/base.nix][home/base.nix]] (both hosts) or [[file:../../home/macOS.nix][home/macOS.nix]]                                              |
+| Docker engine defaults                                             | =home.file.".docker/daemon.json"= in [[file:../../home/macOS.nix][home/macOS.nix]]                                                                  |
+| Ghostty on the Mac                                                 | =xdg.configFile."ghostty/config"= in [[file:../../home/macOS.nix][home/macOS.nix]]; shared part in [[file:../../config/ghostty/config][config/ghostty/config]]                            |
+| Shell start-up on the Mac                                          | [[file:../../config/brew-shellenv.zsh][config/brew-shellenv.zsh]], [[file:../../config/macos-zshrc.zsh][config/macos-zshrc.zsh]]                                                                     |
+
+Unless a row names the Mac's local flake, the change is made in this
+repository, on the personal laptop, and a Mac receives it with
+=nix flake update base=. After adding, removing or moving a package,
+update [[file:../reference/package-guide.org][the package guide]].

@@ -1,0 +1,351 @@
+#+title: Test a change
+#+author: piotr-yuxuan
+
+Build, inspect and diff a configuration change before activating it,
+and run the repository's test suites.
+
+* Build without switching
+
+#+begin_src zsh
+# NixOS: build only, from a checkout of this repository
+sudo nixos-rebuild build --flake '.#nixOS'
+
+# macOS: build only, from the Mac's local flake (~/src/local/macOS)
+darwin-rebuild build --flake '.#macOS'
+#+end_src
+
+* Test an update without activating it                             :macos:
+
+The typical situation: this repository has a newer published commit
+and you want to know whether it builds on the Mac, whether =PATH=
+looks sane, and whether your binaries resolve to the expected store
+paths, all without =darwin-rebuild switch=ing into it. A Mac has no
+checkout of this repository: run everything from its local flake,
+=~/src/local/macOS=.
+
+There is no =build-vm= equivalent on macOS, and no way to "activate
+just for this shell" the full closure (launchd agents, =defaults=,
+=/etc=, =/Library/Fonts/Nix Fonts/= etc. are global by nature).  The
+safe workflow is *build, inspect, diff, then probe in a sub-shell*.
+
+** 1. Build the closure without activating
+
+#+begin_src zsh
+cd ~/src/local/macOS
+darwin-rebuild build --flake '.#macOS' \
+  --override-input base 'github:piotr-yuxuan/hardware.nix'
+#+end_src
+
+=--override-input= builds against the latest published commit without
+writing =flake.lock=; append =/<commit>= to the reference to test one
+commit.  This populates =./result= with the full system closure.
+Nothing under =/run/=, =/nix/var/nix/profiles/=, =/etc/=, =/Library/=
+or =launchd= is touched.
+
+For Home Manager alone (faster iteration when only =home/= changes),
+build its activation package, with the same =--override-input=.  The
+flake has no standalone =homeConfigurations= output, so the package
+comes from the darwin configuration:
+
+#+begin_src zsh
+nix build ".#darwinConfigurations.macOS.config.home-manager.users.$(id -un).home.activationPackage" \
+  --override-input base 'github:piotr-yuxuan/hardware.nix'
+# closure ends up in ./result; user-facing tools live in ./result/home-path/bin
+#+end_src
+
+** 2. Diff against the live system
+
+#+begin_src zsh
+# Full system closure
+nix store diff-closures /run/current-system ./result
+
+# Home Manager generation in use (after building the activation package)
+nix store diff-closures \
+  ~/.local/state/home-manager/gcroots/current-home ./result
+#+end_src
+
+See "Reading the diff output" below for the syntax.
+
+** 3. Probe binaries from the built closure
+
+The system closure exposes its tools at =./result/sw/bin/=, the user
+closure at =./result/home-path/bin/=.  Two ways to exercise them:
+
+#+begin_src zsh
+# Run one specific binary out of the closure
+./result/sw/bin/zsh --version
+./result/home-path/bin/git --version
+
+# Or open a sub-shell with the built closure ahead of $PATH.
+# Exiting the sub-shell restores the previous environment exactly.
+PATH="$PWD/result/sw/bin:$PWD/result/home-path/bin:$PATH" zsh
+which git           # should resolve under /nix/store/...-home-path/...
+type rg             # same
+exit
+#+end_src
+
+This is enough to catch most regressions: missing dependency, wrong
+version on =PATH=, broken wrapper script, mis-set =MANPATH= /
+=XDG_DATA_DIRS=, etc.  What it cannot catch are activation-time side
+effects (launchd agents, =defaults write=, font registration with
+Core Text, dock layout); those genuinely require a real =switch=.
+
+** 4. When you are confident, activate
+
+#+begin_src zsh
+nix flake update base
+sudo darwin-rebuild switch --flake '.#macOS'
+rm result
+#+end_src
+
+If anything goes wrong, =sudo darwin-rebuild --rollback= reverts to
+the previous generation.
+
+* Test a single custom derivation
+
+Sometimes you only want to check one package from =./packages/=, not
+the whole closure.  In a checkout of this repository, use =nix build= /
+=nix shell= against the flake's pinned =nixpkgs-unstable=:
+
+#+begin_src zsh
+# Build only: produces ./result -> /nix/store/...-zapfino-...
+nix build --impure --expr \
+  '(builtins.getFlake (toString ./.)).inputs.nixpkgs-unstable.legacyPackages.${builtins.currentSystem}.callPackage ./packages/zapfino.nix {}'
+
+# Or open a sub-shell with the package on PATH
+nix shell --impure --expr \
+  '(builtins.getFlake (toString ./.)).inputs.nixpkgs-unstable.legacyPackages.${builtins.currentSystem}.callPackage ./packages/zapfino.nix {}'
+#+end_src
+
+=--impure= is required because the expression reads files from the
+working directory.  =builtins.getFlake= reuses the same lockfile that
+a rebuild would, so the result matches what a real switch would
+install.
+
+* Diff before switching
+
+Compare the running system with the newly built closure to see which
+packages change:
+
+#+begin_src zsh
+# After `nixos-rebuild build`:
+nix store diff-closures /run/current-system ./result
+#+end_src
+
+** Reading the diff output
+
+=nix store diff-closures= prints lines like:
+
+#+begin_example
+python3: 3.11.8 → 3.11.9, +0.2 MiB
+#+end_example
+
+*→* means an upgrade, *+* a new package, *−* a removal.  This is the
+quickest way to audit what a rebuild will change before committing to
+=switch=.
+
+* Test in a VM (NixOS only)
+
+#+begin_src zsh
+nixos-rebuild build-vm --flake .#nixOS
+./result/bin/run-*-vm
+#+end_src
+
+** VM testing tips
+
+- The VM gets its own disk image; it does not touch real filesystems.
+- Log in as =example=.  Because the real system uses =hashedPasswordFile=
+  pointing to =/etc/secrets/example-password= (which does not exist inside
+  the VM), you may need to temporarily add
+  =users.users.example.password = "test";= in a local override.
+- The VM opens a QEMU window, so you need a graphical session or VNC.
+- Pass =-m 4096= to give the VM more RAM if GNOME feels sluggish.
+
+* Flake evaluation check
+
+Verify the flake evaluates without errors (no full build):
+
+#+begin_src zsh
+nix flake check
+#+end_src
+
+=nix flake check= does not know =darwinConfigurations= by itself, so the
+flake adds a =darwin-macOS-eval= check.  It evaluates the whole macOS
+configuration without building it, on nixOS as well as on the Mac.
+[[*Verify the macOS configuration from Linux][Verify the macOS configuration from Linux]] says what this proves and
+what it does not.
+
+* Verify the macOS configuration from Linux
+
+nixOS cannot build =aarch64-darwin= derivations. From Linux you can
+still prove that the macOS configuration evaluates and see what the Mac
+will have to build, before you merge a change or a lock update (see
+[[file:../how-to/update-flake-inputs.org][Update flake inputs]]). Run every command from the repository root or
+from a plan worktree. The check and the test suite used here are
+described in [[file:../reference/macOS-configuration.org][macOS configuration]].
+
+** Run the flake checks
+
+#+begin_src zsh
+nix flake check
+#+end_src
+
+On Linux this builds =checks.x86_64-linux.darwin-macOS-eval=, which
+evaluates =darwinConfigurations.macOS= in full without building it. This
+warning is expected:
+
+#+begin_example
+warning: The check omitted these incompatible systems: aarch64-darwin
+#+end_example
+
+In a checkout on an Apple Silicon Mac, the same command runs
+=checks.aarch64-darwin.darwin-macOS-eval= instead.  A Mac's local flake
+has no check of its own: there, =darwin-rebuild build= is the
+evaluation gate.
+
+If the check fails, a switch on the Mac would fail at evaluation too.
+A Linux-only package added to [[file:../../home/base.nix][home/base.nix]] fails like this:
+
+#+begin_example
+error: Refusing to evaluate package 'gimp-3.2.6' in /nix/store/...-source/pkgs/applications/graphics/gimp/default.nix:346 because it is not available on the requested hostPlatform:
+#+end_example
+
+Move such a package to [[file:../../home/nixOS.nix][home/nixOS.nix]], and give the Mac an
+equivalent in [[file:../../config/Brewfile][config/Brewfile]] if it needs one.
+
+** List what the Mac will build
+
+#+begin_src zsh
+nix build --dry-run .#darwinConfigurations.macOS.system
+#+end_src
+
+The output has two summaries:
+
+- =these N derivations will be built=: derivations for which no
+  configured binary cache has an =aarch64-darwin= binary, so the Mac
+  builds them itself. Most are wrappers, fonts and generated files such as launchd
+  plists, =/etc= files and Home Manager =hm_= files.
+- =these M paths will be fetched (X GiB download, Y GiB unpacked)=: what
+  the Mac downloads, and the disk space it needs.
+
+Baseline measured on 9 October 2026: 128
+derivations to build, 1580 paths to fetch, 5.1 GiB download and
+16.9 GiB unpacked. Besides wrappers, generated files and small
+packages such as fonts and dictionaries, that list holds two Node.js
+builds: =bash-language-server-5.8.1= and =pi-mcp-adapter-2.27.0= (with
+=pi-mcp-adapter-2.27.0-npm-deps=). The numbers move with every lock
+update.
+
+To read the build list without store hashes:
+
+#+begin_src zsh
+nix build --dry-run .#darwinConfigurations.macOS.system 2>&1 \
+  | sed -n '/will be built:/,/will be fetched/p' | grep '\.drv$' \
+  | sed -E 's|^ +/nix/store/[a-z0-9]{32}-||; s|\.drv$||' | sort
+#+end_src
+
+Look for nixpkgs packages with a version number that the baseline does
+not list. Each one has no =aarch64-darwin= binary: either Hydra has not
+built it yet, or its build fails there, as =recode-3.7.16= did in
+October 2026 (nixpkgs#568679). Treat it as a likely build failure on the
+Mac and resolve it before merging: wait for Hydra, install the tool from
+Homebrew on the Mac, or keep the previous lock.
+
+Nix remembers a missing binary for an hour
+(=narinfo-cache-negative-ttl=, 3600 seconds by default), so a package
+that Hydra has just built can still appear. Check again with fresh
+lookups:
+
+#+begin_src zsh
+nix build --dry-run --option narinfo-cache-negative-ttl 0 .#darwinConfigurations.macOS.system
+#+end_src
+
+** Compare the system derivation before and after a change
+
+#+begin_src zsh
+nix build .#checks.x86_64-linux.darwin-macOS-eval && cat result
+rm result
+#+end_src
+
+This prints the =.drv= path of the macOS system, for example
+=/nix/store/<hash>-darwin-system-26.05.c3e90c8.drv=. Run it on both
+commits. The same path means the change does not reach a Mac at all. A
+different path means a file the Mac reads changed, comments included.
+Delete =result= afterwards: it is not in =.gitignore=.
+=nix eval --raw '.#darwinConfigurations.macOS.system.drvPath'= prints
+the same path without creating =result=.
+
+** Run the generated configuration tests
+
+#+begin_src zsh
+bats --tap tests/macOS/darwin-generated-config.bats </dev/null
+#+end_src
+
+The suite evaluates =darwinConfigurations.macOS= once, which is the
+template of a Mac's local flake with its placeholders, then runs Git
+against temporary repositories with the generated configuration. It
+checks that:
+
+- repositories below =~/src/github.com/piotr-yuxuan/=, including one
+  reached through a symbolic link, get the personal email, signing and
+  SSH key;
+- other repositories refuse to commit until the work identity is set,
+  and get neither the personal signing key nor its SSH command;
+- the SSH configuration has no =Host github.com= block;
+- the =brewBundle= and =defaultApps= activation snippets have no
+  =@...@= placeholder left, and =brewBundle= installs this repository's
+  =config/Brewfile=;
+- the staleness agent's =NH_FLAKE= points at =~/src/local/macOS=, the
+  documented directory of a Mac's local flake.
+
+Eight =ok= lines without =# skip= is a pass. When the evaluation itself
+fails, every test reports
+=# skip nix eval of darwinConfigurations.macOS unavailable= instead of
+failing: treat skips as a failure and run =nix flake check= to see the
+error.
+
+To run every suite, use =bats -r --tap tests/ </dev/null=. Keep the
+=</dev/null=: without it, the =getting-started-new-codebase.bats= tests
+wait forever on standard input when run from a background job.
+
+** Build on the Mac before switching
+
+The steps above prove only that the configuration evaluates. They build
+nothing for =aarch64-darwin= and do not run the activation: Homebrew,
+preferences, launchd agents and permissions are only exercised by a
+switch. On the Mac, once the change is published, from its local flake:
+
+#+begin_src zsh
+cd ~/src/local/macOS
+nix flake update base
+nix build '.#darwinConfigurations.macOS.system'
+nix store diff-closures /run/current-system ./result
+sudo darwin-rebuild switch --flake '.#macOS'
+rm result
+#+end_src
+
+If =nix build= fails, only =flake.lock= has changed on the Mac: restore
+the previous one, fix the failing package in this repository and try
+again. If the switch itself fails, follow
+[[file:../how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch on macOS]].
+
+* Run the test suites
+
+The shell scripts have BATS suites and the Python scripts have pytest
+suites.  From the repository root:
+
+#+begin_src zsh
+bats -r --tap tests/
+pytest
+#+end_src
+
+The tests of =scripts/publish.py= run =git=, =gpg= and
+=git filter-repo=.  Where pytest or =git-filter-repo= is not installed,
+take both from the flake's package set:
+
+#+begin_src zsh
+nix shell --inputs-from . 'nixpkgs-unstable#python3Packages.pytest' 'nixpkgs-unstable#git-filter-repo' -c pytest
+#+end_src
+
+[[file:../../tests/README.org][Testing conventions]] lists the
+platform-specific subsets and the rules every new test follows.

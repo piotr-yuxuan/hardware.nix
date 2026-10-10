@@ -18,16 +18,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0 # the two history checks below read every commit
       - uses: cachix/install-nix-action@51f3067b56fe8ae331890c77d4e454f6d60615ff
       - uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39
-      - name: Scan for secrets
-        run: nix shell --inputs-from . nixpkgs-unstable#gitleaks -c gitleaks dir . --redact --no-banner
-      - name: Evaluate the Linux system
+      # A pull request adds commits that this repository did not make.
+      - name: Gate every commit and tree for personal data
+        if: github.event_name == 'push'
+        run: nix shell --inputs-from . nixpkgs-unstable#python3 -c python3 scripts/publish.py check . --allow .github/publish-allow.toml
+      - name: Scan the history for secrets
+        if: github.event_name == 'push'
+        run: nix shell --inputs-from . nixpkgs-unstable#gitleaks -c gitleaks git . --redact --no-banner
+      - name: Evaluate the Linux system and the Apple Silicon system
         run: nix flake check --no-write-lock-file
-      - name: Evaluate the Apple Silicon system and Home Manager generation
+      - name: Check that the Mac template yields the evaluated system
         run: |
-          nix eval --raw '.#darwinConfigurations.macOS.system.drvPath'
-          nix eval --raw '.#darwinConfigurations.macOS.config.home-manager.users.example.home.activationPackage.drvPath'
+          expected=$(nix eval --raw '.#darwinConfigurations.macOS.system.drvPath')
+          template=$(mktemp -d)
+          (cd "$template" && nix flake init -t "$GITHUB_WORKSPACE#macOS")
+          actual=$(nix eval --raw --no-write-lock-file --override-input base "$GITHUB_WORKSPACE" "$template#darwinConfigurations.macOS.system.drvPath")
+          test "$expected" = "$actual"
       - name: Check Nix and shell sources
         run: |
           nix shell --inputs-from . nixpkgs-unstable#statix nixpkgs-unstable#deadnix nixpkgs-unstable#shellcheck -c bash -euo pipefail -c '
@@ -105,7 +115,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends bats zsh
       - name: Run tests (Linux)
-        run: bats --tap tests/home-layout.bats tests/getting-started-new-codebase.bats tests/linux-laptop
+        run: bats --tap tests/home-layout.bats tests/getting-started-new-codebase.bats tests/nixOS
 
   test-python:
     runs-on: ubuntu-latest
@@ -118,7 +128,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends zsh
-      - name: Install pytest
-        run: pip install pytest
+      - name: Install pytest and the history rewriting tool
+        run: pip install pytest git-filter-repo
       - name: Run Python tests
         run: pytest -v

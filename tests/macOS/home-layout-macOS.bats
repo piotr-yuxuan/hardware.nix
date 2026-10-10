@@ -9,7 +9,7 @@
 #   - setup() asserts tmpdir is non-empty before any test body runs.
 #   - teardown() uses ${tmpdir:?} so the shell aborts rm -rf instead of
 #     expanding to rm -rf "" if the variable were empty or unset.
-#   - All paths are passed to Bash subprocesses via exported environment
+#   - All paths are passed to zsh subprocesses via exported environment
 #     variables, never interpolated into the -c string, so a path that
 #     contains single quotes or other metacharacters cannot inject code.
 

@@ -1,0 +1,123 @@
+#+TITLE: Audit nixOS security
+#+AUTHOR: piotr-yuxuan
+
+Periodic checks for the nixOS host.  The rationale for each measure
+is in [[file:../explanation/nixOS-security-posture.org][nixOS security posture]].
+
+* Flake inputs
+
+Run =nix flake metadata= and review the dates of each input.  If any
+are more than a month old, run =nix flake update= and rebuild.
+
+* Disk encryption
+
+Verify that the LUKS passphrase has not been weakened and that the
+encrypted device is the sole persistent storage.
+
+* Secure Boot
+
+Run =sudo sbctl verify= to confirm all boot files carry valid
+signatures.  Check that the audit rule on =/etc/secureboot= is loaded
+with =sudo auditctl -l | grep secureboot=, and review the changes it
+recorded with =sudo ausearch -k secureboot=.
+
+* Firewall rules
+
+Run =sudo nft list ruleset= and confirm that only the expected chains
+exist and no unexpected accept rules crept in.  Run
+=sysctl -a | grep -E 'conf\.(all|default)\..*redirects'= and confirm
+every value is 0.  Other redirect keys, such as those of =lo= and
+=net.ipv4.route.redirect_*=, keep kernel defaults: this configuration
+does not set them.
+
+* Listening ports
+
+Run =ss -tlnp= and =ss -ulnp= to verify nothing is listening that
+should not be.
+
+* Kernel settings
+
+After boot, print the hardened kernel settings:
+
+#+begin_src zsh
+sudo sysctl kernel.yama.ptrace_scope kernel.kptr_restrict kernel.sysrq \
+  kernel.unprivileged_bpf_disabled net.core.bpf_jit_harden \
+  kernel.dmesg_restrict kernel.kexec_load_disabled
+#+end_src
+
+Confirm the runtime values match the table in
+[[file:../explanation/nixOS-security-posture.org::*Kernel hardening][Kernel hardening]].
+
+* Installed setuid binaries
+
+Run =find /run/wrappers/bin -type f= and cross reference with
+expected wrappers (sudo, polkit, etc.).
+
+* Wheel group
+
+Run =getent group wheel= and verify only expected users are listed:
+=example= and the =btrbk= system user.
+
+* Audit log review
+
+Run =sudo aureport --summary= for a high level overview, and
+=sudo ausearch -k exec --start today= (or =--start recent= for the last
+ten minutes) to review process executions.  Look for unexpected
+binaries or access to sensitive files.
+
+* Coredump review
+
+Run =coredumpctl list= and investigate any unexpected entries.
+
+* Pstore review
+
+After every unexpected reboot, run =ls /var/lib/systemd/pstore/= for
+panic dumps and =journalctl -b -1 -p err= for the previous boot's
+errors.
+
+* Firejail check
+
+Run =firejail --list= while VSCode is running to confirm it is
+sandboxed, and =firejail --tree= to verify the sandbox hierarchy.
+
+* Maestral sandbox
+
+Run =systemctl --user show maestral | grep -i protect= and verify that
+~ProtectSystem=full~, ~ProtectKernelTunables=yes~,
+~ProtectKernelModules=yes~ and ~ProtectControlGroups=yes~ are active.
+
+* Automatic updates
+
+Run =journalctl -u nixos-upgrade.service= to check the last upgrade
+attempt and its outcome.
+
+* Thunderbolt devices
+
+Run =boltctl list= and review authorised devices.  Remove anything
+unexpected with =boltctl forget=.
+
+* Bluetooth pairings
+
+After a rebuild, run =ls /var/lib/bluetooth/<adapter>/= and verify only
+whitelisted MACs remain.
+
+* SSH client settings
+
+Run =ssh -G github.com= and verify that =identitiesonly yes=,
+=passwordauthentication no=, =hashknownhosts yes=,
+=stricthostkeychecking accept-new= and =forwardagent no= appear.
+
+* Git object checks
+
+Run =git config --global --get transfer.fsckObjects= and verify it
+prints =true=.
+
+* Nix store trust
+
+Run =nix path-info --sigs /run/current-system= and verify signatures
+come from your trusted keys.
+
+* Snapshot freshness
+
+Run =sudo btrbk list latest= and verify the most recent snapshot is
+within the last two hours.

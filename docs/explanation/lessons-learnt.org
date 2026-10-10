@@ -1,0 +1,117 @@
+#+title: Lessons learnt
+#+author: piotr-yuxuan
+
+Lessons accumulated over several years of managing personal
+environments, first with raw dotfiles and now with Nix: practices
+tried and abandoned, and why.
+
+* =$HOME= as a git repository for configuration files
+
+Why it's not a good idea:
+
+- Quite a lot of programs behave differently when they are in a git
+  repository.
+- It's tedious to gitignore everything then un-ignore only specific
+  files. Last time I checked I ended up with a long, inexplicable
+  =.gitignore=.
+- Do you feel completely quiet doing =git bisect= or =git reset --hard= on
+  your =$HOME=? Why not trying =git clean -x= in a deep subdirectory
+  whilst you think it's a repository but it isn't?
+
+* Each shell function has its own =$HOME/bin= file
+
+Why it's not a good idea:
+
+- Is there any advantage of doing it that way in the context of a
+  shell?
+- It strongly separates the function from where it's used.
+- It can help create boring rookie bugs like fork bombs.
+
+* (macOS) Use =launchctl setenv= for environment variables
+
+Why it's not a good idea:
+
+- Most GUI apps don't refresh their environment once started.
+- =launchctl= defines the environment for all macOS applications
+  (including the terminal emulator) and then you append additional
+  variables in your shell startup files. It's pretty useless to expose
+  CLI variables to graphical applications.
+- The proprietary Apple environment APIs aren't stable; stay the most
+  Unix-like possible.
+
+* Use nuclear bombs to kill a mosquito
+
+The ease of use is not interesting in front of the simplicity of use.
+Don't automate overly, don't add too much incidental complexity.
+Perhaps you want something awfully difficult and complex so it looks
+more professional.
+
+* Spread related settings
+
+I previously modified =/etc/*= and six months later I lost one full hour
+because of an unwise side-effect. As a result, I got the strong
+opinion that no side-effect should be defined out of the
+configuration. Any code, data, or settings which are related to one
+another should be physically close or in the same location.
+
+In NixOS this lesson maps naturally to the module system: everything a
+service needs is declared in one place, and =nixos-rebuild= is the only
+way to apply it.
+
+* Don't compile Z-shell startup files
+
+It looks tempting to =zcompile= startup files to boost start-up time.
+However, whenever a script silently appends to a Z-shell configuration
+file (e.g. an installer adding something to =$PATH=), the source file
+gets a newer timestamp than the compiled file and takes precedence.
+Keep it simple: don't compile startup files so you can modify them
+without thinking about it.
+
+* Don't start Emacs on login (macOS)
+
+On macOS, the plist system doesn't support ordering (unlike systemd).
+If Emacs starts before =pinentry= is available, Magit GPG-signed commits
+fail. Simpler to let Emacs start on first use: oh-my-zsh's =emacs=
+plugin or a manual =emacsclient= wrapper handle this.
+
+On NixOS, Emacs runs as a systemd user service with proper dependency
+ordering.
+
+* Graveyard                                                      :obsolete:
+
+Tools no longer in active use. Kept for historical reference.
+
+** oh-my-zsh
+
+Replaced by Home Manager's =programs.zsh= with explicit plugins.
+Oh-my-zsh was useful for themes (=bullet-train=) and the =emacs= plugin,
+but it's a heavy framework for a handful of features.
+
+** zplug
+
+A Z-shell plugin manager that promised reproducible plugin versions
+(like =straight.el= for Emacs) but was never put to real use.
+
+** jenv (OpenJDK version manager)
+
+#+begin_src zsh
+export OPEN_JDK_HOME="$HOME/.jenv/bin"
+path+=($OPEN_JDK_HOME); export PATH
+eval "$(jenv init -)"
+#+end_src
+
+Superseded by =nix develop= shells with pinned JDK versions.
+
+** $HOME as git worktree for dotfiles
+
+#+begin_src zsh
+function dot_files_home_git_on {
+  echo "gitdir: $HOME/src/github.com/piotr-yuxuan/dot-files.public/.git" > $HOME/.git
+}
+
+function dot_files_home_git_off {
+  rm $HOME/.git
+}
+#+end_src
+
+See [[*=$HOME= as a git repository for configuration files][=$HOME= as a git repository]] for why this was abandoned.

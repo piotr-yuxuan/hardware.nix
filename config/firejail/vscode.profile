@@ -22,12 +22,12 @@ whitelist ${HOME}/OSX-KVM
 noblacklist ${HOME}/src
 whitelist ${HOME}/src
 
-# ~/src points here on linux-laptop.  Keep the canonical path available when a
+# ~/src points here on nixOS.  Keep the canonical path available when a
 # project is opened without going through the symlink.
-noblacklist ${HOME}/Dropbox (Maestral)/Example/src
-whitelist ${HOME}/Dropbox (Maestral)/Example/src
+noblacklist ${HOME}/Dropbox (Maestral)/example/src
+whitelist ${HOME}/Dropbox (Maestral)/example/src
 
-# linux-laptop permits unprivileged user namespaces, so use Firejail's supported
+# nixOS permits unprivileged user namespaces, so use Firejail's supported
 # Electron hardening: drop all capabilities, enable nonewprivs and seccomp,
 # and restrict the protocol families available to VS Code.
 include electron-common-hardened.inc.profile

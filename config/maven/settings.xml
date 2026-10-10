@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~/.m2/settings.xml provisioned by hardware.nix.
+  ~/.m2/settings.xml provisioned by the Nix configuration.
 
   The download-sources profile makes Maven (and the Clojure CLI when
   invoked via `clojure -X:deps mvn-pom; mvn dependency:sources`)

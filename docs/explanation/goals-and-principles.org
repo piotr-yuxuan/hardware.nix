@@ -1,0 +1,84 @@
+#+title: Goals and principles
+#+author: piotr-yuxuan
+
+What this configuration aims for, the choices made to get there, and
+why the home directory uses short aliases.
+
+* Goals
+
+  0. ([[https://en.wikipedia.org/wiki/KISS_principle][KISS principle]]) Keep the configuration simple, stupid: most
+     systems work better when kept simple. No need to change mindset,
+     no need to burden beginners with something abstruse. <<goal-0>>
+
+  1. ([[https://en.wikipedia.org/wiki/Principle_of_locality][principle of locality]]) Keep the configuration self-contained in
+     one place. Different settings related to the same thing should be
+     close to each other. No other, hidden data are needed for
+     understanding and nothing else should produce side-effects.
+     <<goal-1>>
+
+  2. ([[https://en.wikipedia.org/wiki/Predictability][predictability]]) The environment should keep the same behaviour
+     no matter how many times the configuration is applied. When
+     something goes wrong, roll back to a previous state. <<goal-2>>
+
+  3. ([[https://en.oxforddictionaries.com/definition/Declarative][declarativeness]]) Keep track of the reasoning which led to
+     decisions and choices. The configuration is /what/ and /why/, not
+     /how/. <<goal-3>>
+
+  Non goal: making this file portable and auto-installable over the
+  network on new computers.
+
+  - It would be rather useless: I work on one or two computers every
+    day and don't change that often.
+  - It would contradict [[goal-0][the first principle]]. This is not an automatic
+    installation script: write one if you want so.
+
+** Choices made to reach these goals
+
+  0. [[goal-0][KISS principle]]
+     - Use Nix flakes to pin every dependency. The lock file is the
+       single source of truth; no imperative =nix-channel= state.
+     - GUI apps on macOS stay managed by Homebrew through a
+       declarative =Brewfile=: no point wrapping them in Nix derivations
+       when =brew bundle= is idempotent already.
+     - Emacs configuration lives in its own repository and is cloned
+       into =~/.emacs.d/=. It has its own lifecycle.
+
+  1. [[goal-1][Locality]]
+     - One repository for all hosts. A shared =home/base.nix= holds
+       every cross-platform setting; host-specific overrides live next
+       to it.
+     - Dotfiles and config snippets that can't (or shouldn't) be
+       expressed in Nix are kept in =config/= and symlinked by Home
+       Manager activation scripts.
+
+  2. [[goal-2][Predictability]]
+     - =nixos-rebuild switch= and =darwin-rebuild switch= are idempotent.
+       The Nix store guarantees bit-for-bit reproducibility.
+     - Every rebuild produces a numbered /generation/ that can be rolled
+       back to, or booted from.
+     - Use git to version this repository so you can always check out
+       a prior state.
+
+  3. [[goal-3][Declarativeness]]
+     - Use git to keep track of changes in time. You can see
+       differences from the last commit as well as =git bisect= when you
+       don't understand something weird.
+     - Use literate documentation to explain all the whereabouts of
+       the configuration.
+
+* Organisation of =$HOME=
+
+The [[file:../reference/home-directory-layout.org][home directory layout]] lists the folders and their aliases.
+
+I feel like it would really be a terrible idea to actually rename user
+folders like Documents and Movies because there are very standard
+folders which are not meant to change. Even with a standard macOS tool
+to say "OK, now let's change the default folder for pictures from
+Pictures to img", I can't guarantee that no program wouldn't blindly
+assume it exists.
+
+I have chosen to hide default folders and create symbolic links to
+them so it looks like what I want but the change doesn't bring too
+deep implication and weird bugs.
+
+These file names are inspired from what [[https://go.dev/doc/gopath_code][Go]] expects.

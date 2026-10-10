@@ -1,5 +1,5 @@
 {
-  description = "Public NixOS and Apple Silicon macOS configuration examples";
+  description = "NixOS fleet: nixOS and future machines";
 
   inputs = {
     # Stable channel: system foundation
@@ -60,6 +60,11 @@
       url = "github:ilysenko/codex-desktop-linux";
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
+
+    claude-desktop = {
+      url = "github:aaddrick/claude-desktop-debian";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
+    };
   };
 
   outputs = {
@@ -74,9 +79,10 @@
     starship-gruvbox-rainbow,
     practicalli-clojure-deps-edn,
     codex-desktop-linux,
+    claude-desktop,
     ...
   }: let
-    # Unstable package set for x86_64-linux (linux-laptop)
+    # Unstable package set for x86_64-linux (nixOS)
     unstable = import nixpkgs-unstable {
       system = "x86_64-linux";
       config.allowUnfree = true;
@@ -100,9 +106,11 @@
           # substituters entry is ever added without a matching key here.
           trusted-public-keys = [
             "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+            "nix-wpe-webkit.cachix.org-1:ItCjHkz1Y5QcwqI9cTGNWHzcox4EqcXqKvOygxpwYHE="
           ];
           substituters = [
             "https://cache.nixos.org"
+            "https://nix-wpe-webkit.cachix.org"
           ];
         };
         gc = {
@@ -112,7 +120,6 @@
         };
       };
 
-      time.timeZone = "UTC";
       i18n.defaultLocale = "en_US.UTF-8";
 
       # System packages from stable
@@ -140,8 +147,9 @@
       # Nix daemon access
       # Only wheel users may talk to the Nix daemon (build, fetch, etc.).
       nix.settings.allowed-users = ["@wheel"];
-      # Regular users may build, but only root can override daemon trust settings.
-      nix.settings.trusted-users = ["root"];
+      # Scoped to example rather than @wheel so that future non-owner
+      # accounts cannot push arbitrary store paths bypassing signatures.
+      nix.settings.trusted-users = ["root" "example"];
 
       # sudo: restrict the binary to wheel group members
       security.sudo.execWheelOnly = true;
@@ -177,14 +185,15 @@
         backupFileExtension = "hm-backup";
         extraSpecialArgs = {
           inherit unstable starship-gruvbox-rainbow practicalli-clojure-deps-edn;
+          claudeDesktop = claude-desktop.packages.x86_64-linux.claude-desktop;
         };
 
         users.example = {
           imports =
             [./home/base.nix]
             ++ (
-              if builtins.pathExists ./home/linux-laptop.nix
-              then [./home/linux-laptop.nix]
+              if builtins.pathExists ./home/nixOS.nix
+              then [./home/nixOS.nix]
               else []
             );
           home.username = "example";
@@ -194,17 +203,12 @@
       };
     };
   in {
-    checks.x86_64-linux.security-policy = import ./tests/security-policy.nix {
-      inherit self;
-      pkgs = nixpkgs.legacyPackages.x86_64-linux;
-    };
-
     nixosConfigurations =
       {}
       // (
-        if builtins.pathExists ./hosts/linux-laptop.nix
+        if builtins.pathExists ./hosts/nixOS.nix
         then {
-          linux-laptop = nixpkgs.lib.nixosSystem {
+          nixOS = nixpkgs.lib.nixosSystem {
             system = "x86_64-linux";
             specialArgs = {inherit self unstable;};
             modules = [
@@ -219,57 +223,51 @@
 
               codex-desktop-linux.nixosModules.default
 
-              # Home Manager: user example (home/shared.nix + home/linux-laptop.nix)
+              # Home Manager: user example (home/shared.nix + home/nixOS.nix)
               home-manager.nixosModules.home-manager
               homeManagerModule
 
-              ./hosts/linux-laptop.nix
+              ./hosts/nixOS.nix
           ];
           };
         }
         else {}
       );
 
-    # macOS machines (nix-darwin)
-    # Usage: sudo darwin-rebuild switch --flake .#macOS
-    darwinConfigurations = let
-      mkDarwinHost = {
-        system,
-        extraHmModules ? [],
-        extraHostModules ? [],
-      }: let
-        unstable-darwin = import nixpkgs-unstable {
-          inherit system;
-          config.allowUnfree = true;
-        };
-
-        # Example account: replace before activating on your own Mac.
-        darwinUser = "example";
-        darwinHome = "/Users/${darwinUser}";
-      in
-        nix-darwin.lib.darwinSystem {
-          inherit system;
-          specialArgs = {unstable = unstable-darwin;};
-          modules = [
+    # Builder for a macOS host (nix-darwin). A Mac does not clone this
+    # repository: its own small flake (templates/macOS) takes this one as
+    # the input `base` and calls the builder, so the account name, the
+    # identities and any machine-local module stay on that Mac.
+    lib.mkDarwinHost = {
+      system,
+      # The account short name, as printed by `id -un`. Single source of
+      # truth: system.primaryUser, the Nix trusted users, the home
+      # directory and Home Manager derive from it. nix-darwin aborts
+      # activation when it names no existing account.
+      user,
+      extraHmModules ? [],
+      extraHostModules ? [],
+    }: let
+      unstable-darwin = import nixpkgs-unstable {
+        inherit system;
+        config.allowUnfree = true;
+      };
+    in
+      nix-darwin.lib.darwinSystem {
+        inherit system;
+        specialArgs = {unstable = unstable-darwin;};
+        modules =
+          [
             ./hosts/macOS.nix
 
             home-manager.darwinModules.home-manager
             {
               nixpkgs.config.allowUnfree = true;
-              nixpkgs.overlays = [
-                (_: prev: {
-                  direnv = prev.direnv.overrideAttrs (_:
-                    if      prev.stdenv.hostPlatform.isDarwin then { doCheck = false; }
-                    else if prev.stdenv.hostPlatform.isLinux  then {}
-                    else throw "direnv overlay: unsupported platform"
-                  );
-                })
-              ];
 
               # Declare the user so nix-darwin and Home Manager can
               # derive home directory and shell automatically.
-              system.primaryUser = darwinUser;
-              users.users.${darwinUser}.home = darwinHome;
+              system.primaryUser = user;
+              users.users.${user}.home = "/Users/${user}";
 
               home-manager = {
                 useGlobalPkgs = true;
@@ -280,16 +278,37 @@
                   inherit starship-gruvbox-rainbow practicalli-clojure-deps-edn;
                 };
 
-                users.${darwinUser} = {
+                users.${user} = {
                   imports = [./home/base.nix ./home/macOS.nix] ++ extraHmModules;
                   home.stateVersion = "25.11";
                 };
               };
             }
-          ] ++ extraHostModules;
-        };
-    in {
-      macOS = mkDarwinHost { system = "aarch64-darwin"; };
+          ]
+          ++ extraHostModules;
+      };
+
+    # Starting point of a Mac's own flake:
+    #   nix flake init -t github:piotr-yuxuan/hardware.nix#macOS
+    templates.macOS = {
+      path = ./templates/macOS;
+      description = "Local flake of one Mac: account name, identities and machine-local modules";
     };
+
+    # The template evaluated against this checkout, so that the check
+    # below and the tests cover exactly what a Mac receives.
+    # Usage on the Mac, from its own flake: sudo darwin-rebuild switch --flake .#macOS
+    inherit ((import ./templates/macOS/flake.nix).outputs {base = self;}) darwinConfigurations;
+
+    # `nix flake check` does not know darwinConfigurations, so evaluate
+    # the macOS system here, on nixOS and on the Mac alike (flake check
+    # skips other systems' checks). Discarding the string context forces
+    # a full evaluation without building anything for aarch64-darwin.
+    checks = nixpkgs.lib.genAttrs ["x86_64-linux" "aarch64-darwin"] (system: {
+      darwin-macOS-eval =
+        nixpkgs.legacyPackages.${system}.writeText "darwin-macOS-eval"
+        (builtins.unsafeDiscardStringContext
+          self.darwinConfigurations.macOS.config.system.build.toplevel.drvPath);
+    });
   };
 }

@@ -41,6 +41,10 @@ else
 	return 0 2>/dev/null || exit 0
 fi
 
+# Homebrew 6 made ask mode the default: install and upgrade may stop to
+# confirm. Activation must not wait for an answer.
+export HOMEBREW_NO_ASK=1
+
 # Refresh the Homebrew formula/cask index before installing.
 # Equivalent to `apt update`; keeps formula metadata and available versions current.
 # Non-fatal: activation should still attempt bundle install when offline.
@@ -51,9 +55,10 @@ fi
 
 # If Docker.app was installed manually, adopt it so `brew bundle` won't fail.
 # This lets you switch to declarative management without manual cleanup.
-if [[ -d /Applications/Docker.app ]] && ! brew list --cask docker >/dev/null 2>&1; then
+# The token matches the Brewfile's docker-desktop cask.
+if [[ -d /Applications/Docker.app ]] && ! brew list --cask docker-desktop >/dev/null 2>&1; then
 	_banner "adopting pre-existing /Applications/Docker.app"
-	run brew install --cask --adopt docker ||
+	run brew install --cask --adopt docker-desktop ||
 		echo "brewBundle: warning: failed to adopt existing Docker.app" >&2
 fi
 
@@ -76,10 +81,12 @@ run brew upgrade --greedy ||
 	echo "brewBundle: brew upgrade --greedy failed; continuing." >&2
 
 # Detect drift: items installed locally but not declared in the Brewfile.
-# `brew bundle cleanup` without --force is read-only; it prints what would
-# be removed and exits non-zero when drift exists.
+# `brew bundle cleanup` without --force prints what would be removed and
+# exits non-zero when drift exists. Since Homebrew 6 it also offers to
+# remove them when it can read an answer, so give it no stdin: the menu
+# below makes that choice.
 _banner "checking for drift between installed packages and $BREWFILE"
-if [[ -z $DRY_RUN_CMD ]] && ! run brew bundle cleanup --file "$BREWFILE"; then
+if [[ -z $DRY_RUN_CMD ]] && ! run brew bundle cleanup --file "$BREWFILE" </dev/null; then
 	if [[ -r /dev/tty ]]; then
 		printf 'brewBundle: drift detected between installed packages and %s.\n' "$BREWFILE" >/dev/tty
 		printf '  [u] uninstall the extras listed above\n' >/dev/tty
