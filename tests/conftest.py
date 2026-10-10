@@ -165,6 +165,17 @@ def commit(publish: ModuleType) -> Callable[..., None]:
                 (repository / path).parent.mkdir(parents=True, exist_ok=True)
                 (repository / path).write_bytes(data)
         publish.git(repository, "add", "--all")
+        # Where the file system ignores case, as on macOS, two paths that differ by
+        # case only are one file, and git staged one name. The index takes the other
+        # one directly.
+        staged = publish.git(repository, "ls-files", "-z").split(b"\0")
+        for path, data in files.items():
+            if data is not None and path.encode() not in staged:
+                blob = publish.git(
+                    repository, "hash-object", "-w", "--stdin", stdin=data
+                )
+                entry = f"100644,{blob.decode().strip()},{path}"
+                publish.git(repository, "update-index", "--add", "--cacheinfo", entry)
         identity = {
             "GIT_AUTHOR_NAME": author[0],
             "GIT_AUTHOR_EMAIL": author[1],
