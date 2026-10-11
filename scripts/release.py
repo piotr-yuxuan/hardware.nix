@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 VERSION_FILE = ".version"
 NUMBERS = r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
 VERSION_TEXT = re.compile(NUMBERS + r"\n", re.ASCII)
-VERSION_TAG = re.compile("v" + NUMBERS, re.ASCII)
+VERSION_TAG = re.compile(NUMBERS, re.ASCII)
 # The parts of a version, in the order of its numbers.
 BUMPS = ("major", "minor", "patch")
 # The branch that only moves to a released commit, and the deployment environment.
@@ -86,8 +86,8 @@ def next_version(text: str | None, tags: Collection[str], bump: str) -> str:
         numbers = [int(number) for number in current.groups()]
         numbers = [*numbers[:raised], numbers[raised] + 1, *[0] * (2 - raised)]
     version = ".".join(str(number) for number in numbers)
-    if f"v{version}" in tags:
-        message = f"the tag v{version} already exists"
+    if version in tags:
+        message = f"the tag {version} already exists"
         raise ReleaseError(message)
     return version
 
@@ -232,7 +232,6 @@ def release(env: Mapping[str, str]) -> str:
         tags,
         env.get("BUMP") or "patch",
     )
-    tag = f"v{version}"
     released = sorted(
         tuple(int(number) for number in found.groups())
         for found in map(VERSION_TAG.fullmatch, tags)
@@ -240,13 +239,13 @@ def release(env: Mapping[str, str]) -> str:
     )
     previous = None
     if released:
-        before = "v" + ".".join(str(number) for number in released[-1])
+        before = ".".join(str(number) for number in released[-1])
         difference = ("diff", "--name-status", "--no-renames", "-z", before, commit)
         fields = run("git", *difference).decode().split("\0")[:-1]
         previous = Previous(
             run("git", "show", f"{before}:flake.lock").decode(),
             list(zip(fields[::2], fields[1::2], strict=True)),
-            f"{server}/{repository}/compare/{before}...{tag}",
+            f"{server}/{repository}/compare/{before}...{version}",
         )
     notes = release_notes(Path("flake.lock").read_text(encoding="utf-8"), previous)
     commit_input = {
@@ -272,11 +271,11 @@ def release(env: Mapping[str, str]) -> str:
     )
     oid = dig(made, "data", "createCommitOnBranch", "commit", "oid")
     refs = f"repos/{repository}/git/refs"
-    api("POST", refs, {"ref": f"refs/tags/{tag}", "sha": oid})
+    api("POST", refs, {"ref": f"refs/tags/{version}", "sha": oid})
     api(
         "POST",
         f"repos/{repository}/releases",
-        {"tag_name": tag, "name": tag, "body": notes},
+        {"tag_name": version, "name": f"Version {version}", "body": notes},
     )
     if CHANNEL in heads:
         channel = f"{refs}/{CHANNEL.removeprefix('refs/')}"
@@ -289,7 +288,7 @@ def release(env: Mapping[str, str]) -> str:
         # Without these two, GitHub would merge the default branch into the tag
         # and wait for checks that a version commit never gets.
         {
-            "ref": tag,
+            "ref": version,
             "environment": ENVIRONMENT,
             "auto_merge": False,
             "required_contexts": [],
@@ -300,10 +299,10 @@ def release(env: Mapping[str, str]) -> str:
         f"repos/{repository}/deployments/{dig(deployment, 'id')}/statuses",
         {
             "state": "success",
-            "environment_url": f"{server}/{repository}/releases/tag/{tag}",
+            "environment_url": f"{server}/{repository}/releases/tag/{version}",
         },
     )
-    return f"Released {tag} as {oid}."
+    return f"Released {version} as {oid}."
 
 
 def main() -> int:

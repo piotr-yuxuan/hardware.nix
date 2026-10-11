@@ -65,11 +65,11 @@ def branches(**heads: str) -> list[dict[str, object]]:
         pytest.param(None, [], "patch", "0.0.0", id="first release"),
         pytest.param(None, [], "minor", "0.0.0", id="first release, minor asked"),
         pytest.param(None, [], "major", "0.0.0", id="first release, major asked"),
-        pytest.param("0.0.0\n", ["v0.0.0"], "patch", "0.0.1", id="second release"),
-        pytest.param("0.1.9\n", ["v0.1.9"], "patch", "0.1.10", id="nine to ten"),
-        pytest.param("1.0.0\n", ["v0.9.4"], "patch", "1.0.1", id="file above the tags"),
-        pytest.param("0.1.9\n", ["v0.1.9"], "minor", "0.2.0", id="new minor line"),
-        pytest.param("0.1.9\n", ["v0.1.9"], "major", "1.0.0", id="new major line"),
+        pytest.param("0.0.0\n", ["0.0.0"], "patch", "0.0.1", id="second release"),
+        pytest.param("0.1.9\n", ["0.1.9"], "patch", "0.1.10", id="nine to ten"),
+        pytest.param("1.0.0\n", ["0.9.4"], "patch", "1.0.1", id="file above the tags"),
+        pytest.param("0.1.9\n", ["0.1.9"], "minor", "0.2.0", id="new minor line"),
+        pytest.param("0.1.9\n", ["0.1.9"], "major", "1.0.0", id="new major line"),
     ],
 )
 def test_next_version_raises_the_part_that_the_bump_names(
@@ -84,14 +84,14 @@ def test_next_version_raises_the_part_that_the_bump_names(
     [
         pytest.param("", [], "patch", id="empty file"),
         pytest.param("1.0\n", [], "patch", id="two numbers"),
-        pytest.param("v1.0.0\n", [], "patch", id="written as a tag"),
+        pytest.param("v1.0.0\n", [], "patch", id="letter before the numbers"),
         pytest.param("1.0.0-rc1\n", [], "patch", id="suffix"),
         pytest.param("01.0.0\n", [], "patch", id="leading zero"),
         pytest.param("1\u0663.0.0\n", [], "patch", id="digit that is not ASCII"),
         pytest.param("1.0.0\n2.0.0\n", [], "patch", id="two lines"),
         pytest.param("1.0.0", [], "patch", id="no line break at the end"),
-        pytest.param("0.1.9\n", ["v0.1.10"], "patch", id="tag of the result exists"),
-        pytest.param(None, ["v0.0.0"], "patch", id="tag of the first release exists"),
+        pytest.param("0.1.9\n", ["0.1.10"], "patch", id="tag of the result exists"),
+        pytest.param(None, ["0.0.0"], "patch", id="tag of the first release exists"),
         pytest.param("0.1.9\n", [], "Minor", id="bump in another case"),
         pytest.param("0.1.9\n", [], "build", id="bump that names no part"),
     ],
@@ -131,7 +131,7 @@ def test_notes_name_what_moved_and_count_the_files_by_area(
         ("M", "flake.lock"),
         ("D", "scripts/old.sh"),
     ]
-    previous = release.Previous(OLD_LOCK, changes, f"{SITE}/compare/v0.0.0...v0.0.1")
+    previous = release.Previous(OLD_LOCK, changes, f"{SITE}/compare/0.0.0...0.0.1")
 
     assert release.release_notes(NEW_LOCK, previous) == (
         "Flake inputs that moved:\n"
@@ -144,7 +144,7 @@ def test_notes_name_what_moved_and_count_the_files_by_area(
         "| `flake.lock` | 0 | 1 | 0 |\n"
         "| `scripts` | 0 | 0 | 1 |\n"
         "\n"
-        f"Full difference: {SITE}/compare/v0.0.0...v0.0.1\n"
+        f"Full difference: {SITE}/compare/0.0.0...0.0.1\n"
     )
 
 
@@ -152,7 +152,7 @@ def test_notes_name_an_input_that_appears_or_disappears(release: ModuleType) -> 
     """Adding or dropping an input is a move too."""
     old = lock(disko={"rev": "d" * 40, "lastModified": SEPTEMBER})
     new = lock(nixpkgs={"rev": "b" * 40, "lastModified": OCTOBER})
-    previous = release.Previous(old, [], f"{SITE}/compare/v0.0.0...v0.0.1")
+    previous = release.Previous(old, [], f"{SITE}/compare/0.0.0...0.0.1")
 
     assert release.release_notes(new, previous) == (
         "Flake inputs that moved:\n"
@@ -160,18 +160,18 @@ def test_notes_name_an_input_that_appears_or_disappears(release: ModuleType) -> 
         "- `disko`: `dddddddddddd` of 2026-09-30, now absent\n"
         "- `nixpkgs`: absent, now `bbbbbbbbbbbb` of 2026-10-07\n"
         "\n"
-        f"Full difference: {SITE}/compare/v0.0.0...v0.0.1\n"
+        f"Full difference: {SITE}/compare/0.0.0...0.0.1\n"
     )
 
 
 def test_notes_say_so_when_nothing_changed(release: ModuleType) -> None:
     """A release of an already released tree has neither list nor table."""
-    previous = release.Previous(NEW_LOCK, [], f"{SITE}/compare/v0.0.1...v0.1.0")
+    previous = release.Previous(NEW_LOCK, [], f"{SITE}/compare/0.0.1...0.1.0")
 
     assert release.release_notes(NEW_LOCK, previous) == (
         "No file and no flake input changed.\n"
         "\n"
-        f"Full difference: {SITE}/compare/v0.0.1...v0.1.0\n"
+        f"Full difference: {SITE}/compare/0.0.1...0.1.0\n"
     )
 
 
@@ -212,7 +212,7 @@ def test_first_release_commits_tags_publishes_and_deploys_in_this_order(
 
     first, made, *rest = sent()
     assert status == DONE
-    assert capsys.readouterr().out == f"Released v0.0.0 as {VERSION_COMMIT}.\n"
+    assert capsys.readouterr().out == f"Released 0.0.0 as {VERSION_COMMIT}.\n"
     assert first == ["GET", f"{API}/git/matching-refs/heads/", None]
     assert made[:2] == ["POST", "graphql"]
     assert "createCommitOnBranch" in made[2]["query"]
@@ -228,11 +228,11 @@ def test_first_release_commits_tags_publishes_and_deploys_in_this_order(
     }
     notes = release.release_notes(NEW_LOCK, None)
     assert rest == [
-        ["POST", f"{API}/git/refs", {"ref": "refs/tags/v0.0.0", "sha": VERSION_COMMIT}],
+        ["POST", f"{API}/git/refs", {"ref": "refs/tags/0.0.0", "sha": VERSION_COMMIT}],
         [
             "POST",
             f"{API}/releases",
-            {"tag_name": "v0.0.0", "name": "v0.0.0", "body": notes},
+            {"tag_name": "0.0.0", "name": "Version 0.0.0", "body": notes},
         ],
         [
             "POST",
@@ -243,7 +243,7 @@ def test_first_release_commits_tags_publishes_and_deploys_in_this_order(
             "POST",
             f"{API}/deployments",
             {
-                "ref": "v0.0.0",
+                "ref": "0.0.0",
                 "environment": "release",
                 "auto_merge": False,
                 "required_contexts": [],
@@ -252,7 +252,7 @@ def test_first_release_commits_tags_publishes_and_deploys_in_this_order(
         [
             "POST",
             f"{API}/deployments/42/statuses",
-            {"state": "success", "environment_url": f"{SITE}/releases/tag/v0.0.0"},
+            {"state": "success", "environment_url": f"{SITE}/releases/tag/0.0.0"},
         ],
     ]
 
@@ -264,12 +264,12 @@ def test_later_release_compares_with_the_highest_tag_and_moves_the_channel(
     release_job: Callable[..., str],
     fake_gh: Callable[..., Callable[[], list[list[object]]]],
 ) -> None:
-    """Ten comes after nine: the notes cover what changed since v0.0.10 only."""
+    """Ten comes after nine: the notes cover what changed since 0.0.10 only."""
     files = {"flake.lock": OLD_LOCK.encode(), ".version": b"0.0.9\n"}
     repository = git_repo("checkout", files)
-    release.run("git", "-C", str(repository), "tag", "v0.0.9")
+    release.run("git", "-C", str(repository), "tag", "0.0.9")
     commit(repository, {"since-nine.txt": b"x\n", ".version": b"0.0.10\n"})
-    release.run("git", "-C", str(repository), "tag", "v0.0.10")
+    release.run("git", "-C", str(repository), "tag", "0.0.10")
     release.run("git", "-C", str(repository), "tag", "not-a-version")
     commit(repository, {"flake.lock": NEW_LOCK.encode(), "docs/new.org": b"x\n"})
     head = release_job(repository)
@@ -278,7 +278,7 @@ def test_later_release_compares_with_the_highest_tag_and_moves_the_channel(
     status = release.main()
 
     changes = [("A", "docs/new.org"), ("M", "flake.lock")]
-    previous = release.Previous(OLD_LOCK, changes, f"{SITE}/compare/v0.0.10...v0.0.11")
+    previous = release.Previous(OLD_LOCK, changes, f"{SITE}/compare/0.0.10...0.0.11")
     _, made, _, published, channel, *_ = sent()
     assert status == DONE
     assert made[2]["variables"]["input"]["message"]["headline"] == "Version 0.0.11"
@@ -392,7 +392,7 @@ def test_checkout_that_cannot_be_released_writes_nothing(
     """The version file and the tags are read before the first request that writes."""
     files = {"flake.lock": NEW_LOCK.encode(), ".version": version}
     repository = git_repo("checkout", files)
-    release.run("git", "-C", str(repository), "tag", "v0.0.10")
+    release.run("git", "-C", str(repository), "tag", "0.0.10")
     commit = release_job(repository)
     sent = fake_gh({BRANCHES: branches(master=commit), **ANSWERS})
 
@@ -407,7 +407,7 @@ def test_checkout_that_cannot_be_released_writes_nothing(
     [
         pytest.param({"GITHUB_SHA": None}, id="no commit"),
         pytest.param({"GITHUB_SHA": "master"}, id="commit that is not a hash"),
-        pytest.param({"GITHUB_REF": "refs/tags/v1.0.0"}, id="tag and not a branch"),
+        pytest.param({"GITHUB_REF": "refs/tags/1.0.0"}, id="tag and not a branch"),
         pytest.param({"GITHUB_REPOSITORY": "example"}, id="repository without owner"),
         pytest.param({"BUMP": "Minor"}, id="bump that names no part"),
     ],

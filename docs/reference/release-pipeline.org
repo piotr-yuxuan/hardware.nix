@@ -61,8 +61,9 @@ checkout that GitHub publishes, then the Python of the runner.
 In this order:
 
 1. A version commit on =master=, on top of the commit that was checked.
-2. A plain tag, =vX.Y.Z=, on the version commit.
-3. A GitHub release of that name, with [[*Release notes][computed notes]].
+2. A plain tag, =X.Y.Z=, on the version commit.
+3. A GitHub release on that tag, titled =Version X.Y.Z=, with
+   [[*Release notes][computed notes]].
 4. The branch =stable= moved to the version commit, or created there.
 5. A deployment in the environment =release=, on the tag, with the
    state =success=.
@@ -134,7 +135,7 @@ in three ways:
 | Reference                                              | Takes                                                           |
 |--------------------------------------------------------+-----------------------------------------------------------------|
 | =github:piotr-yuxuan/hardware.nix/stable= | The latest release                                              |
-| =github:piotr-yuxuan/hardware.nix/vX.Y.Z= | One release                                                     |
+| =github:piotr-yuxuan/hardware.nix/X.Y.Z=  | One release                                                     |
 | =github:piotr-yuxuan/hardware.nix=        | The head of =master=, released or not, whatever its checks said |
 
 The template of a Mac's local flake names =stable=.

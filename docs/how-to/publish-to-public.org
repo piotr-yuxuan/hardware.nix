@@ -189,7 +189,7 @@ the branch =stable= and a deployment record.
 Nothing is left to do by hand. To see the result without signing in:
 
 #+begin_src zsh
-git -C "$PUBLIC" ls-remote origin 'refs/tags/v*' refs/heads/stable refs/heads/master
+git -C "$PUBLIC" ls-remote origin 'refs/tags/*' refs/heads/stable refs/heads/master
 #+end_src
 
 After a release, the newest tag, =stable= and =master= name the same

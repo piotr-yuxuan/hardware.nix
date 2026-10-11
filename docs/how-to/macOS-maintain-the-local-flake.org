@@ -80,7 +80,7 @@ The line =inputs.base.url= of =flake.nix= decides what
 | Value of =inputs.base.url=                             | What an update takes                                               |
 |--------------------------------------------------------+--------------------------------------------------------------------|
 | =github:piotr-yuxuan/hardware.nix/stable= | The latest release. The template sets this value                   |
-| =github:piotr-yuxuan/hardware.nix/v0.3.1= | That release, until you change the line                            |
+| =github:piotr-yuxuan/hardware.nix/0.3.1=  | That release, until you change the line                            |
 | =github:piotr-yuxuan/hardware.nix=        | Whatever is latest: the head of the public branch, released or not |
 
 A release is a commit that passed every check of the
