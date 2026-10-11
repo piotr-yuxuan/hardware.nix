@@ -1,0 +1,147 @@
+#+title: Release pipeline
+#+author: piotr-yuxuan
+
+What the pipeline of the public repository runs, when it releases, and
+what a release consists of. The pipeline is one workflow file,
+=.github/workflows/cicd.yml= in the public repository; the private
+repository keeps it in the overlay, at
+=publish/overlay/.github/workflows/cicd.yml=. The decisions of a
+release are in [[file:../../scripts/release.py][scripts/release.py]], and its tests in
+[[file:../../tests/test_release.py][tests/test_release.py]].
+
+*Not observed yet.* This page describes the workflow and the script as
+their sources and their tests define them. No release had been made
+when it was written: correct it from the first one.
+
+* Triggers
+
+The branch of the public repository is =master=.
+
+| Event                              | Checks                         | Release                      |
+|------------------------------------+--------------------------------+------------------------------|
+| Push to =master=                   | All                            | Yes, when every check passes |
+| Manual run on =master=             | All                            | Yes, when every check passes |
+| Pull request to =master=           | All but the two history checks | Never                        |
+| Commit or branch that a run writes | None                           | None                         |
+
+A manual run has one input, =bump=: =patch= (the default), =minor= or
+=major=. A push cancels the run in progress on its branch. A manual
+run cancels nothing: it waits for the run in progress, so that it
+cannot stop a release half way.
+
+* Jobs
+
+| Job                 | Runner       | Proves                                                                                                                                                              | Time limit |
+|---------------------+--------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------|
+| =check-flake=       | Linux        | The gate and gitleaks pass on every commit; =nix flake check=; the Mac template gives the evaluated system; statix, deadnix, shellcheck, actionlint and zizmor pass | 30 min     |
+| =check-brewfile=    | macOS        | Every tap, formula and cask of =config/Brewfile= resolves                                                                                                           | 20 min     |
+| =build=             | macOS, Linux | The whole macOS system builds; the nixOS system resolves, without a build                                                                                          | 120 min    |
+| =test-shellscripts= | macOS, Linux | The Bats suites of each system pass                                                                                                                                 | 20 min     |
+| =test-python=       | macOS, Linux | The pytest suites pass                                                                                                                                              | 20 min     |
+| =release=           | Linux        | Nothing: it releases the commit that the five jobs above checked                                                                                                    | 10 min     |
+
+=release= runs only after the five other jobs passed, only for =master=,
+only in this repository and never for a pull request.
+
+* Permissions
+
+Every job reads the repository and nothing else, except =release=:
+
+| Permission of =release= | Used for                                                 |
+|-------------------------+----------------------------------------------------------|
+| =contents: write=       | The version commit, the tag, the release and the channel |
+| =deployments: write=    | The deployment record                                    |
+
+No checkout keeps its credentials. Every action is named by the hash of
+a commit, with its version in a comment. =release= uses one action, the
+checkout that GitHub publishes, then the Python of the runner.
+
+* What a release is
+
+In this order:
+
+1. A version commit on =master=, on top of the commit that was checked.
+2. A plain tag, =vX.Y.Z=, on the version commit.
+3. A GitHub release of that name, with [[*Release notes][computed notes]].
+4. The branch =stable= moved to the version commit, or created there.
+5. A deployment in the environment =release=, on the tag, with the
+   state =success=.
+
+The steps are not atomic. If one fails, the next ones are not tried,
+the job fails, and the version of the commit keeps no tag: the next
+release takes the next number.
+
+* The version
+
+The version is the content of =.version= at the root of the public
+repository: one line, =MAJOR.MINOR.PATCH=, three numbers without
+leading zero. Only the pipeline writes this file. It does not exist in
+the private repository, and the export keeps the one of the public
+branch.
+
+| Situation                     | Version released                                |
+|-------------------------------+-------------------------------------------------|
+| No =.version= yet             | =0.0.0=, whatever the bump                      |
+| Push to =master=              | The patch number raised by one                  |
+| Manual run with =bump: patch= | The patch number raised by one                  |
+| Manual run with =bump: minor= | The minor number raised by one, the patch at 0  |
+| Manual run with =bump: major= | The major number raised by one, the others at 0 |
+
+The release stops, and writes nothing, when =.version= has another
+form, when the bump is not one of the three words, or when the tag of
+the version to release already exists.
+
+* The version commit
+
+| Trait     | Value                                                                  |
+|-----------+------------------------------------------------------------------------|
+| Message   | =Version X.Y.Z=, an empty line, =[skip ci]=                            |
+| Change    | =.version= only, a plain file that then holds =X.Y.Z= and a line break |
+| Parent    | The commit that the run checked                                        |
+| Author    | The account of GitHub Actions                                          |
+| Committer | GitHub                                                                 |
+| Signature | By GitHub, shown as verified                                           |
+
+The commit is made through the API of GitHub, and only if =master=
+still points at the commit that was checked. When =master= has moved,
+the job ends without a release: the run of the newer commit makes one.
+The commit starts no run.
+
+The gate of [[file:../../scripts/publish.py][scripts/publish.py]] accepts a commit that it did not see
+the owner make only when it has every trait of this table. Any other
+commit by another identity is a finding.
+
+* Release notes
+
+The notes are computed from the two trees, the one of the release
+before and the one that was checked:
+
+- the flake inputs whose lock moved, each with its revision and its
+  date before and after;
+- a table with one row for each top-level file or directory that
+  changed, and the number of files added, changed and removed in it;
+- a link to the comparison of the two tags on GitHub.
+
+The first release lists every flake input and has no link. A release
+of a tree that did not change says so.
+
+* The channel and the references of a flake
+
+=stable= is a channel: a branch that the pipeline moves to each
+release, and that nothing else moves. A flake can name this repository
+in three ways:
+
+| Reference                                              | Takes                                                           |
+|--------------------------------------------------------+-----------------------------------------------------------------|
+| =github:piotr-yuxuan/hardware.nix/stable= | The latest release                                              |
+| =github:piotr-yuxuan/hardware.nix/vX.Y.Z= | One release                                                     |
+| =github:piotr-yuxuan/hardware.nix=        | The head of =master=, released or not, whatever its checks said |
+
+The template of a Mac's local flake names =stable=.
+[[file:../how-to/macOS-maintain-the-local-flake.org::*Choose what the Mac follows][Choose what the Mac follows]] shows how to change it.
+
+* See also
+
+- [[file:../how-to/publish-to-public.org][Publish to the public repository]]: what to do before and after a
+  push, and when no release appears.
+- [[file:../explanation/versions-and-releases.org][Versions and releases]]: why the pipeline is built this way.

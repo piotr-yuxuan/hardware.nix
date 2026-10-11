@@ -1,9 +1,9 @@
 {
   description = "Local flake of one Mac";
 
-  # The shared configuration. `nix flake update base` takes its latest
-  # commit.
-  inputs.base.url = "github:piotr-yuxuan/hardware.nix";
+  # The shared configuration, at its channel of releases. `nix flake update
+  # base` takes the latest release.
+  inputs.base.url = "github:piotr-yuxuan/hardware.nix/stable";
 
   outputs = {base, ...}: {
     darwinConfigurations.macOS = base.lib.mkDarwinHost {

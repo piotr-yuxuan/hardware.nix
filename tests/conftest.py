@@ -6,6 +6,7 @@ setup logic.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tempfile
@@ -418,3 +419,81 @@ def rewrite(
         return status, tmp_path / "out/new.git"
 
     return run
+
+
+@pytest.fixture(scope="session")
+def release(scripts_dir: Path) -> ModuleType:
+    """Load scripts/release.py, which is a script and not a package module."""
+    loader = SourceFileLoader("release", str(scripts_dir / "release.py"))
+    module = ModuleType(loader.name)
+    loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def fake_gh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Callable[..., Callable[[], list[list[object]]]]:
+    """Put ``tests/helpers/fake_gh.py`` first on the ``PATH``, as ``gh``.
+
+    Returns ``install(replies, failing=()) -> sent``. ``replies`` maps
+    ``"METHOD path"`` to the JSON value that ``gh api`` prints for that request;
+    a request named in ``failing`` exits with status 1 instead. ``sent()`` lists
+    the requests received so far, each as ``[method, path, body]``. No request
+    leaves the machine.
+    """
+    home = tmp_path / "fake-gh"
+    (home / "bin").mkdir(parents=True)
+    (home / "bin/gh").symlink_to(Path(__file__).parent / "helpers/fake_gh.py")
+    monkeypatch.setenv("FAKE_GH_HOME", str(home))
+    monkeypatch.setenv("PATH", f"{home / 'bin'}{os.pathsep}{os.environ['PATH']}")
+
+    def install(
+        replies: dict[str, object], failing: tuple[str, ...] = ()
+    ) -> Callable[[], list[list[object]]]:
+        script = {"replies": replies, "failing": list(failing)}
+        (home / "replies.json").write_text(json.dumps(script), encoding="utf-8")
+
+        def sent() -> list[list[object]]:
+            calls = home / "calls.jsonl"
+            lines = (
+                calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+            )
+            return [json.loads(line) for line in lines]
+
+        return sent
+
+    return install
+
+
+@pytest.fixture
+def release_job(
+    publish: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> Callable[..., str]:
+    """Stand where the release job of the public pipeline stands.
+
+    Returns ``enter(repository, **settings) -> commit``: the repository becomes
+    the working directory, and the environment says what the runner says of a
+    push of its HEAD commit to ``master`` of ``example/config``, without
+    ``BUMP``. Each of ``settings`` then sets one variable, or removes it when
+    its value is ``None``.
+    """
+
+    def enter(repository: Path, **settings: str | None) -> str:
+        commit = publish.git(repository, "rev-parse", "HEAD").decode().strip()
+        monkeypatch.chdir(repository)
+        job = {
+            "GITHUB_REPOSITORY": "example/config",
+            "GITHUB_REF": "refs/heads/master",
+            "GITHUB_SHA": commit,
+            "GITHUB_SERVER_URL": "https://github.example",
+            "BUMP": None,
+        }
+        for variable, value in {**job, **settings}.items():
+            if value is None:
+                monkeypatch.delenv(variable, raising=False)
+            else:
+                monkeypatch.setenv(variable, value)
+        return commit
+
+    return enter

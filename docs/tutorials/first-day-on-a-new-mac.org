@@ -274,7 +274,7 @@ publishes, and make it a Git repository:
 
 #+begin_src zsh
 mkdir -p ~/src/local/macOS && cd ~/src/local/macOS
-nix --extra-experimental-features 'nix-command flakes' flake init -t 'github:piotr-yuxuan/hardware.nix#macOS'
+nix --extra-experimental-features 'nix-command flakes' flake init -t 'github:piotr-yuxuan/hardware.nix/stable#macOS'
 git init -q && git add .
 #+end_src
 
@@ -282,6 +282,9 @@ The template writes two files:
 
 - =flake.nix= names this repository as the input =base= and calls its
   =lib.mkDarwinHost= builder with this Mac's account name and modules.
+  Both the template and the input come from =stable=, the branch that
+  only moves to a release: a commit that passed every check, the build
+  of the whole macOS system included.
 - =identity.nix= holds this Mac's Git identities, to fill in step 11.
 
 Keep exactly this path: the weekly =nix-staleness-check= agent looks for

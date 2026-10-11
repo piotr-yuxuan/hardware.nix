@@ -45,6 +45,10 @@ Find the symptom in the index, then follow its section.
 | A switch prints =brewBundle:= warnings or =`brew bundle` failed!=             | [[file:macOS-manage-homebrew.org::*Fix brew bundle failures][Fix brew bundle failures]]            |
 | A switch asks =Choice [u/e/s]:=                                               | [[file:macOS-manage-homebrew.org::*Answer the drift menu][Answer the drift menu]]               |
 | =brew= in a Mac terminal refuses the Emacs cask as untrusted                  | [[file:macOS-manage-homebrew.org::*Trust a third-party tap][Trust a third-party tap]]             |
+| A Mac should take the latest commit and not the latest release                | [[file:macOS-maintain-the-local-flake.org::*Choose what the Mac follows][Choose what the Mac follows]]         |
+| The export stops with =reserved path=                                         | [[file:publish-to-public.org::*Fix a finding][Fix a finding]]                       |
+| The push to the public repository is rejected after an export                 | [[file:publish-to-public.org::*When no release appears][When no release appears]]             |
+| A push to the public repository produced no release                           | [[file:publish-to-public.org::*When no release appears][When no release appears]]             |
 
 * "experimental features nix-command flakes are not enabled"
 

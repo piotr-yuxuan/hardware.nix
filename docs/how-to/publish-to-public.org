@@ -5,7 +5,12 @@ The configuration is written in a private repository and published
 mechanically: the public tree is a function of one private commit. A
 manifest selects the files, private rules rename and rewrite them, and
 a gate refuses personal data. Use this guide on the personal laptop to
-publish a commit, and to fix what the gate reports.
+publish a commit, to fix what the gate reports and to follow the
+release that the public repository makes of it.
+
+One file of the public tree does not come from the private commit:
+=.version=, which the [[file:../reference/release-pipeline.org][release pipeline]] of the public repository
+writes. The export keeps it as the public branch has it.
 
 One tool does all of it, [[file:../../scripts/publish.py][scripts/publish.py]]. Its code is published; the
 manifest and the rules it reads exist only in the private repository,
@@ -87,6 +92,9 @@ sha256 = ["the digest the gate printed for a binary or large file"]
 - You have a clone of the public repository, on a branch, without local
   changes. The export only fast-forwards it. Never commit in that clone
   by hand.
+- After each release, the public branch is one commit ahead of what you
+  pushed: the version commit of the pipeline. The first step below
+  fetches it.
 - The personal signing key is on this laptop and its agent can prompt:
   the export signs the commit it makes.
 - =git-filter-repo= and =gitleaks= are on the =PATH=, or run through
@@ -105,7 +113,17 @@ command line; never write it in a file that is published.
 
 * Publish a commit
 
-1. Export. This reads the commit, builds the public tree, runs the gate
+1. Bring the clone up to date with the public repository:
+
+   #+begin_src zsh
+   git -C "$PUBLIC" pull --ff-only
+   #+end_src
+
+   Always give =--ff-only=. Where =pull.rebase= is set, a bare pull
+   rebases a commit of the export, and the result is a commit that the
+   tool neither made nor gated.
+
+2. Export. This reads the commit, builds the public tree, runs the gate
    and, when the gate is clean, adds one signed commit to the clone:
 
    #+begin_src zsh
@@ -125,7 +143,7 @@ command line; never write it in a file that is published.
    nothing reaches the clone before the gate passes, and it refuses a
    clone that holds any commit of the private history.
 
-2. Check the whole public history, every ref of the clone:
+3. Check the whole public history, every ref of the clone:
 
    #+begin_src zsh
    scripts/publish.py check "$PUBLIC" --allow "$PUBLIC/.github/publish-allow.toml" --rules publish/private
@@ -134,7 +152,7 @@ command line; never write it in a file that is published.
 
    =gitleaks= is a second, independent net over the same history.
 
-3. Look at what would be pushed:
+4. Look at what would be pushed:
 
    #+begin_src zsh
    git -C "$PUBLIC" log --show-signature -1
@@ -142,7 +160,7 @@ command line; never write it in a file that is published.
    git -C "$PUBLIC" diff HEAD~1 HEAD
    #+end_src
 
-4. Push by hand, only when the three steps above are clean:
+5. Push by hand, only when the steps above are clean:
 
    #+begin_src zsh
    git -C "$PUBLIC" push origin HEAD
@@ -160,6 +178,61 @@ statuses:
 When the export has findings, the branch of the public clone does not
 move.
 
+* What follows a push
+
+The pipeline of the public repository checks the commit, which takes
+about a quarter of an hour. When every check passes, it releases the
+commit: a version commit on top of yours, a tag, a release with notes,
+the branch =stable= and a deployment record.
+[[file:../reference/release-pipeline.org][Release pipeline]] describes each of them.
+
+Nothing is left to do by hand. To see the result without signing in:
+
+#+begin_src zsh
+git -C "$PUBLIC" ls-remote origin 'refs/tags/v*' refs/heads/stable refs/heads/master
+#+end_src
+
+After a release, the newest tag, =stable= and =master= name the same
+commit. The clone is then one commit behind, until the first step of
+the next publication.
+
+* Open a new minor or major line
+
+Every push raises the patch number. To raise the minor or the major
+number, start the pipeline by hand on the public branch and name the
+part to raise. On the Actions page of the public repository, choose
+the workflow "Flake validation", then "Run workflow", the branch
+=master= and the bump. With the GitHub command line, signed in:
+
+#+begin_src zsh
+(cd "$PUBLIC" && gh workflow run cicd.yml --ref master --field bump=minor)
+#+end_src
+
+The run checks the head of the branch again, then releases it under
+the new number: =0.3.7= becomes =0.4.0= with =minor=, and =1.0.0= with
+=major=. The same run with =bump=patch= releases the head once more.
+
+* When no release appears
+
+| What you see                                                        | Cause                                                             | What to do                                                                                                     |
+|---------------------------------------------------------------------+-------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------|
+| A check of the run failed                                           | The commit is not released                                        | Fix it in the private repository and publish again. The next release holds both changes                        |
+| The job =release= prints =No release=                               | A newer commit was pushed while this one was checked              | Nothing: the run of the newer commit releases                                                                  |
+| The job =release= failed after the version commit appeared          | A request to GitHub failed. =.version= holds a number with no tag | Start a manual run with =bump=patch=, as in the section above. The number with no tag stays unused             |
+| The push is rejected as not a fast-forward                          | The export was made in a clone that lacked the version commit     | Drop the export commit and publish again: see below                                                            |
+| =check= reports =author identity= on a commit named =Version X.Y.Z= | GitHub no longer writes that commit as the gate expects           | Compare =git cat-file -p <commit>= with =VERSION_COMMIT= in =scripts/publish.py=, and correct it at the source |
+
+A rejected push leaves one commit in the clone that the public
+repository does not have. The export can make it again from the same
+private commit, so nothing is lost by discarding it:
+
+#+begin_src zsh
+git -C "$PUBLIC" fetch origin
+git -C "$PUBLIC" reset --hard '@{upstream}'
+#+end_src
+
+Then [[*Publish a commit][publish the commit]] again, from its first step.
+
 * Fix a finding
 
 Every fix is a commit in the private repository, followed by a new
@@ -176,6 +249,7 @@ export. Never edit the public clone.
 | =archive or compressed file=                                                                                    | Exclude the file, or publish its contents uncompressed                                                                      |
 | =unstable replacement=, =path collision=, =overlay collision=                                                   | Correct the rule, or rename one of the two files                                                                            |
 | =rule applies but sweep is false=                                                                               | Remove the text at the source, or set =sweep = true=                                                                        |
+| =reserved path=                                                                                                 | Rename or exclude the file. =.version= belongs to the release pipeline, in any case of its letters                          |
 | =signature=                                                                                                     | The new commit is not signed by the key you gave: check the key ID and the agent, then export again                         |
 | =annotated tag=                                                                                                 | Replace it with a plain tag: the gate does not read a tag's tagger and message                                              |
 | =author identity=, =committer identity=, =attribution trailer=                                                  | Reported on commits already in the public clone: see [[*Rewrite the public history][Rewrite the public history]]                                             |
@@ -217,6 +291,16 @@ scripts/publish.py rewrite-history --origin "$PUBLIC" --rules publish/private --
 Publishing a rewritten history is a forced push. Do it by hand,
 deliberately, and remember that it cannot recall what was already
 fetched.
+
+A history that has releases costs more to rewrite:
+
+- Every tag and the branch =stable= name commits that the rewrite
+  replaces. Give =--origin= the address of the public repository and
+  not the clone, which has no branch =stable=. Then push the tags and
+  =stable= by force too.
+- The releases stay attached to their tags.
+- A lock file that names a commit of the old history, on a Mac for
+  example, needs =nix flake update base=.
 
 * Run the tools through Nix
 

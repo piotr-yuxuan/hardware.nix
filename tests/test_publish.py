@@ -27,6 +27,13 @@ CLEAN, FINDINGS, INVALID_INPUT = 0, 1, 2
 HANDLE_ADDRESS = "piotr-yuxuan@users.noreply.github.com"
 DISPLAY_NAME = "胡雨軒 Петр"
 MAC = "aa:bb:cc:" + "dd:ee:ff"
+# Who GitHub writes on the commit that the pipeline of the public repository makes.
+PIPELINE_AUTHOR = (
+    "github-actions[bot]",
+    "41898282+github-actions[bot]@" + "users.noreply.github.com",
+)
+PIPELINE_COMMITTER = ("GitHub", "noreply@" + "github.com")
+FIRST_VERSION = "Version 0.0.0\n\n[skip ci]"
 
 
 def test_sweep_applies_overlapping_rules_in_file_order(
@@ -730,6 +737,30 @@ def test_overlay_allowlist_acknowledges_a_generic_finding(
             "notes.txt: unstable replacement",
             id="sweeping twice would change the file again",
         ),
+        pytest.param(
+            {MANIFEST: EVERYTHING, ".version": b"9.9.9\n"},
+            (),
+            ".version: reserved path",
+            id="private file where the pipeline writes the version",
+        ),
+        pytest.param(
+            {MANIFEST: EVERYTHING, "publish/overlay/.version": b"9.9.9\n"},
+            (),
+            ".version: reserved path",
+            id="overlay file where the pipeline writes the version",
+        ),
+        pytest.param(
+            {MANIFEST: EVERYTHING, ".Version": b"9.9.9\n"},
+            (),
+            ".Version: reserved path",
+            id="file that only case tells from the version file",
+        ),
+        pytest.param(
+            {MANIFEST: EVERYTHING, ".version/notes.txt": b"x\n"},
+            (),
+            ".version/notes.txt: reserved path",
+            id="directory where the pipeline writes the version",
+        ),
     ],
 )
 def test_export_refuses_and_leaves_the_public_clone_untouched(
@@ -824,6 +855,54 @@ def test_second_export_of_the_same_commit_is_a_no_op(
     """Publishing what is already public adds no commit."""
     source = git_repo("private", {MANIFEST: EVERYTHING, "notes.txt": b"public\n"})
     first = export(source, public_clone)
+    head = publish.git(public_clone, "rev-parse", "HEAD")
+
+    second = export(source, public_clone)
+
+    assert (first, second) == (CLEAN, CLEAN)
+    assert publish.git(public_clone, "rev-parse", "HEAD") == head
+
+
+def test_export_keeps_the_version_that_the_pipeline_wrote(
+    export: Callable[..., int],
+    git_repo: Callable[[str, dict[str, bytes]], Path],
+    commit: Callable[..., None],
+    public_clone: Path,
+    tree_of: Callable[[Path], dict[str, bytes]],
+) -> None:
+    """An export above a version commit changes everything but the version file."""
+    source = git_repo("private", {MANIFEST: EVERYTHING, "notes.txt": b"public\n"})
+    commit(
+        public_clone,
+        {".version": b"0.0.0\n"},
+        FIRST_VERSION,
+        PIPELINE_AUTHOR,
+        PIPELINE_COMMITTER,
+    )
+
+    status = export(source, public_clone)
+
+    assert status == CLEAN
+    assert tree_of(public_clone) == {".version": b"0.0.0\n", "notes.txt": b"public\n"}
+
+
+def test_export_above_a_version_commit_of_the_same_tree_is_a_no_op(
+    publish: ModuleType,
+    export: Callable[..., int],
+    git_repo: Callable[[str, dict[str, bytes]], Path],
+    commit: Callable[..., None],
+    public_clone: Path,
+) -> None:
+    """A release alone gives the next export nothing to publish."""
+    source = git_repo("private", {MANIFEST: EVERYTHING, "notes.txt": b"public\n"})
+    first = export(source, public_clone)
+    commit(
+        public_clone,
+        {".version": b"0.0.0\n"},
+        FIRST_VERSION,
+        PIPELINE_AUTHOR,
+        PIPELINE_COMMITTER,
+    )
     head = publish.git(public_clone, "rev-parse", "HEAD")
 
     second = export(source, public_clone)
@@ -966,6 +1045,202 @@ def test_denied_text_in_an_otherwise_valid_identity_is_found(
     commit(repository, {}, author=(DISPLAY_NAME, "12345+" + HANDLE_ADDRESS))
 
     assert check_history(repository, deny=("12345",))[0] == FINDINGS
+
+
+def test_version_commits_of_the_public_pipeline_are_clean(
+    git_repo: Callable[[str, dict[str, bytes]], Path],
+    commit: Callable[..., None],
+    check_history: Callable[..., tuple[int, str]],
+) -> None:
+    """The pipeline may add the version file, and later raise it."""
+    repository = git_repo("public", {"notes.txt": b"public\n"})
+    for version in ("0.0.0", "0.0.1"):
+        commit(
+            repository,
+            {".version": f"{version}\n".encode()},
+            f"Version {version}\n\n[skip ci]",
+            PIPELINE_AUTHOR,
+            PIPELINE_COMMITTER,
+        )
+
+    assert check_history(repository) == (CLEAN, "")
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        pytest.param(
+            {"files": {".version": b"0.0.0\n"}, "message": "Version 0.0.0"},
+            id="message that would not skip the pipeline",
+        ),
+        pytest.param(
+            {"files": {".version": b"0.0.0\n", "notes.txt": b"edited\n"}},
+            id="another file changed",
+        ),
+        pytest.param(
+            {"files": {".version": b"0.0.0\n", "notes.txt": None}},
+            id="another file removed",
+        ),
+        pytest.param(
+            {"files": {".version": b"0.0.1\n"}},
+            id="file that holds another version than the message",
+        ),
+        pytest.param(
+            {
+                "files": {".version": b"00.0.0\n"},
+                "message": "Version 00.0.0\n\n[skip ci]",
+            },
+            id="number with a leading zero",
+        ),
+        pytest.param(
+            {
+                "files": {"notes.txt": b"edited\n"},
+                "message": "Update configuration files",
+            },
+            id="ordinary commit",
+        ),
+        pytest.param(
+            {
+                "files": {".version": b"0.0.0\n"},
+                "author": ("Zebulon Quux", "zebulon@example.org"),
+            },
+            id="another author",
+        ),
+        pytest.param(
+            {
+                "files": {".version": b"0.0.0\n"},
+                "committer": ("Zebulon Quux", "zebulon@example.org"),
+            },
+            id="another committer",
+        ),
+    ],
+)
+def test_nothing_but_a_version_commit_is_accepted_from_the_pipeline(
+    git_repo: Callable[[str, dict[str, bytes]], Path],
+    commit: Callable[..., None],
+    check_history: Callable[..., tuple[int, str]],
+    change: dict[str, object],
+) -> None:
+    """Without one trait of the version commit, who made the commit is refused."""
+    repository = git_repo("public", {"notes.txt": b"public\n"})
+    version_commit = {
+        "message": FIRST_VERSION,
+        "author": PIPELINE_AUTHOR,
+        "committer": PIPELINE_COMMITTER,
+    }
+    commit(repository, **{**version_commit, **change})
+
+    status, report = check_history(repository)
+
+    assert status == FINDINGS
+    assert {line.split(": ")[1] for line in report.splitlines()} == {
+        "author identity",
+        "committer identity",
+    }
+
+
+def test_version_commit_that_github_signed_is_clean(
+    publish: ModuleType,
+    git_repo: Callable[[str, dict[str, bytes]], Path],
+    commit: Callable[..., None],
+    check_history: Callable[..., tuple[int, str]],
+) -> None:
+    """GitHub signs the commit it makes: the signature does not hide its shape."""
+    repository = git_repo("public", {"notes.txt": b"public\n"})
+    commit(
+        repository,
+        {".version": b"0.0.0\n"},
+        FIRST_VERSION,
+        PIPELINE_AUTHOR,
+        PIPELINE_COMMITTER,
+    )
+    header, message = publish.git(repository, "cat-file", "commit", "HEAD").split(
+        b"\n\n", 1
+    )
+    # As in a commit object: every line of the signature after the first starts
+    # with a space, the empty ones included.
+    signature = (
+        b"gpgsig -----BEGIN PGP SIGNATURE-----\n \n wsFcBAABCAAQBQJo\n =abcd\n"
+        b" -----END PGP SIGNATURE-----\n \n"
+    )
+    signed = publish.git(
+        repository,
+        *("hash-object", "-t", "commit", "-w", "--stdin"),
+        stdin=header + b"\n" + signature + b"\n" + message,
+    )
+    publish.git(repository, "update-ref", "refs/heads/main", signed.decode().strip())
+
+    assert check_history(repository) == (CLEAN, "")
+
+
+def test_version_file_that_is_not_a_plain_file_is_refused(
+    git_repo: Callable[[str, dict[str, bytes]], Path],
+    commit: Callable[..., None],
+    check_history: Callable[..., tuple[int, str]],
+) -> None:
+    """The version commit writes three numbers, not a program or a link."""
+    repository = git_repo("public", {"notes.txt": b"public\n"})
+    (repository / ".version").write_bytes(b"0.0.0\n")
+    (repository / ".version").chmod(0o755)
+    commit(repository, {}, FIRST_VERSION, PIPELINE_AUTHOR, PIPELINE_COMMITTER)
+
+    status, report = check_history(repository)
+
+    assert status == FINDINGS
+    assert "author identity" in report
+
+
+def test_merge_is_not_a_version_commit(
+    publish: ModuleType,
+    git_repo: Callable[[str, dict[str, bytes]], Path],
+    commit: Callable[..., None],
+    check_history: Callable[..., tuple[int, str]],
+) -> None:
+    """A version commit has one parent, whatever a merge says and changes."""
+    repository = git_repo("public", {"notes.txt": b"public\n"})
+    first = publish.git(repository, "rev-parse", "HEAD").decode().strip()
+    commit(repository, {"more.txt": b"public\n"})
+    second = publish.git(repository, "rev-parse", "HEAD").decode().strip()
+    commit(repository, {".version": b"0.0.0\n"})
+    tree = publish.git(repository, "rev-parse", "HEAD^{tree}").decode().strip()
+    identity = {
+        "GIT_AUTHOR_NAME": PIPELINE_AUTHOR[0],
+        "GIT_AUTHOR_EMAIL": PIPELINE_AUTHOR[1],
+        "GIT_COMMITTER_NAME": PIPELINE_COMMITTER[0],
+        "GIT_COMMITTER_EMAIL": PIPELINE_COMMITTER[1],
+    }
+    merge = publish.git(
+        repository,
+        *("commit-tree", tree, "-p", second, "-p", first, "-m", FIRST_VERSION),
+        env={**os.environ, **identity},
+    )
+    publish.git(repository, "update-ref", "refs/heads/main", merge.decode().strip())
+
+    status, report = check_history(repository)
+
+    assert status == FINDINGS
+    assert "author identity" in report
+
+
+def test_version_commit_is_still_read_by_the_deny_list(
+    git_repo: Callable[[str, dict[str, bytes]], Path],
+    commit: Callable[..., None],
+    check_history: Callable[..., tuple[int, str]],
+) -> None:
+    """Only the rule on who made the commit is skipped for the pipeline."""
+    repository = git_repo("public", {"notes.txt": b"public\n"})
+    commit(
+        repository,
+        {".version": b"0.0.0\n"},
+        FIRST_VERSION,
+        PIPELINE_AUTHOR,
+        PIPELINE_COMMITTER,
+    )
+
+    status, report = check_history(repository, deny=("skip ci",))
+
+    assert status == FINDINGS
+    assert "private deny: skip ci" in report
 
 
 def test_file_deleted_by_a_later_commit_is_still_gated(
@@ -1208,7 +1483,15 @@ def test_rewrite_history_needs_a_new_directory(
 
 
 @pytest.mark.parametrize(
-    "source", ["scripts/publish.py", "tests/test_publish.py", "tests/conftest.py"]
+    "source",
+    [
+        "scripts/publish.py",
+        "scripts/release.py",
+        "tests/test_publish.py",
+        "tests/test_release.py",
+        "tests/conftest.py",
+        "tests/helpers/fake_gh.py",
+    ],
 )
 def test_sources_of_the_tool_pass_the_gate_they_implement(
     publish: ModuleType, scripts_dir: Path, source: str

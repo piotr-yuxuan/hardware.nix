@@ -168,6 +168,10 @@ it.
 - Work values (an employer's name, a work address, a forge host, a
   certificate) never enter this repository. They live in the local
   flake of the Mac, created from `templates/macOS`.
+- `.version` belongs to the release pipeline of the public repository,
+  which `docs/reference/release-pipeline.org` describes. No tracked
+  file and no overlay file may be published at that path: the export
+  keeps the one of the public branch.
 
 ## Machines
 
@@ -194,6 +198,8 @@ it.
 - `templates/macOS/`: The local flake of a Mac, which takes this
   repository as an input.
 - `scripts/publish.py`: Exports this repository to its public mirror.
+- `scripts/release.py`: Releases a checked commit, in the pipeline of
+  the public repository.
 
 ## Documentation layout
 

@@ -104,6 +104,12 @@ than duplicating setup logic.  The shared fixtures are:
 - =rewrite=: runs =publish.py rewrite-history= on a repository and returns
   the exit status and the rewritten repository. It needs =git-filter-repo=
   on the =PATH=.
+- =release= (session-scoped): the =scripts/release.py= module.
+- =fake_gh=: puts =tests/helpers/fake_gh.py= first on the =PATH= as =gh=,
+  with the replies a test gives it, and returns the requests it received.
+  No request leaves the machine.
+- =release_job=: makes a repository the working directory and sets the
+  variables a runner gives the release job of the public pipeline.
 
 * Mock contract
 
@@ -117,6 +123,7 @@ No test may invoke a real system binary against the host:
 | =jq=        | =make_fake_jq= (from =nix_mocks.bash=) |
 | =modprobe=  | =make_fake_bin modprobe= |
 | =nft=       | =make_fake_bin nft= |
+| =gh=        | =fake_gh= (pytest fixture, from =conftest.py=) |
 
 Fake binaries created by =make_fake_bin= append each invocation as
 ="NAME ARGS..."= to =$HOME/.fake-calls=.  Read the log with =fake_calls=.

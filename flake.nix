@@ -289,7 +289,7 @@
       };
 
     # Starting point of a Mac's own flake:
-    #   nix flake init -t github:piotr-yuxuan/hardware.nix#macOS
+    #   nix flake init -t github:piotr-yuxuan/hardware.nix/stable#macOS
     templates.macOS = {
       path = ./templates/macOS;
       description = "Local flake of one Mac: account name, identities and machine-local modules";

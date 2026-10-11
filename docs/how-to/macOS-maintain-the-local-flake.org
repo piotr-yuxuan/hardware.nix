@@ -60,16 +60,52 @@ rm result
 #+end_src
 
 =nix flake metadata= shows the commit of =base= in use and its date.
-=nix flake update base= moves =flake.lock= to the latest commit of this
-repository. The versions of nixpkgs, nix-darwin and Home Manager come
-with it: they are the ones this repository locked and checked, and
-nothing on the Mac updates them separately.
+=nix flake update base= moves =flake.lock= to the latest release of
+this repository, or to whatever [[*Choose what the Mac follows][the input follows]]. The versions of
+nixpkgs, nix-darwin and Home Manager come with it: they are the ones
+this repository locked and checked, and nothing on the Mac updates
+them separately.
 
 To go back, run =sudo darwin-rebuild --rollback=, then restore the
 previous =flake.lock=, or the next switch applies the update again.
 =git restore flake.lock= brings back the lock as it was last staged or
 committed, so stage the new one with =git add flake.lock= only once you
 are happy with the update.
+
+* Choose what the Mac follows
+
+The line =inputs.base.url= of =flake.nix= decides what
+=nix flake update base= takes:
+
+| Value of =inputs.base.url=                             | What an update takes                                               |
+|--------------------------------------------------------+--------------------------------------------------------------------|
+| =github:piotr-yuxuan/hardware.nix/stable= | The latest release. The template sets this value                   |
+| =github:piotr-yuxuan/hardware.nix/v0.3.1= | That release, until you change the line                            |
+| =github:piotr-yuxuan/hardware.nix=        | Whatever is latest: the head of the public branch, released or not |
+
+A release is a commit that passed every check of the
+[[file:../reference/release-pipeline.org][release pipeline]], the build of the whole macOS system included. The
+head of the branch is published before its checks run: follow it to
+get a change as soon as it is published, and accept that it may not
+build.
+
+To change what the Mac follows, edit the line, then take the new
+reference and build:
+
+#+begin_src zsh
+nix flake update base
+darwin-rebuild build --flake '.#macOS'
+#+end_src
+
+A local flake created before the releases existed has the third value.
+Nothing forces a change: it works as before.
+
+To try another reference once, without a change to the file or to the
+lock, give it on the command line:
+
+#+begin_src zsh
+darwin-rebuild build --flake '.#macOS' --override-input base 'github:piotr-yuxuan/hardware.nix'
+#+end_src
 
 * Change the account name
 

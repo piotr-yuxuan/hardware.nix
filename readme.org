@@ -2,6 +2,9 @@
 #+author: piotr-yuxuan
 #+language: en
 
+#+html: <a href="https://github.com/piotr-yuxuan/hardware.nix/actions/workflows/cicd.yml"><img alt="Pipeline of the public repository" src="https://github.com/piotr-yuxuan/hardware.nix/actions/workflows/cicd.yml/badge.svg?branch=master"></a>
+#+html: <a href="https://github.com/piotr-yuxuan/hardware.nix/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/piotr-yuxuan/hardware.nix"></a>
+
 Declarative system configuration for a *Framework 16 AMD 7040* (NixOS,
 =nixOS=) and a *macOS work laptop* (nix-darwin, =macOS=).
 
@@ -52,7 +55,7 @@ explanation discusses why.  Host-specific pages carry a =nixOS-= or
 - [[file:docs/how-to/review-an-agent-prompt.org][Review an agent prompt]]: have an agent critique and revise
   a prompt written for agents.
 - [[file:docs/how-to/publish-to-public.org][Publish to the public repository]]: export a private commit,
-  check the result and fix what the gate reports.
+  check the result, fix what the gate reports and follow its release.
 
 *** nixOS
 
@@ -67,7 +70,8 @@ explanation discusses why.  Host-specific pages carry a =nixOS-= or
 *** macOS
 
 - [[file:docs/how-to/macOS-maintain-the-local-flake.org][Maintain the Mac's local flake]]: take a newer shared
-  configuration, change the account name and add machine-local modules.
+  configuration, choose between the releases and the latest commit,
+  change the account name and add machine-local modules.
 - [[file:docs/how-to/macOS-manage-homebrew.org][Manage Homebrew]]: run the Brewfile by hand, upgrade and
   repair casks, and fix the failures a switch reports.
 - [[file:docs/how-to/macOS-recover-from-a-failed-switch.org][Recover from a failed switch]]: find where a switch stopped,
@@ -92,6 +96,9 @@ explanation discusses why.  Host-specific pages carry a =nixOS-= or
 
 - [[file:docs/reference/package-guide.org][Package guide]]: every installed package with examples.
 - [[file:docs/reference/repository-layout.org][Repository layout]]: files, directories and flake outputs.
+- [[file:docs/reference/release-pipeline.org][Release pipeline]]: the jobs of the public pipeline, the version
+  rule, what a release consists of and the references a flake can
+  follow.
 - [[file:docs/reference/home-directory-layout.org][Home directory layout]]: the folders of =$HOME= and their
   aliases.
 - [[file:docs/reference/shell-key-bindings.org][Shell key bindings]]: fzf, prompt navigation and scrollback
@@ -110,6 +117,8 @@ explanation discusses why.  Host-specific pages carry a =nixOS-= or
 - [[file:docs/explanation/architecture.org][Architecture]]: generations, state versions and installation
   choices.
 - [[file:docs/explanation/lessons-learnt.org][Lessons learnt]]: practices tried and abandoned.
+- [[file:docs/explanation/versions-and-releases.org][Versions and releases]]: who a release is for, why the pipeline
+  writes the version and why a channel.
 - [[file:docs/explanation/nixOS-security-posture.org][nixOS security posture]]: the hardening rationale for nixOS.
 - [[file:docs/explanation/macOS-security-posture.org][macOS security posture]]: the hardening rationale for macOS,
   and what it does not enforce.

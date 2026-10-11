@@ -31,6 +31,7 @@ config/                   # Dotfiles and config snippets
 packages/                 # Custom Nix derivations
 scripts/                  # Activation helpers
   publish.py              # Export to the public repository, and its gate
+  release.py              # Release of a checked commit, in the public pipeline
 publish/                  # Export manifest, overlay and private rules (not published)
 tests/                    # BATS and pytest suites (tests/README.org)
 docs/
@@ -45,7 +46,10 @@ The entries marked "not published" exist only in the private
 repository. The public repository is an export of it, made by
 =scripts/publish.py= as [[file:../how-to/publish-to-public.org][Publish to the public repository]] describes.
 The files of =publish/overlay/= land at the public root: the licence,
-=.gitignore= and the =.github/= directory. The personal modules of
+=.gitignore= and the =.github/= directory, which holds the workflow,
+the allowlist of the gate, the security policy and the contributing
+guide. One file exists in the public repository only: =.version=,
+which [[file:release-pipeline.org][the release pipeline]] writes. The personal modules of
 nixOS are imported only when they exist;
 [[file:../how-to/nixOS-personalise-a-fresh-install.org][Personalise a fresh install of nixOS]] shows how to write them.
 

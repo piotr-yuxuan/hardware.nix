@@ -44,6 +44,19 @@ COMMIT_NAMES = frozenset({HANDLE, "胡雨軒 Петр"})
 COMMIT_EMAIL = re.compile(rf"(?:\d+\+)?{HANDLE}@users\.noreply\.github\.com")
 IDENTITY = re.compile(r"^(author|committer) (.*) <(.*)> \d+ [+-]\d{4}$", re.MULTILINE)
 TRAILER = re.compile(r"^[ \t]*co-authored-by[ \t]*:.*$", re.IGNORECASE | re.MULTILINE)
+# The file that the release pipeline of the public repository owns.
+VERSION_FILE = ".version"
+# The one commit that this pipeline makes, as a commit object: its single parent,
+# who GitHub writes as author and committer, and its message. A history rewrite
+# removes the signature.
+VERSION_COMMIT = re.compile(
+    rb"tree [0-9a-f]+\nparent (?P<parent>[0-9a-f]+)\n"
+    rb"author github-actions\[bot\] "
+    rb"<41898282\+github-actions\[bot\]@users\.noreply\.github\.com> \d+ [+-]\d{4}\n"
+    rb"committer GitHub <noreply@github\.com> \d+ [+-]\d{4}\n"
+    rb"(?:gpgsig .*\n(?: .*\n)*)?"
+    rb"\nVersion (?P<version>(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2})\n\n\[skip ci\]\n?"
+)
 GIT_TIMEOUT_SECONDS = 600
 GITLINK = "160000"
 SYMLINK = "120000"
@@ -484,10 +497,50 @@ def scan_entry(
     return findings + denied(text, path, rules) + suspicious(text, path, allow)
 
 
+def version_commits(
+    raw: Mapping[str, bytes],
+    trees: Mapping[str, Sequence[tuple[str, str, str]]],
+    blobs: Mapping[str, bytes],
+) -> set[str]:
+    """Name the commits that raise the version as the public pipeline does.
+
+    Such a commit has the identities, the message and the single parent of
+    `VERSION_COMMIT`, and differs from that parent by the version file alone,
+    a plain file that holds the version of the message. `raw` maps a commit to
+    its object, `trees` to its entries as `list_tree` gives them, and `blobs`
+    an object id to its content.
+    """
+    found = set()
+    for commit, data in raw.items():
+        claim = VERSION_COMMIT.fullmatch(data)
+        if claim is None:
+            continue
+        parent = trees.get(claim["parent"].decode(), ())
+        changed = {path for _, _, path in set(trees[commit]) ^ set(parent)}
+        written = [
+            (mode, blobs.get(oid))
+            for mode, oid, path in trees[commit]
+            if path == VERSION_FILE
+        ]
+        version = ("100644", claim["version"] + b"\n")
+        if changed == {VERSION_FILE} and written == [version]:
+            found.add(commit)
+    return found
+
+
 def scan_commit(
-    raw: bytes, where: str, rules: Rules | None, allow: Allow
+    raw: bytes,
+    where: str,
+    rules: Rules | None,
+    allow: Allow,
+    *,
+    version_commit: bool = False,
 ) -> list[Finding]:
-    """Gate one commit object: who made it and what its message says."""
+    """Gate one commit object: who made it and what its message says.
+
+    A version commit of the public pipeline is not made by the owner: only the
+    rule on who may make a commit is skipped for it.
+    """
     header, _, message = raw.decode(errors="replace").partition("\n\n")
     findings = denied(message, where, rules) + suspicious(message, where, allow)
     findings += [
@@ -499,7 +552,9 @@ def scan_commit(
         findings.append(Finding(where, "commit identity", "unreadable header"))
     for role, name, email in people:
         person = f"{name} <{email}>"
-        if name not in COMMIT_NAMES or not COMMIT_EMAIL.fullmatch(email):
+        if not version_commit and (
+            name not in COMMIT_NAMES or not COMMIT_EMAIL.fullmatch(email)
+        ):
             findings.append(Finding(where, f"{role} identity", person))
         findings += denied(person, where, rules)
     return findings
@@ -512,6 +567,7 @@ def public_tree(
 
     Return the public tree and what the manifest or the rules leave undecided.
     Exclude wins over include, and `publish/` only contributes its overlay.
+    Neither may write the version file, which the public pipeline owns.
     """
     try:
         manifest = tomllib.loads(private[MANIFEST][1].decode())
@@ -576,6 +632,11 @@ def public_tree(
         Finding(path, "overlay collision", path) for path in overlay.keys() & tree
     ]
     tree |= overlay
+    findings += [
+        Finding(path, "reserved path", path)
+        for path in tree
+        if unicodedata.normalize("NFC", path).casefold().split("/")[0] == VERSION_FILE
+    ]
     folded = Counter(unicodedata.normalize("NFC", path).casefold() for path in tree)
     findings += [
         Finding(path, "path collision ignoring case", path)
@@ -591,8 +652,9 @@ def export(
     """Publish one private commit as one signed commit of the public clone.
 
     The private tree is read from the commit object, never from the work
-    tree. Nothing is written to the public clone unless the tree passes the
-    gate, and its branch only moves once the new commit passes it too.
+    tree. The version file of the public head is kept as it is. Nothing is
+    written to the public clone unless the tree passes the gate, and its
+    branch only moves once the new commit passes it too.
     """
     loaded = load_rules(rules)
     key = SIGNING_KEY.fullmatch(signing_key)
@@ -614,6 +676,13 @@ def export(
     blobs = read_objects(source, [oid for mode, oid, _ in listing if mode != GITLINK])
     private = {path: (mode, blobs.get(oid, b"")) for mode, oid, path in listing}
     tree, findings = public_tree(private, loaded)
+    # The pipeline of the public repository raises the version file between two
+    # exports: the new commit keeps the one of the public head.
+    tree |= {
+        path: (mode, git(public, "cat-file", "blob", oid))
+        for mode, oid, path in list_tree(public, "HEAD")
+        if path == VERSION_FILE
+    }
     allow = load_allow(tree[ALLOWLIST][1].decode() if ALLOWLIST in tree else "")
     for path, (mode, data) in tree.items():
         findings += scan_entry(path, mode, data, loaded, allow)
@@ -675,7 +744,8 @@ def check(clone: Path, allow: Path, rules: Path | None) -> list[Finding]:
     """Gate every ref of a clone: its name, its commits and all their trees.
 
     Without rules only the generic checks run, as in public CI. An annotated
-    tag is refused, since its tagger and message are not read.
+    tag is refused, since its tagger and message are not read. Every commit is
+    made by the owner, except the version commits of the public pipeline.
     """
     loaded = load_rules(rules) if rules else None
     try:
@@ -692,13 +762,24 @@ def check(clone: Path, allow: Path, rules: Path | None) -> list[Finding]:
         findings += denied(ref, ref, loaded) + suspicious(ref, ref, allowed)
         if kind == "tag":
             findings.append(Finding(ref, "annotated tag", "not gated, use a plain tag"))
+    trees = {commit: list_tree(clone, commit) for commit in commits}
     newest: dict[tuple[str, str, str], str] = {}
     for commit in commits:
-        where = f"commit {commit[:12]}"
-        findings += scan_commit(raw[commit], where, loaded, allowed)
-        for entry in list_tree(clone, commit):
+        for entry in trees[commit]:
             newest.setdefault(entry, commit)
     blobs = read_objects(clone, [oid for mode, oid, _ in newest if mode != GITLINK])
+    versions = version_commits(raw, trees, blobs)
+    findings += [
+        finding
+        for commit in commits
+        for finding in scan_commit(
+            raw[commit],
+            f"commit {commit[:12]}",
+            loaded,
+            allowed,
+            version_commit=commit in versions,
+        )
+    ]
     for (mode, oid, path), commit in newest.items():
         findings += [
             finding._replace(where=f"{commit[:12]}:{finding.where}")

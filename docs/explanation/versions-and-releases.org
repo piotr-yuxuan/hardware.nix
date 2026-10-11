@@ -1,0 +1,108 @@
+#+title: Versions and releases
+#+author: piotr-yuxuan
+
+Why the public repository has versions, tags, releases and a channel,
+and why its pipeline is built the way
+[[file:../reference/release-pipeline.org][the reference]] describes.
+
+* Who a release is for
+
+The owner is the only person who runs this configuration, and can
+follow the head of the public branch on every machine. A release is
+for another reader. It shows that a commit passed every check, the
+build of the whole macOS system included, and it gives a version to
+pin where there was only a commit hash.
+
+That is why the pages document three references for a flake: the
+channel of releases, one release, and whatever is latest. The first is
+the default of the template because it is the one a stranger should
+start from.
+
+* Why every checked push is a release
+
+A configuration has no feature to announce. What a reader needs to
+know about a commit is whether it works, and the pipeline already
+answers that question for every push. Releasing by hand would add a
+decision that carries no information: so every push that passes is a
+release, and the patch number counts them.
+
+The minor and the major numbers are the owner's to raise, with a
+manual run, when a change deserves a new line: a new NixOS release, a
+change that a Mac's local flake must follow.
+
+* Why the pipeline writes the version
+
+The public tree is an export: one tool builds it from a commit of the
+private repository, and nobody commits in the public repository by
+hand. Three places could hold the version.
+
+- *Tags only.* Nothing is written to the branch, and the export
+  needs no change. The tree does not know its own version.
+- *A file that the export raises.* Every public commit would carry
+  its version, but the number would be given on the laptop, before
+  any check ran.
+- *A file that the pipeline raises*, which is what this repository
+  does. The number is given only to a commit that passed, the tree
+  knows its version, and the history reads as a sequence of exports
+  and releases.
+
+The third choice has a cost. The public branch moves without the
+owner: after each release the clone on the laptop is one commit
+behind, and an export made without pulling first is rejected at the
+push. The export also had to learn to keep a file that it does not
+build.
+
+* Why the gate accepts one shape of commit
+
+The gate refuses every commit that the owner did not make. A version
+commit is made by GitHub, so the gate needs an exception, and an
+exception to an identity rule is where a gate fails.
+
+It therefore accepts no identity. It accepts one shape: the two
+identities that GitHub writes, the exact message, one parent, a change
+to =.version= alone, and a content that equals the version of the
+message. A commit of that shape can carry three numbers and nothing
+else, so the gate does not need to trust its signature. A commit by
+the same identities that changes anything else is refused like any
+other.
+
+The gate reads the public history after the fact. It cannot prevent a
+push; it turns the next run red.
+
+* Why a channel
+
+Nix has no notion of the latest tag: a flake reference names a branch,
+a tag or a commit. A reader who wants the latest release needs a name
+that moves, and in Nix that name is a channel, a branch that only
+advances to what passed its checks. NixOS itself is published this
+way.
+
+=stable= is that branch. For a machine that pulls its configuration,
+it is also what deployed means: no pipeline can switch a laptop, so a
+release is deployed when the name that machines follow points at it.
+The deployment record on GitHub says the same thing to a reader of the
+repository page.
+
+* Why the notes are computed
+
+Every commit of the export carries the same message, and the messages
+of the private repository are not published: they are not gated.
+GitHub's generated notes would hold a link and nothing else.
+
+The trees are public and gated, so the notes come from them. For a
+Nix configuration the most useful fact about a release is which
+revisions it locks: the notes list the inputs that moved, then count
+the changed files by area. Nothing private can enter, because the
+script reads nothing but the public checkout.
+
+* What a release does not promise
+
+- *No history is fixed for ever.* A rewrite of the public history
+  remains possible, and after the first release it also moves every
+  tag and the channel.
+- *No number is guaranteed to exist.* A release that fails after its
+  version commit leaves a number without a tag. The next release takes
+  the next number.
+- *No support of old versions.* A fix is a new release.
+- *A release is not a cache.* A machine that follows a release still
+  builds or fetches what the binary cache of nixpkgs does not hold.
