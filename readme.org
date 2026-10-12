@@ -12,6 +12,8 @@ Both machines share a common base of CLI tools, fonts, Zsh, Git, GPG,
 and Emacs tooling via Home Manager.  Platform-specific layers sit on
 top.
 
+[[./img/social-media-preview.jpg]]
+
 * Start here
 
 - [[file:docs/tutorials/first-day-on-a-new-mac.org][First day on a new Mac]]: install Nix, Homebrew and nix-darwin on a

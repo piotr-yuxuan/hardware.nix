@@ -32,6 +32,8 @@ values = [
 
 # Binary files and files over 1 MiB, by sha256 digest.
 sha256 = [
+  "d6ffc9a213f16e5cda36fe133e1cb633109dd820b4223f03244ace8cd6dea260", # img/social-media-preview.jpg
+  "9ab281c59150432cd2d57853eb30bcc65f6c40241cad87e044230b5c9f6a9635", # img/social-media-preview.jpg
   "dad455719c98c68ddfdb9d2fd62451b628d077108bcaffbd8ffe8533bab61eae", # img/wallpaper.jpg
   "99f663f257119473766ae83dc402b0d00b26486398f6f2e6f8439d7bf3240003", # img/neomacs.png, an application icon in earlier commits
 ]
