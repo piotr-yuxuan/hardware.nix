@@ -1,76 +1,17 @@
-If `AGENTS.local.md` exists at the repository root, read it first.
-
 # NixOS fleet configuration
 
 Declarative NixOS + nix-darwin configuration managed as a Nix flake.
 
-## Agent workflow
+## Workflow
 
-### Worktree and branch setup
-
-Each agent works in its own dedicated worktree under `.worktree/` so
-that it never touches the live `main` checkout. When starting work on
-a plan, create the worktree and its branch in one step:
-
-``` zsh
-# nnn is a zero-padded three-digit sequence number, slug is kebab-case
-git worktree add .worktree/nnn-slug -b plan/nnn-slug main
-```
-
-Once inside the worktree, verify the context before touching anything:
-
-``` zsh
-git rev-parse --show-toplevel  # must print the worktree root, not the main repo
-git branch --show-current      # must print plan/nnn-slug
-```
-
-### Autonomous execution
-
-Agents make every effort to work autonomously and make reasonable
-assumptions. They work until all goals are met and all test suites are
-green; they must not stop early.
-
-Assumptions are collected and presented in full in the pre-merge
-summary (see "Pre-merge confirmation" below).
-
-There are two absolute exceptions to autonomous execution:
-
-1. **Destructive commands.** Never run any command that is
-   irreversible or that destroys data without explicit, informed user
-   confirmation first. This includes, but is not limited to:
-   `git reset --hard`, `git clean -fd`, `rm -rf`, `git push --force`,
-   overwriting files that have untracked or uncommitted changes, and
-   any other operation whose effects cannot be undone with a single
-   `git revert` or equivalent. State precisely what will be destroyed
-   and why it is necessary before asking.
-
-2. **Too many deep assumptions.** If the goals are unclear or
-   underspecified to the point where proceeding would require making
-   several assumptions of significant consequence, do not proceed.
-   Abort, and present the user with a set of detailed, contextualised
-   clarifying questions that explain exactly what is ambiguous, what
-   the realistic options are, and what the consequences of each choice
-   would be. This is not a failure: it is the correct response to an
-   underspecified plan.
-
-### Clarifying questions
-
-Agents may ask a minimal set of clarifying questions at the beginning,
-but only for genuine blockers: values that cannot be inferred,
-defaulted safely, or looked up in the codebase. A question about
-something that is answerable by reading the code is not acceptable.
-
-Needing to ask many questions is a signal that the plan was
-underspecified and should be improved before the next run.
-
-### Commits
-
-The output of a plan is committed in small, meaningful, well-contained
-commits on the plan branch. Each commit must build and pass static
-checks on its own (no broken intermediate states). Commit messages use
-the imperative mood and sentence case, consistent with the rest of
-this project. Never add an attribution trailer such as
-`Co-Authored-By` to a commit message.
+Every change follows the skill `workflow:plans`; load it before the
+first edit. In this repository: plans are
+`docs/work/plans/NNN-slug.org`, tracked; the checks are the commands
+below, `bats -r --tap tests/` and `pytest` as `tests/README.org` gives
+them, and the documentation checks of "Documentation layout"; the
+extra steps are those of "Public and private boundary" (classify each
+new file in `publish/manifest.toml`) and "Dependency upgrade" (keep
+`docs/reference/package-guide.org` in sync).
 
 ### Testing
 
@@ -102,53 +43,30 @@ run lists what the Mac will build or fetch:
 nix build --dry-run .#darwinConfigurations.macOS.system
 ```
 
-Tests must be passing before any commit is made. LSP servers (nil,
-nixd, shellcheck) must not report errors on touched files.
+LSP servers (nil, nixd, shellcheck) must not report errors on touched
+files.
 
-### Code quality
+### Destructive commands and questions
 
-Respect the principle of code locality, simplicity, and KISS. Prefer
-the simplest solution that works. Do not introduce abstractions ahead
-of need. Keep related code together. When in doubt, inline rather than
-abstract.
+Agents work autonomously, on reasonable assumptions, until every goal
+is met and every test suite is green. They do not stop early: only
+where the shared rules or `workflow:plans` say to stop and ask.
 
-### Pre-merge confirmation
+Destructive and irreversible commands include, but are not limited to:
+`git reset --hard`, `git clean -fd`, `rm -rf`, `git push --force`,
+overwriting files that have untracked or uncommitted changes, and any
+other operation whose effects cannot be undone with a single
+`git revert` or equivalent. State precisely what will be destroyed and
+why it is necessary before asking for confirmation.
 
-Before merging into `main`, present the user with a structured summary
-covering:
-
-1. What changed and why.
-2. All assumptions made during execution and why they were reasonable.
-3. Tradeoffs and alternative approaches considered but not taken.
-4. Which tests were run and their results.
-5. Any known limitations or follow-up work.
-6. A request for the user to run manual tests where automated coverage
-   is absent.
-
-Do not merge until the user explicitly confirms.
-
-### Merging
-
-Once the user confirms, merge with a meaningful merge a commit message
-with the plan slug as first line (as a sentence) that briefly
-describes the change:
-
-``` zsh
-git -C <main-repo-root> merge --no-ff plan/nnn-slug \
-  -m "Add zsh completions for custom scripts"
-```
-
-Use sentence case. Preserve branch topology in the merge.
-
-### Worktree cleanup
-
-After you've merged the plan, remove the worktree and delete the plan
-branch:
-
-``` zsh
-git worktree remove .worktree/nnn-slug
-git branch -d plan/nnn-slug
-```
+Agents may ask a minimal set of clarifying questions at the beginning,
+on genuine blockers only. A value that can be inferred or defaulted
+safely is not a question. When a run stops, at any time, because the
+goal would need several consequential assumptions, its questions are
+detailed and contextualised: they explain exactly what is ambiguous,
+what the realistic options are, and what the consequences of each
+choice would be. Stopping to ask is not a failure: it is the correct
+response to an underspecified plan.
 
 ## Public and private boundary
 
@@ -227,7 +145,10 @@ sits at the same depth, so a link to another page is
 `../<quadrant>/<name>.org` and a link to a repository file is
 `../../<path>`. A page whose steps could not be run on the target
 machine says so. `tests/README.org` stays outside this structure,
-next to what it describes.
+next to what it describes. So do `docs/work/`,
+`home/nixOS/README.md` and `todo.org`, which the public export leaves
+out. The documentation map of `readme.org` and the documentation
+checks skip `docs/work/`.
 
 When you add, rename or remove a page:
 
@@ -246,11 +167,13 @@ repository root over every `.org` file:
   links, which org-lint skips.
 - Tables of contents: regenerating each `toc-org` table of contents
   changes nothing.
-- Style: headings in sentence case, and no dash used as punctuation
-  (see "Style rules").
+- Style: headings in sentence case, and no dash used as punctuation.
 
 The table of contents check needs `toc-org` on the Emacs load path, for
-example `~/.emacs.d/straight/build/toc-org`.
+example `~/.emacs.d/straight/build/toc-org`. The three documentation
+checkers are not yet repository scripts: their sources are in the
+appendix of `docs/work/changelog/073-diataxis-documentation.org`, which
+the public export leaves out too.
 
 ## Package channels
 
@@ -311,9 +234,9 @@ services.example.enable = unstable.lib.mkIf unstable.stdenv.hostPlatform.isAarch
 
 ## Style rules
 
-Use sentence case for all headings and titles. Do not use emdashes or
-hyphens as punctuation; restructure the sentence instead. Hyphenated
-words (e.g. "platform-specific") are fine.
+Use sentence case for document titles. Do not use hyphens as
+punctuation; restructure the sentence instead. Hyphenated words (e.g.
+"platform-specific") are fine.
 
 ## Inline scripts
 
