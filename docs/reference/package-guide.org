@@ -178,6 +178,7 @@ language and platform support.
   - [[bluez (Bluetooth)][bluez (Bluetooth)]]
   - [[USB-C monitor hotplug stabilisation][USB-C monitor hotplug stabilisation]]
   - [[touchpad-watchdog (nixOS only)][touchpad-watchdog (nixOS only)]]
+  - [[Linux kernel (nixOS only)][Linux kernel (nixOS only)]]
   - [[date-menu-formatter (nixOS only)][date-menu-formatter (nixOS only)]]
   - [[emoji-copy (nixOS only)][emoji-copy (nixOS only)]]
   - [[grand-theft-focus (nixOS only)][grand-theft-focus (nixOS only)]]
@@ -1862,6 +1863,17 @@ scripts in =scripts/touchpad_watchdog.py= and =scripts/touchpad-watchdog.zsh=.
 #+begin_src sh
 systemctl status touchpad-watchdog     # watchdog running
 journalctl -u touchpad-watchdog -f     # watch for recovery events
+#+end_src
+
+** Linux kernel (nixOS only)
+The 7.2 series, selected by =boot.kernelPackages = pkgs.linuxPackages_7_2=
+in =hosts/nixOS.nix=.  7.2.8 fixed a TTM use-after-free that crashed the
+laptop after hibernation, and that 6.18.57 carries without the fix.
+[[file:../explanation/nixOS-kernel-choice.org][Kernel choice and the hibernation crash]] explains the choice and when to
+change it.
+#+begin_src sh
+uname -r                                         # running kernel
+readlink -f /nix/var/nix/profiles/system/kernel  # kernel of the next boot
 #+end_src
 
 ** date-menu-formatter (nixOS only)

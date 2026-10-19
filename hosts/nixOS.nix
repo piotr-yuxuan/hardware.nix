@@ -68,16 +68,9 @@ in {
   # Hibernate
   boot.resumeDevice = "/dev/vg-nixOS/lv-swap";
 
-  # Kernel: pinned to the 6.18 longterm branch, not linuxPackages_latest.
-  #
-  # Hibernation has always been fragile on this laptop, but it failed far more often on 7.2 (7.2.0 to 7.2.4, late August
-  # to September 2026), so the kernel went back to 6.18 on 2026-09-22. On 6.18, the 16 hibernations of 4 to 20 October
-  # 2026 all resumed. The faulty change was never identified, so no release is known to fix it. 6.18 receives fixes
-  # until December 2028.
-  #
-  # https://github.com/FrameworkComputer/SoftwareFirmwareIssueTracker/issues/261
-  # https://github.com/FrameworkComputer/SoftwareFirmwareIssueTracker/issues/41
-  boot.kernelPackages = pkgs.linuxPackages_6_18;
+  # Kernel: the 7.2 series, fixed since 7.2.8 for a TTM use-after-free that crashed this laptop after hibernation.
+  # 6.18.57 carries that defect without its fix. Why, and when to change: docs/explanation/nixOS-kernel-choice.org.
+  boot.kernelPackages = pkgs.linuxPackages_7_2;
 
   # Keyboard layout (EVERYWHERE)
   # The XKB layout itself (services.xserver.xkb, used by GNOME/Wayland)

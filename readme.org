@@ -135,3 +135,5 @@ explanation discusses why.  Host-specific pages carry a =nixOS-= or
   the Linux evaluation gate proves.
 - [[file:docs/explanation/nixOS-iiyama-display.org][Iiyama USB-C display]]: an incident record of the external
   monitor setup on nixOS.
+- [[file:docs/explanation/nixOS-kernel-choice.org][Kernel choice and the hibernation crash]]: why nixOS runs the
+  7.2 series, which kernels carry the TTM defect, and when to change.
