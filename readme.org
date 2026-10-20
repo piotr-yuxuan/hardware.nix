@@ -68,6 +68,9 @@ explanation discusses why.  Host-specific pages carry a =nixOS-= or
   snapshots.
 - [[file:docs/how-to/nixOS-connect-to-protonvpn.org][Connect to ProtonVPN]]: import and use WireGuard connections.
 - [[file:docs/how-to/nixOS-audit-security.org][Audit nixOS security]]: the periodic security checklist.
+- [[file:docs/how-to/nixOS-fix-audio-playback.org][Fix audio playback]]: choose the microphone, take a call on
+  the headphones, and fix music that sounds like a call, Bluetooth off
+  after resume, music left on the laptop speakers and their EQ.
 
 *** macOS
 
@@ -137,3 +140,5 @@ explanation discusses why.  Host-specific pages carry a =nixOS-= or
   monitor setup on nixOS.
 - [[file:docs/explanation/nixOS-kernel-choice.org][Kernel choice and the hibernation crash]]: why nixOS runs the
   7.2 series, which kernels carry the TTM defect, and when to change.
+- [[file:docs/explanation/nixOS-audio.org][Audio on nixOS]]: why the codecs stay at their defaults, why
+  call mode is manual and how sandboxed players are paused.

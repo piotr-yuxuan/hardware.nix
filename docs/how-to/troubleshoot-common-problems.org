@@ -18,6 +18,10 @@ Find the symptom in the index, then follow its section.
 | The Iiyama monitor goes black at 100 or 120 Hz and falls back to 60 Hz      | [[file:../explanation/nixOS-iiyama-display.org::*Working settings][Iiyama USB-C display]]                |
 | YouTube video blanks the Iiyama monitor at 120 Hz with VRR on               | [[file:../explanation/nixOS-iiyama-display.org::*Why these settings matter][Iiyama USB-C display]]                |
 | nixOS freezes or restarts minutes to hours after resuming from hibernation | [[file:../explanation/nixOS-kernel-choice.org::*The crash][Kernel choice]]                       |
+| Music on a Bluetooth output of nixOS sounds like a phone call              | [[file:nixOS-fix-audio-playback.org::*Music sounds like a phone call][Call mode]]                           |
+| Bluetooth on nixOS stays off after resuming from hibernation               | [[file:nixOS-fix-audio-playback.org::*Bluetooth stays off after resume][Bluetooth off after resume]]          |
+| Music moves to nixOS's own speakers when a Bluetooth output goes away      | [[file:nixOS-fix-audio-playback.org::*Music continues on the laptop speakers][Music on the laptop speakers]]        |
+| nixOS's own speakers play without Framework's speaker EQ                   | [[file:nixOS-fix-audio-playback.org::*Apply Framework's speaker EQ in the BIOS][Speaker EQ in the BIOS]]              |
 | An installed font does not show up in applications                          | [[*Fonts not showing up][Fonts not showing up]]                |
 | A token is missing from new shells                                          | [[*Secrets file][Secrets file]]                        |
 | A Mac switch fails while building, before any activation                    | [[file:macOS-recover-from-a-failed-switch.org::*Fix a build failure][Fix a build failure]]                 |

@@ -126,6 +126,8 @@ language and platform support.
   - [[timidity (nixOS only)][timidity (nixOS only)]]
   - [[audacity (nixOS only)][audacity (nixOS only)]]
   - [[vlc (nixOS only)][vlc (nixOS only)]]
+  - [[mpv (nixOS only)][mpv (nixOS only)]]
+  - [[wireplumber-mpris-pause (nixOS only)][wireplumber-mpris-pause (nixOS only)]]
 - [[Profiling & flamegraphs][Profiling & flamegraphs]]
   - [[visualvm][visualvm]]
   - [[async-profiler][async-profiler]]
@@ -1254,13 +1256,60 @@ Audio editor for recording, cutting, filtering, and mixing.
 Media player that handles virtually any audio/video format.
 #+begin_src sh
 vlc file.mp4
-cvlc --play-and-exit file.mp3  # headless playback
+vlc -I dummy --play-and-exit file.mp3  # headless playback
 #+end_src
 
 VA-API hardware decoding is disabled because of recurring VCN v4.0
 ring timeouts on the Radeon 780M (Phoenix) iGPU that cause Mesa to
 abort the process.  The Firejail wrapper in =hosts/nixOS.nix= starts
-VLC with =--avcodec-hw=none=.
+VLC with =--avcodec-hw=none=.  Its profile, =config/firejail/vlc.profile=,
+lets VLC open files in any folder of home and in =/tmp=; the shipped
+profile's blacklists of sensitive application state still apply.
+
+** mpv (nixOS only)
+Media player, run through Firejail, that the Emacs music player
+ready-player starts first when it finds it on =PATH=.  ready-player
+pauses and seeks mpv through its control socket, and moves to the next
+track when mpv exits at the end of one.
+#+begin_src sh
+mpv file.flac                  # play a file
+mpv --no-video file.webm       # audio only
+#+end_src
+
+mpv is built with the =mpris= script of =mpvScripts=, which publishes
+its media controls on the session bus, so the patched WirePlumber
+script pauses it when its Bluetooth output goes away.
+=config/firejail/mpv.profile= replaces the shipped profile's
+=dbus-user none= by a filter that lets mpv own its MPRIS name and
+nothing else.  mpv has no desktop entry, so GNOME keeps VLC for music
+files, and it is not in =home.packages=, whose directory comes first on
+=PATH= and would shadow the Firejail wrapper.  Unlike VLC, it opens
+only files in the folders that the shipped profile allows, such as
+=~/Music=, =~/Downloads= and =~/Videos=.
+#+begin_src sh
+# While mpv plays, its MPRIS name carries an instance suffix:
+busctl --user list | grep org.mpris.MediaPlayer2.mpv
+#+end_src
+
+** wireplumber-mpris-pause (nixOS only)
+WirePlumber's own =linking/mpris-pause.lua=, which pauses a player
+with media controls when its output goes away, patched by
+=packages/wireplumber-mpris-pause.patch= to cover sandboxed players
+too.  WirePlumber matches a player to its audio stream by process ID,
+but under Firejail's D-Bus filter the player's MPRIS name belongs to
+the proxy, so the patched script also compares the stream's binary
+with the player's desktop entry: =.vlc-wrapped= matches =vlc=.
+
+=packages/wireplumber-mpris-pause.nix= copies the script of the
+installed WirePlumber and applies the patch without fuzz, so the build
+fails when upstream changes the lines it touches.  =hosts/nixOS.nix=
+adds it to =services.pipewire.wireplumber.configPackages=, which comes
+before the WirePlumber package on its =XDG_DATA_DIRS=.
+#+begin_src sh
+# After the Bluetooth output goes away, a playing VLC reads Paused:
+busctl --user get-property org.mpris.MediaPlayer2.vlc \
+  /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player PlaybackStatus
+#+end_src
 
 * Profiling & flamegraphs
 
@@ -1513,11 +1562,11 @@ See [[*sops][IaC / Cloud § sops]] above.
 
 ** firejail (nixOS only)
 Filesystem sandboxing for GUI applications. Firefox Developer Edition,
-VS Code, Signal, VLC, Discord, and Transmission, all run through
+VS Code, Signal, VLC, mpv, Discord, and Transmission, all run through
 Firejail. Firefox and Signal can use ordinary files throughout the
 current user's home while the upstream sensitive-path blacklists
-remain active. Transmission, Discord, VLC, and VS Code retain narrower
-application-specific filesystem views.
+remain active. Transmission, Discord, VLC, mpv, and VS Code retain
+narrower application-specific filesystem views.
 #+begin_src sh
 firejail --list                # show running sandboxed processes
 firejail --tree                # sandbox hierarchy

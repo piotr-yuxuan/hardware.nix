@@ -1,0 +1,171 @@
+#+title: Fix audio playback on nixOS
+#+author: piotr-yuxuan
+
+Directions for the sound problems of nixOS that the configuration
+leaves to its owner. [[file:../explanation/nixOS-audio.org][Audio on nixOS]] explains the choices behind
+them. Devices are named by role: the Bluetooth speaker, the LDAC
+headphones, the USB webcam's microphone and the laptop speakers.
+
+The directions assume that you logged out and in, while no music
+played, after the switch that applied this configuration: WirePlumber
+reads its settings and scripts when it starts. They were written from
+the configuration and from a diagnosis on nixOS, without being run,
+since writing this page could not play sound or change the audio
+state. The steps in the BIOS cannot be run from Linux. If a step
+behaves differently, write down what you saw so that this page can be
+corrected.
+
+* Choose the default microphone
+
+1. In GNOME Settings > Sound, under Input, choose the USB webcam's
+   microphone.
+2. Close Settings: while the panel shows, its input level meter keeps
+   the microphone open.
+3. In Chromium and in Signal, choose the default microphone or the
+   webcam's in the application's own settings, so that no call opens
+   the microphone of a Bluetooth device.
+
+Never save =bluetooth.autoswitch-to-headset-profile= with
+=wpctl settings --save=: a saved value overrides the configuration and
+brings automatic call mode back.
+
+Check:
+
+#+begin_src sh
+wpctl inspect @DEFAULT_AUDIO_SOURCE@ | grep node.name
+wpctl settings bluetooth.autoswitch-to-headset-profile
+#+end_src
+
+The first command names the webcam's microphone, =alsa_input.usb-...=;
+the second reports =false=.
+
+* Use the headphones' microphone in a call
+
+Call mode never starts by itself: choose it before the call and leave
+it after.
+
+1. Turn the volume down: call mode keeps a volume of its own, which can
+   be much louder than the music's.
+2. In GNOME Settings > Sound, under Output, choose the headphones, then
+   their Headset configuration (Headset Head Unit, HSP/HFP). The music
+   output goes away, so a player with media controls pauses.
+3. In the call application, choose the headphones' microphone.
+4. After the call, choose the High Fidelity Playback configuration
+   (A2DP Sink) again, and the webcam's microphone if the call
+   application changed the default.
+
+Check, during the call and after it:
+
+#+begin_src sh
+wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -E 'api\.bluez5\.(profile|codec)'
+#+end_src
+
+During the call the profile reads =headset-head-unit=; after it,
+=a2dp-sink=, with the codec =ldac=.
+
+* Music sounds like a phone call
+
+Music that turns mono and muffled, or suddenly louder, on a Bluetooth
+output means that the device is in call mode. Read its profile and the
+setting that would switch it by itself:
+
+#+begin_src sh
+wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -E 'api\.bluez5\.(profile|codec)'
+wpctl settings bluetooth.autoswitch-to-headset-profile
+#+end_src
+
+If the profile reads =headset-head-unit=:
+
+1. Turn the volume down.
+2. In GNOME Settings > Sound, under Output, choose the High Fidelity
+   Playback configuration.
+
+If the device goes back to call mode whenever an application opens a
+microphone, and the setting reports =true=, a saved value overrides
+the configuration. Delete it, then log out and in, while no music
+plays:
+
+#+begin_src sh
+wpctl settings --delete bluetooth.autoswitch-to-headset-profile
+#+end_src
+
+If the setting still reports =true= after that, the running system
+does not have this configuration yet.
+
+Check: the first command above reads =a2dp-sink=, with the codec =aac=
+on the speaker or =ldac= on the headphones.
+
+* Bluetooth stays off after resume
+
+systemd-rfkill saves the state of each radio and restores it when the
+adapter comes back, as it does after hibernation. Bluetooth that was
+switched off before, by its toggle, by airplane mode or by an
+application, therefore comes back off.
+
+1. Look at the Bluetooth toggle in GNOME's quick settings, or run:
+   #+begin_src sh
+   rfkill list bluetooth
+   #+end_src
+   =Soft blocked: yes= means that Bluetooth was switched off.
+2. Turn Bluetooth on with the toggle, or with
+   =rfkill unblock bluetooth=.
+
+Check: =rfkill list bluetooth= shows =Soft blocked: no=, and GNOME
+Settings > Bluetooth lists the devices, which connect again when they
+are switched on.
+
+* Music continues on the laptop speakers
+
+When a Bluetooth output goes away, WirePlumber pauses the players that
+publish media controls (MPRIS), sandboxed or not, such as VLC, Firefox
+and mpv. Other players, such as =ffplay= or a terminal player, move to
+the laptop speakers at their own volume, and a pause that fails is not
+tried again.
+
+1. Pause or stop the player.
+2. Choose the output in GNOME's quick settings, or in GNOME Settings >
+   Sound, under Output.
+3. Play again.
+
+To know whether a player publishes media controls, list them while it
+plays; a player missing from the list is never paused for you:
+
+#+begin_src sh
+busctl --user list | grep org.mpris.MediaPlayer2
+#+end_src
+
+Check: once a Bluetooth output went away, a player that publishes
+media controls reads =Paused=. Use the name that the list shows, here
+VLC's:
+
+#+begin_src sh
+busctl --user get-property org.mpris.MediaPlayer2.vlc \
+  /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player PlaybackStatus
+#+end_src
+
+After step 2, the default output is the one you chose, for a Bluetooth
+output =bluez_output.XX_XX_XX_XX_XX_XX.1=:
+
+#+begin_src sh
+wpctl inspect @DEFAULT_AUDIO_SINK@ | grep node.name
+#+end_src
+
+* Apply Framework's speaker EQ in the BIOS
+
+The setting Linux Audio Compatibility makes the firmware apply
+Framework's own EQ to the laptop speakers when it reads Linux. These
+steps run in the firmware's Setup Utility, so they cannot be run from
+Linux, and they were not run when this page was written.
+
+1. Restart into the Setup Utility:
+   #+begin_src sh
+   systemctl reboot --firmware-setup
+   #+end_src
+   or press F2 at the Framework logo while the laptop starts.
+2. Open Advanced > Linux Audio Compatibility. If it reads Windows, set
+   it to Linux.
+3. Save the change and exit.
+
+Check: at the next visit to the Setup Utility, the setting reads Linux.
+Then play a track you know well on the laptop speakers and compare by
+ear.

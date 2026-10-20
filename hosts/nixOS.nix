@@ -1,4 +1,5 @@
 {
+  config,
   lib,
   pkgs,
   self,
@@ -20,8 +21,21 @@
     ];
     postBuild = ''
       rm -rf $out/bin $out/lib $out/libexec $out/etc 2>/dev/null || true
+      # Why: docs/explanation/nixOS-audio.org, "VLC's launchers".
+      rm -f $out/share/applications/vlc-open*.desktop
     '';
   };
+
+  # TODO 2025-06-01: revisit hardware decoding in June 2025
+  # after kernel and Mesa updates.
+  vlcNoHwDecode = pkgs.writeShellScript "vlc-no-hw-decode" ''
+    exec ${unstable.vlc}/bin/vlc --avcodec-hw=none "$@"
+  '';
+
+  # VLC's desktop file, naming vlcNoHwDecode so that the firejail module
+  # points it at the wrapper. Why: docs/explanation/nixOS-audio.org,
+  # "VLC's launchers".
+  vlcDesktop = pkgs.runCommand "vlc-desktop" {} ''mkdir -p $out/share/applications && substitute ${unstable.vlc}/share/applications/vlc.desktop $out/share/applications/vlc.desktop --replace-fail "${unstable.vlc}/bin/vlc" "${vlcNoHwDecode}"'';
 
   # Signal's Electron shell opens links by spawning xdg-open.  Put a narrow
   # portal client first on Signal's PATH so the host launches the configured
@@ -105,6 +119,16 @@ in {
     alsa.enable = true;
     alsa.support32Bit = true;
     pulse.enable = true;
+    # Bluetooth devices switch to call mode only by hand. Why:
+    # docs/explanation/nixOS-audio.org, "Call mode by hand".
+    wireplumber.extraConfig."51-bluetooth-policy"."wireplumber.settings"."bluetooth.autoswitch-to-headset-profile" = false;
+    # Pauses sandboxed players too when their output goes away. Why:
+    # docs/explanation/nixOS-audio.org, "Pausing sandboxed players".
+    wireplumber.configPackages = [
+      (pkgs.callPackage ../packages/wireplumber-mpris-pause.nix {
+        wireplumber = config.services.pipewire.wireplumber.package;
+      })
+    ];
   };
 
   # Automatic timezone (automatic-timezoned via geoclue)
@@ -533,16 +557,22 @@ in {
         desktop = "${unstable.signal-desktop}/share/applications/signal.desktop";
       };
       vlc = {
-        # TODO 2025-06-01: revisit hardware decoding in June 2025
-        # after kernel and Mesa updates.
-        executable = pkgs.writeShellScript "vlc-no-hw-decode" ''
-          exec ${unstable.vlc}/bin/vlc --avcodec-hw=none "$@"
-        '';
+        executable = "${vlcNoHwDecode}";
         profile = builtins.path {
           path = ../config/firejail/vlc.profile;
           name = "firejail-vlc-profile";
         };
-        desktop = "${unstable.vlc}/share/applications/vlc.desktop";
+        desktop = "${vlcDesktop}/share/applications/vlc.desktop";
+      };
+      # The player of Emacs ready-player; not in home.packages, which
+      # would shadow this wrapper. Why: docs/explanation/nixOS-audio.org,
+      # "mpv for ready-player".
+      mpv = {
+        executable = "${unstable.mpv.override {scripts = [unstable.mpvScripts.mpris];}}/bin/mpv";
+        profile = builtins.path {
+          path = ../config/firejail/mpv.profile;
+          name = "firejail-mpv-profile";
+        };
       };
       Discord = {
         executable = "${unstable.discord}/bin/discord";

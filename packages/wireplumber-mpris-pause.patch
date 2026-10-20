@@ -1,0 +1,16 @@
+--- a/src/scripts/linking/mpris-pause.lua
++++ b/src/scripts/linking/mpris-pause.lua
+@@ -248,6 +248,13 @@
+               end
+             end
+           end
++          -- Sandboxed apps own their MPRIS name through a D-Bus proxy, so
++          -- no process ID matches: compare the desktop entry instead.
++          if not match and player ["desktop-entry"] ~= nil then
++            local bin = (client.properties ["application.process.binary"] or "")
++                :gsub ("^%.", ""):gsub ("%-wrapped$", "")
++            match = bin ~= "" and bin == player ["desktop-entry"]
++          end
+         elseif client.properties ["pipewire.access.portal.app_id"] == player ["flatpak-app-id"] then
+           local instance_id = client.properties ["pipewire.access.portal.instance_id"]
+           if instance_id == nil then

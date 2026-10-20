@@ -1,0 +1,253 @@
+#+title: Audio on nixOS
+#+author: piotr-yuxuan
+
+nixOS plays sound through PipeWire, and WirePlumber decides which
+device each stream goes to. Its three outputs are a Bluetooth speaker,
+a pair of LDAC headphones and the laptop's own speakers. This page
+explains what the configuration changes in that chain, what it leaves
+alone, and why. The owner's actions are in
+[[file:../how-to/nixOS-fix-audio-playback.org][Fix audio playback on nixOS]]; the settings are in the
+=services.pipewire= block and the Firejail wrappers of
+[[file:../../hosts/nixOS.nix][the host configuration]].
+
+Devices are named here by their role, not by their make: the list of
+paired devices lives in a file that this repository does not publish.
+Node names are written with placeholders, as
+=bluez_output.XX_XX_XX_XX_XX_XX.1= for a Bluetooth output and
+=alsa_input.usb-...= for a USB microphone.
+
+* The outputs and what they offer
+
+- The Bluetooth speaker offers two codecs, SBC and AAC.
+- The LDAC headphones offer SBC, AAC and LDAC.
+- The laptop speakers are driven by converters that accept only
+  48 kHz.
+
+The microphones are the laptop's, the USB webcam's, and the one of
+each Bluetooth device, which only works in call mode.
+
+PipeWire runs its graph at 48 kHz, its default and the only rate the
+laptop's converters accept. Music recorded at 44.1 kHz is resampled to
+it.
+
+* Codecs left at their defaults
+
+The configuration sets no codec. A diagnosis on the machine, in October
+2026, found that the defaults already reach the best that each device
+offers:
+
+- On the speaker, PipeWire encodes AAC, the better of its two codecs,
+  with fdk-aac in its top variable bitrate mode, 5. The documentation
+  of the =bluez5.a2dp.aac.bitratemode= property still gives constant
+  bitrate, 0, as its default, yet the speaker was seen in mode 5 with
+  the property unset. Setting it could only keep that mode or lower
+  it.
+- On the headphones, LDAC runs at the =auto= quality, PipeWire's
+  default. Its adaptive bitrate moves between 990, 660 and 330 kbit/s
+  as the radio link allows, so a weak link lowers the quality for a
+  moment instead of cutting the sound. The headphones also offer AAC,
+  which PipeWire uses when LDAC is not available, for example when the
+  headphones' own app prefers a stable connection to sound quality.
+
+=wpctl inspect= on a Bluetooth output shows its codec in
+=api.bluez5.codec=, and its configuration in =api.bluez5.profile=.
+
+* Changes not made to the sound path
+
+Each of these was considered and left out:
+
+- LDAC =hq= :: holds LDAC at 990 kbit/s whatever the link. When the
+  link weakens, through a body, a wall or a busy 2.4 GHz band, the
+  sound drops out instead of stepping down for a moment. The gain over
+  the adaptive rates is small next to the cost of a dropout.
+- 96 kHz :: most music is recorded at 44.1 or 48 kHz, and the laptop's
+  converters accept only 48 kHz. LDAC at 96 kHz spends part of the same
+  bitrate on frequencies above hearing, and so degrades sooner when the
+  link weakens.
+- A higher resampler quality :: PipeWire's default,
+  =resample.quality = 4=, applies to every resampled stream. Higher
+  values cost processor time on each of them, for differences well
+  below what these outputs let anyone hear.
+- Other clock rates :: letting the graph switch to 44.1 kHz for music,
+  through =default.clock.allowed-rates=, would only move the
+  resampling elsewhere: the laptop's converters accept only 48 kHz,
+  and a Bluetooth link keeps the rate its codec was configured with. A
+  switch of the graph's rate can also click or interrupt the other
+  streams.
+- LE Audio :: on this machine the speaker offers only SBC and AAC, and
+  LE Audio is the youngest part of the Linux Bluetooth stack. It would
+  trade a link that works for a less proven one, and its LC3 codec aims
+  at efficiency rather than at fidelity above AAC in its top mode or
+  LDAC.
+- A global EasyEffects preset :: one equaliser applied to every
+  output. The three outputs need different corrections, or none: the
+  speaker and the headphones carry their own tuning, which their own
+  apps set. EasyEffects would also put one more process, and a virtual
+  output, in the path of every stream.
+
+* Call mode by hand
+
+A Bluetooth device has two kinds of configuration. High Fidelity
+Playback, the A2DP profile, carries music in stereo and has no
+microphone. Headset, the HFP profile, is for calls: mono, at 16 kHz at
+best on these devices, with a microphone. WirePlumber can switch a
+device to Headset by itself when an application records from it: its
+setting =bluetooth.autoswitch-to-headset-profile=, on by default, gives
+each Bluetooth device a virtual microphone for that purpose.
+
+On nixOS that default degraded the music. The speaker's virtual
+microphone had become the default microphone, so any application that
+opened the default microphone, a browser tab or a call, moved the
+speaker to Headset. The music turned mono and dull, and the switches
+came with loud bursts: Headset keeps a volume of its own, here about
+20 dB above the music's.
+
+The host configuration turns the setting off, through
+=services.pipewire.wireplumber.extraConfig=, so nothing switches to
+Headset unless the owner chooses it. The cost is that a call on the
+headphones' microphone takes two choices in GNOME Settings, before and
+after the call, which
+[[file:../how-to/nixOS-fix-audio-playback.org::*Use the headphones' microphone in a call][the how-to]] gives.
+
+Two related choices stay outside the repository:
+
+- The default microphone is the USB webcam's, chosen in GNOME Settings,
+  which WirePlumber remembers. A rule in the repository would have to
+  name the webcam's node, and that name carries its serial number.
+- =wpctl settings --save= stores a setting in WirePlumber's own state,
+  where it overrides the configuration. Saving this setting would undo
+  the choice without a trace in the repository, so the how-to says
+  never to save it.
+
+* VLC's launchers
+
+VLC runs through Firejail and starts with =--avcodec-hw=none=, because
+hardware decoding on this GPU crashes it, as the
+[[file:../reference/package-guide.org::*vlc (nixOS only)][package guide]] records. Until this configuration, both applied only
+when VLC was started by its command, not from GNOME.
+
+The NixOS Firejail module points an application's desktop file at its
+wrapper by replacing, in the file, the path of the executable it was
+given. That executable is, for VLC, a small script that adds
+=--avcodec-hw=none=, but VLC's own =vlc.desktop= names VLC itself, so
+nothing matched, and the module only warns when nothing matches. GNOME
+therefore started VLC outside Firejail and with GPU decoding, the
+combination that crashed. Four optical disc launchers, hidden from the
+application grid, reached VLC the same way through the package that
+installs the icons of sandboxed applications.
+
+The configuration now builds a copy of =vlc.desktop= that names the
+script, so that the module's replacement points it at the wrapper. The
+copy keeps the file's name, which the MIME associations of
+=home/nixOS.nix= use. Its build fails if VLC's file stops naming
+VLC's path, instead of shipping a launcher that bypasses the sandbox
+again. The optical disc launchers are removed: the machine has no
+optical drive. A test in =tests/nixOS/firejail-profiles.bats= builds
+the system's applications and fails when a launcher of a sandboxed
+application names a program outside its Firejail wrapper.
+
+Since every launcher now goes through the sandbox, its profile decides
+which files VLC can open. Music and videos live in many folders, so the
+profile opens the whole of home and the host's =/tmp= to VLC, as the
+Firefox profile does for home. What the sandbox still withholds is
+what VLC never needs: the shipped profile's blacklists keep keys,
+browser profiles and other sensitive application state out of reach.
+
+* Pausing sandboxed players
+
+When an output goes away, WirePlumber's script =linking/mpris-pause.lua=
+pauses the players that were playing on it, through their media
+controls (MPRIS), so that their music does not move to the next output.
+It finds the player of a stream by process: the owner of the player's
+MPRIS name must be the stream's process or one of its parents. Under
+Firejail's D-Bus filter, a sandboxed player's name belongs to
+=xdg-dbus-proxy=, which runs beside the player, not above it. Firefox
+and VLC were therefore never paused: when the speaker switched off,
+their music moved to the laptop speakers.
+
+The configuration installs a copy of WirePlumber's script with one
+fallback: when no process matches, it compares the stream's program
+name, without a leading dot or a trailing =-wrapped=, with the player's
+desktop entry. Firefox reports the same name on both sides, and VLC's
+=.vlc-wrapped= becomes =vlc=. An empty program name never matches, so
+a stream that reports none cannot pause a player whose desktop entry
+is empty. mpv, which the Emacs music player ready-player starts, is
+built with its MPRIS script so that it is paused the same way: see
+[[*mpv for ready-player][mpv for ready-player]].
+
+=packages/wireplumber-mpris-pause.nix= takes the script from
+=services.pipewire.wireplumber.package=, the WirePlumber that runs,
+and applies =packages/wireplumber-mpris-pause.patch= without fuzz. The
+NixOS module puts =services.pipewire.wireplumber.configPackages= on
+WirePlumber's =XDG_DATA_DIRS= before the package itself, so the copy
+replaces the original. The copy follows WirePlumber's updates, and
+when upstream changes the lines that the patch touches, the build of
+the system fails: the fallback is then ported or dropped, never
+shipped stale. The test suites do not build that part of the system,
+so the failure shows at the next =nixos-rebuild=, which keeps the
+running generation.
+
+The fallback has limits:
+
+- It matches by application, not by process: when a stream of one
+  application loses its output, every player of that application is
+  paused, including one that plays elsewhere.
+- Players without media controls, such as =ffplay= or a terminal
+  player, are not paused. They move to the laptop speakers, at their
+  own volume.
+- A pause that fails is not tried again.
+
+Alternatives rejected:
+
+- Patching the WirePlumber package :: it would rebuild WirePlumber from
+  source, with its documentation toolchain, after most updates of the
+  stable channel, to change one Lua file.
+- =node.dont-reconnect= on the players' streams :: the player stalls
+  rather than pauses, does not relink when the device returns, and no
+  longer follows a change of default output.
+- Dropping Firejail's D-Bus filter :: the session bus reaches the
+  systemd user manager, a known way out of the sandbox.
+
+* mpv for ready-player
+
+The Emacs music player ready-player starts the first of =mpv=, =cvlc=,
+=vlc=, =ffplay= and =mplayer= that it finds on =PATH=. With only VLC
+installed, each track opened a VLC window that repeated it, as VLC's
+own settings loop the playlist, so ready-player never moved to the
+next track and could neither pause nor seek. mpv exits at the end of a
+file, which starts the next one, and ready-player pauses and seeks it
+through its control socket, under =/tmp/ready-player/=.
+
+mpv runs through Firejail with the profile that Firejail ships, like
+VLC. That profile cuts mpv off the session bus (=dbus-user none=), so
+=config/firejail/mpv.profile= replaces it with a filter that lets mpv
+own its MPRIS names and nothing else. Firejail cannot relax
+=dbus-user none= once it has read it, so the =ignore= comes before the
+shipped profile. mpv is built with its MPRIS script, which publishes
+its media controls under =org.mpris.MediaPlayer2.mpv.instance-...=, a
+name with a random suffix, so that WirePlumber can pause it as it
+pauses VLC. The shipped profile has no private =/tmp=, so ready-player's
+socket stays reachable, and it lets mpv open only the usual media
+folders, such as =~/Music=, which is where ready-player looks.
+
+mpv has no desktop entry, so GNOME keeps VLC for music files. It is
+not in =home.packages= either: that directory comes before the
+system's on =PATH=, so an mpv there would shadow the Firejail wrapper,
+and ready-player would start it outside the sandbox.
+
+* The laptop speakers
+
+The laptop's converters accept only 48 kHz, PipeWire's default rate,
+so they need no setting.
+
+Framework's firmware has a setting, Linux Audio Compatibility, under
+Advanced in its Setup Utility. Set to Linux, it applies Framework's own
+EQ to the laptop speakers; set to Windows, Linux plays through them
+without it. Its value on nixOS had not been read when this page was
+written.
+[[file:../how-to/nixOS-fix-audio-playback.org::*Apply Framework's speaker EQ in the BIOS][Fix audio playback on nixOS]] gives the steps to read and change it.
+
+The configuration adds no correction of its own, such as a high-pass
+filter, a limiter or a measured EQ. Any of them would stack on
+Framework's EQ or stand in for it, so it waits until the setting is
+known, and would then be tuned by ear.
