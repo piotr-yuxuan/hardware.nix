@@ -55,7 +55,7 @@ module is missing. Spell-checking does not work.
 
 *Cause.* jinx compiles =jinx-mod.dylib= on first use with =$CC= if it
 is set, otherwise with the first of =gcc=, =clang= and =cc= it finds.
-[[file:../../home/base.nix][home/base.nix]] enables =programs.gcc= on both hosts, so =gcc= is
+[[file:../../home/base.nix][home/base.nix]] installs =gcc= on both hosts, so =gcc= is
 Nix GCC, built against the nixpkgs Apple SDK.
 Emacs.app from jimeh/emacs-builds sets =LIBRARY_PATH= to its own GCC
 framework and the Xcode Command Line Tools SDK, for native compilation.
@@ -133,8 +133,7 @@ timer (lines 626 to 639), and that package copies only =PATH= and
 =MANPATH= by default. So Emacs.app lacks =PKG_CONFIG_PATH=,
 =C_INCLUDE_PATH=, =DICPATH=, =RIPGREP_CONFIG_PATH= and =EMACSLOADPATH=
 from [[file:../../home/base.nix][home/base.nix]], and =PUPPETEER_EXECUTABLE_PATH= and
-=PUPPETEER_SKIP_DOWNLOAD= from [[file:../../home/macOS.nix][home/macOS.nix]] (whose comment says Emacs
-picks them up through =exec-path-from-shell=; it does not). During the
+=PUPPETEER_SKIP_DOWNLOAD= from [[file:../../home/macOS.nix][home/macOS.nix]]. During the
 first second after start, even =PATH= is the macOS default.
 
 *Workaround.* Either start Emacs.app from a terminal, so it inherits the
@@ -324,13 +323,13 @@ mirror the Linux code with =pbcopy= and =pbpaste= in =local.el=:
 
 * MCP clients reach the wrong Emacs
 
-*Symptom.* An MCP client set up through =~/.config/mcp/mcp.json= cannot
-connect to Emacs, or acts on another Emacs session than the one you are
-using. =~/.emacs.d/var/mcp-server/= holds numbered sockets such as
+*Symptom.* An MCP client bridged to the Emacs socket, such as Codex's
+=emacs-tools=, cannot connect to Emacs, or acts on another Emacs session
+than the one you are using. =~/.emacs.d/var/mcp-server/= holds numbered sockets such as
 =emacs-mcp-server-1.sock= next to =emacs-mcp-server.sock=. This affects
 nixOS too, where 52 numbered sockets have accumulated.
 
-*Cause.* The client bridge in [[file:../../config/mcp.json][config/mcp.json]] always connects to
+*Cause.* The bridge always connects to
 =$HOME/.emacs.d/var/mcp-server/emacs-mcp-server.sock=. Every Emacs starts
 the MCP server from =emacs-startup-hook= (=init.el= lines 3174 to 3181).
 When that socket belongs to a running Emacs, the next one, for example

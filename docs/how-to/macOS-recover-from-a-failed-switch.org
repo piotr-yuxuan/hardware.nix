@@ -265,7 +265,7 @@ sudo darwin-rebuild --switch-generation 12  # a given generation
 - The first generation has no predecessor. If the very first switch
   failed, there is nothing to roll back to: fix the cause and run the
   switch again, or [[*Remove nix-darwin and Nix][remove nix-darwin]].
-- The weekly =nh-clean= agent is configured to keep the last five
+- The weekly =nh-clean= daemon is configured to keep the last five
   generations and anything newer than seven days.
 - Undo the change in the local flake too, or the next switch applies it
   again: remove the edit, or restore the previous =flake.lock= after an
@@ -317,16 +317,16 @@ It asks =Proceed? [y/n]=, then:
 - removes the =/Applications/Nix Apps= link;
 - removes nix-darwin's links in =/etc= and renames every
   =*.before-nix-darwin= file back;
-- stops and removes the launchd daemons nix-darwin manages, but not its
-  =org.nixos.nh-clean= user agent;
+- stops and removes the launchd daemons nix-darwin manages,
+  =org.nixos.nh-clean= included;
 - restores the Nix installer's =nix-daemon= service when there is one;
 - gives =/bin/zsh= back as login shell to accounts whose shell was under
   =/run=;
 - removes =/run/current-system=. =/run= itself disappears at the next
   reboot.
 
-It leaves the =/nix/var/nix/profiles/system*= profiles, the =nh-clean=
-agent, Home Manager's links and agents in your home directory, the macOS
+It leaves the =/nix/var/nix/profiles/system*= profiles, Home Manager's
+links and agents in your home directory, the macOS
 defaults the configuration wrote, the firewall settings, and Homebrew
 with its apps.
 
@@ -344,8 +344,8 @@ find ~ -maxdepth 4 \( -path "$HOME/Library" -o -path "$HOME/Desktop" \
 Rename each =<file>.hm-backup= back to =<file>=. Then stop and remove
 the user agents left in =~/Library/LaunchAgents=: the ones that
 [[file:../../home/macOS.nix][home/macOS.nix]] and [[file:../../home/base.nix][home/base.nix]] declare, which Home Manager copies
-there (so the =find= above does not list them), and nix-darwin's
-=nh-clean=:
+there (so the =find= above does not list them), and =org.nixos.nh-clean=,
+the user agent of generations before it became a daemon:
 
 #+begin_src zsh
 for label in com.user.clear-hushlogin com.user.docker-desktop \

@@ -3,8 +3,8 @@
 #
 # The script broadcasts a failure message to PTYs owned by example,
 # sends a desktop notification via notify-send, and displays an Emacs
-# warning buffer via emacsclient.  Tests use fake binaries for all
-# external commands and verify the invocations.
+# warning buffer via emacsclient.  Tests run it with a PATH that holds
+# only fake binaries, and verify the invocations.
 
 SCRIPT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/scripts/btrbk-failure-alert.sh"
 
@@ -40,10 +40,6 @@ setup() {
 		"$@"
 	'
 
-	export stat_cmd="$tmpdir/bin/stat"
-	export id_cmd="$tmpdir/bin/id"
-	export notify_send="$tmpdir/bin/notify-send"
-	export emacsclient="$tmpdir/bin/emacsclient"
 	export HOME="$tmpdir"
 
 	# Create a fake /dev/pts directory with a pseudo PTY.
@@ -76,34 +72,18 @@ teardown() {
 # ---------------------------------------------------------------------------
 
 @test "script exits 0 (alert service should not fail)" {
-	run bash -c "
-		export stat_cmd=\"$stat_cmd\" id_cmd=\"$id_cmd\" \
-			notify_send=\"$notify_send\" emacsclient=\"$emacsclient\" \
-			HOME=\"$tmpdir\"
-		source \"$patched\"
-	"
-	[[ $status -eq 0 ]]
+	run_script "$patched" PATH="$tmpdir/bin"
 }
 
 @test "emacsclient is called with -e flag and display-warning sexp" {
-	bash -c "
-		export stat_cmd=\"$stat_cmd\" id_cmd=\"$id_cmd\" \
-			notify_send=\"$notify_send\" emacsclient=\"$emacsclient\" \
-			HOME=\"$tmpdir\"
-		source \"$patched\"
-	"
+	run_script "$patched" PATH="$tmpdir/bin"
 	calls=$(fake_calls)
 	[[ $calls == *"emacsclient -e"* ]]
 	[[ $calls == *"display-warning"* ]]
 }
 
 @test "notify-send is called with -u critical and a message containing btrbk" {
-	bash -c "
-		export stat_cmd=\"$stat_cmd\" id_cmd=\"$id_cmd\" \
-			notify_send=\"$notify_send\" emacsclient=\"$emacsclient\" \
-			HOME=\"$tmpdir\"
-		source \"$patched\"
-	"
+	run_script "$patched" PATH="$tmpdir/bin"
 	calls=$(fake_calls)
 	[[ $calls == *"notify-send -u critical"* ]]
 	[[ $calls == *"btrbk"* ]]

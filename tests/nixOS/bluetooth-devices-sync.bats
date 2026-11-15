@@ -7,7 +7,7 @@
 #
 # The script validates that bt_dir matches /var/lib/bluetooth/XX:XX:…
 # which cannot be satisfied in an unprivileged test.  Tests that exercise
-# the main logic source a patched copy with the guard removed; the guard
+# the main logic run a patched copy with the guard removed; the guard
 # itself is tested separately against the original script.
 
 SCRIPT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/hosts/nixOS/bluetooth-devices-sync.sh"
@@ -21,10 +21,10 @@ setup() {
 	export bt_dir="$tmpdir/var/lib/bluetooth/$adapter"
 	mkdir -p "$bt_dir"
 
-	export sed="$(which sed)"
-	export basename_cmd="$(which basename)"
-	export whitelist="AA:BB:CC:DD:EE:01 AA:BB:CC:DD:EE:02"
-	export device_entries="$(printf 'AA:BB:CC:DD:EE:01\tSpeaker\t1\t148\t4\nAA:BB:CC:DD:EE:02\tKeyboard\t1\t76\t615')"
+	entries=(
+		"$(printf 'AA:BB:CC:DD:EE:01\tSpeaker\t1\t148\t4')"
+		"$(printf 'AA:BB:CC:DD:EE:02\tKeyboard\t1\t76\t615')"
+	)
 
 	# Patched script: remove the case guard so we can use a tmpdir path
 	patched="$tmpdir/sync-patched.sh"
@@ -37,14 +37,7 @@ teardown() {
 
 run_sync() {
 	local script="${1:-$patched}"
-	run bash -c "
-		export bt_dir=\"$bt_dir\"
-		export sed=\"$sed\"
-		export basename_cmd=\"$basename_cmd\"
-		export whitelist=\"$whitelist\"
-		export device_entries=\"$device_entries\"
-		source \"$script\"
-	"
+	run "$BASH" "$script" "$bt_dir" "${entries[@]}"
 }
 
 # ---------------------------------------------------------------------------
@@ -107,6 +100,19 @@ EOF
 	run_sync "$patched"
 	[[ $status -eq 0 ]]
 	[[ ! -d $unknown ]]
+}
+
+@test "a failed removal makes the status non-zero, after the other devices" {
+	unknown="$bt_dir/FF:FF:FF:FF:FF:FF"
+	mkdir -p "$unknown"
+	echo "[General]" >"$unknown/info"
+	chmod 500 "$unknown"
+
+	run_sync "$patched"
+	chmod 700 "$unknown"
+	[[ $status -ne 0 ]]
+	[[ -f $bt_dir/AA:BB:CC:DD:EE:01/info ]]
+	[[ -f $bt_dir/AA:BB:CC:DD:EE:02/info ]]
 }
 
 # ---------------------------------------------------------------------------

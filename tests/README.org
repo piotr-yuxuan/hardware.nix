@@ -17,15 +17,11 @@ system to validate (e.g. systemd service activation, kernel module loading).
 Do not introduce additional frameworks without a concrete justification
 grounded in a gap the existing frameworks cannot fill.
 
-The =tests/pi-mcp-deployment.bats= suite builds the nixOS Home Manager
-activation package and checks that Pi receives the MCP adapter, its runtime
-dependencies, and exactly the selected lazy server configuration.
-
 The =tests/macOS/darwin-generated-config.bats= suite evaluates
 =darwinConfigurations.macOS= with =nix eval=, which also works on Linux.
 It checks the generated Git identities by running Git against temporary
-repositories, the activation snippet substitutions and the staleness
-agent environment.  Bats' own =run= shadows a variable named =tmpdir=, so
+repositories, the delta pager, the activation snippets, the staleness
+agent environment, the =nh clean= daemon and the trusted Nix users.  Bats' own =run= shadows a variable named =tmpdir=, so
 helpers called through =run= must not read =$tmpdir=.
 
 The =tests/macOS/brew-bundle-activation.bats= suite answers the drift
@@ -128,6 +124,13 @@ No test may invoke a real system binary against the host:
 Fake binaries created by =make_fake_bin= append each invocation as
 ="NAME ARGS..."= to =$HOME/.fake-calls=.  Read the log with =fake_calls=.
 
+A script that takes its tools from =PATH= runs fail-closed with
+=run_script SCRIPT PATH="$tmpdir/bin"=: a command without a fake then
+exits 127 instead of running the real one.  Bats's =run= declares its
+own local =tmpdir=, which shadows the helper's in every function it
+calls; a helper meant to run under =run= reads =$ISOLATION_TMPDIR=
+instead, as =run_script= and =run_script_dry= do.
+
 Polkit rules in =config/polkit/= are plain JavaScript files; their syntax
 can be checked with =js --check= or =node --check= if those tools are
 available, but the primary validation is =nix flake check= which exercises
@@ -137,10 +140,9 @@ Ghostty configuration is managed via =xdg.configFile= on both platforms;
 tests should assert the XDG path, not the =.config/= literal path.
 
 On macOS, Ghostty is installed via the Homebrew cask (=config/Brewfile=) rather
-than as a Nix package, because =pkgs.ghostty= is marked broken on Darwin.  The
-Home Manager module is therefore called with =package = null= to avoid adding the
-broken derivation to =home.packages= while still enabling shell integration and
-=xdg.configFile= management.  Tests for the Ghostty config live in
+than as a Nix package, because ghostty is Linux only in nixpkgs.  =home/base.nix=
+therefore sets =package = null= on Darwin, so that Home Manager adds nothing to
+=home.packages= while still enabling shell integration.  Tests for the Ghostty config live in
 =tests/macOS/ghostty-config.bats= and verify the assembled text content rather
 than running Home Manager activation.
 

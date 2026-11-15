@@ -1,0 +1,179 @@
+#+title: Enable Secure Boot on nixOS
+#+author: piotr-yuxuan
+
+Enrol this machine's own Secure Boot keys in the firmware, then turn
+enforcement on. Why the configuration works this way is in
+[[file:../explanation/nixOS-security-posture.org::*Secure Boot (lanzaboote)][nixOS security posture]]; the other firmware settings are in
+[[file:../reference/nixOS-firmware-settings.org][nixOS firmware settings]].
+
+No step here touches the disk: LUKS and its passphrase stay as they
+are, and nothing is sealed in the TPM. The firmware setup (*F2*) stays
+reachable throughout, and from it Secure Boot can always be turned off
+again. The one lockout is a forgotten supervisor password, which is
+why it comes last.
+
+The firmware steps were written from the state read on the machine and
+from the menu names of BIOS 4.05; they were not run while this page was
+written. Check each result as you go.
+
+* Table of contents :TOC_2_org:
+- [[Know where you start][Know where you start]]
+- [[Before you start][Before you start]]
+- [[Enrol the keys][Enrol the keys]]
+- [[Check the result][Check the result]]
+- [[Apply the revocation list][Apply the revocation list]]
+- [[If a step goes wrong][If a step goes wrong]]
+- [[Undo][Undo]]
+- [[After a BIOS update][After a BIOS update]]
+
+* Know where you start
+
+#+begin_src zsh
+sbctl status
+#+end_src
+
+| =sbctl status= shows                                      | Meaning                                                     |
+|---------------------------------------------------------+-------------------------------------------------------------|
+| Setup Mode disabled, Secure Boot disabled, =builtin-PK=   | The firmware holds its factory keys: follow this whole page |
+| Setup Mode enabled                                      | The keys are erased: go to [[Enrol the keys][Enrol the keys]], step 4           |
+| Setup Mode disabled, Secure Boot enabled, no =builtin-PK= | Done: only [[Check the result][Check the result]] remains                         |
+
+Lanzaboote signs the boot files with the keys in =/etc/secureboot=.
+While the firmware holds its factory keys, it does not trust them:
+enforcing Secure Boot then makes it refuse to start NixOS.
+
+* Before you start
+
+1. Check that Lanzaboote staged the keys on the ESP and that
+   systemd-boot will enrol them:
+
+   #+begin_src zsh
+   sudo ls -l /boot/loader/keys/auto
+   sudo grep secure-boot-enroll /boot/loader/loader.conf
+   #+end_src
+
+   The first lists =PK.auth=, =KEK.auth= and =db.auth=; the second
+   prints =secure-boot-enroll force=. If any of the three is missing,
+   remove the others, then let the service write all three again; it
+   runs only when none of them exists:
+
+   #+begin_src zsh
+   sudo rm /boot/loader/keys/auto/*.auth
+   sudo systemctl start prepare-sb-auto-enroll
+   #+end_src
+
+2. Check that every boot file is signed:
+
+   #+begin_src zsh
+   sudo sbctl verify
+   #+end_src
+
+3. Back up the private keys, encrypted, and keep the copy off this
+   laptop. Without them a reinstall means erasing and enrolling again;
+   nothing is lost, but the copy saves that step.
+
+   #+begin_src zsh
+   sudo -v
+   sudo tar -C /etc -cf - secureboot | age -p -o secureboot-keys.tar.age
+   #+end_src
+
+   To restore: =age -d secureboot-keys.tar.age | sudo tar -C /etc -xf -=.
+
+4. Keep a rescue USB stick at hand. An Ubuntu live image starts with
+   Secure Boot enforced, since it is signed with Microsoft's key; the
+   NixOS installer is not, and needs enforcement off first.
+
+5. Make sure you know the LUKS passphrase, and plug in the charger.
+
+* Enrol the keys
+
+1. Shut down completely with =systemctl poweroff=. Do not hibernate:
+   the power key hibernates this machine and the lid suspends then
+   hibernates it, and a firmware change made under a hibernated system
+   is then resumed into.
+2. Press the power button and press *F2* until the firmware setup
+   opens.
+3. Open Security, then Secure Boot, choose *Erase all Secure Boot
+   Settings*, confirm, and press *F10* to save and exit. The firmware
+   is now in Setup Mode.
+4. Let the machine boot. systemd-boot shows a countdown, enrols the
+   three keys and restarts.
+5. Press *F2* again. In Security, Secure Boot, set *Enforce Secure
+   Boot* to Enabled if it is not, and press *F10*.
+6. NixOS boots as before.
+
+If the firmware refuses to boot at step 6, go to [[Undo][Undo]].
+
+* Check the result
+
+#+begin_src zsh
+sbctl status
+bootctl status 2>/dev/null | grep 'Secure Boot'
+sudo sbctl verify
+#+end_src
+
+=sbctl status= shows Setup Mode disabled, Secure Boot enabled and the
+vendor keys =microsoft= only. =bootctl= prints =Secure Boot: enabled
+(user)=.
+
+Once the machine has booted at least twice this way, set the
+supervisor password, as [[file:../reference/nixOS-firmware-settings.org::*Security][nixOS firmware settings]] says: without it,
+anyone at the keyboard can turn Secure Boot off again. Save it in the
+password manager before you type it into the setup.
+
+* Apply the revocation list
+
+The dbx revokes known vulnerable boot loaders signed by Microsoft.
+This machine's boot files are signed with its own key, so the update
+cannot block them; fwupd also checks the ESP before applying it and
+refuses an update that would revoke a boot loader there.
+
+Erasing the keys should also free space in the firmware's variable
+store, where the dbx update did not fit before.
+
+#+begin_src zsh
+fwupdmgr refresh
+fwupdmgr get-updates
+fwupdmgr update
+#+end_src
+
+=fwupdmgr get-updates= offers the UEFI dbx update, and once
+=fwupdmgr update= has applied it, lists UEFI dbx among the devices with
+the latest firmware. If the update reports "Not enough efivarfs space", see
+[[file:troubleshoot-common-problems.org::*Firmware variable store full][Firmware variable store full]].
+
+* If a step goes wrong
+
+| What you see                                             | State                                       | Recovery                                              |
+|----------------------------------------------------------+---------------------------------------------+-------------------------------------------------------|
+| NixOS boots, =sbctl status= shows Setup Mode enabled       | Keys erased, none enrolled; nothing checked | Enrol by hand: =sudo sbctl enroll-keys --microsoft=     |
+| No enrolment countdown at boot                           | The =.auth= files are missing                 | Recreate them, as [[Before you start][Before you start]], step 1, says      |
+| The firmware refuses to start NixOS                      | Enforced, and the keys do not match         | [[Undo][Undo]]                                                  |
+| No picture after enrolment                               | Not expected here                           | [[Undo][Undo]]: the setup draws without these keys              |
+| The machine resumes a hibernated session after the setup | You entered the setup from hibernation      | Let it resume, then shut down with =systemctl poweroff= |
+
+=sbctl= reads the same keys as Lanzaboote: its =Owner GUID= is the one
+in =/etc/secureboot/GUID=.
+
+The classic way to lose the picture is to enrol keys without
+Microsoft's when a graphics card's option ROM needs them. Lanzaboote
+includes Microsoft's keys here, and the integrated graphics driver is
+part of the firmware itself.
+
+* Undo
+
+In the firmware setup, Security, Secure Boot:
+
+- set *Enforce Secure Boot* to Disabled to boot without checks, with
+  your keys still enrolled; or
+- choose *Restore Secure Boot to Factory Settings* to put the factory
+  keys back, as before this page.
+
+Then boot NixOS and read =sbctl status= to see where you are.
+
+* After a BIOS update
+
+A firmware update may restore the factory keys. After each one, read
+=sbctl status=. If =builtin-PK= is back and the machine still boots,
+Secure Boot is off: repeat [[Enrol the keys][Enrol the keys]]. The =.auth= files stay on
+the ESP, so nothing needs regenerating.

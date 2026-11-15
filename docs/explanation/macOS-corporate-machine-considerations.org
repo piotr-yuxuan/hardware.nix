@@ -90,8 +90,8 @@ reasons.
 They do no harm by themselves, but they install software IT has not
 approved and may duplicate tools the team mandates. The shell setup
 also still documents a GitLab token in =~/.zshenv.secrets=, which
-[[file:../../config/before.zshenv][config/before.zshenv]] sources. The AWS tools sit in =home/base.nix=
-next to =programs.awscli= and =programs.granted=, so dropping them from
+[[file:../../config/before.zshenv][config/before.zshenv]] sources. The AWS tools, =awscli2= among them, sit in
+=home/base.nix= next to =programs.granted=, so dropping them from
 the Mac alone means moving them to =home/nixOS.nix=, following
 [[file:macOS-nix-and-homebrew.org][the per-host split]], not deleting them.
 
@@ -158,20 +158,13 @@ disable it until Linux builds or NixOS tests are needed at work.
 
 The Mac installs the =claude=, =claude-code=, =codex= and =codex-app=
 casks (=codex-app= is deprecated and kept until its replacement is
-decided), and Nix provides =pi-coding-agent= with =pi-mcp-adapter= and
-=terraform-mcp-server=. Home Manager also deploys [[file:../../config/mcp.json][config/mcp.json]] to
-=~/.config/mcp/mcp.json=, where Pi reads its MCP servers through the
-adapter. Two of its servers are local (=emacs-tools= over a Unix
-socket, =clojure-mcp=); the third, =aws-knowledge=, is a remote server
-at =https://knowledge-mcp.global.api.aws=.
+decided), and Nix provides =terraform-mcp-server=.
 
 These tools send prompts, and whatever code or files they read, to
 external services. Many employers restrict which AI tools may see
 company code, and a remote MCP server receives every query sent to it.
-The casks need you to sign in before they send anything; the remote
-MCP server needs no sign-in at all. =config/mcp.json= is shared with
-nixOS, so removing the remote server only for the Mac needs a per-host
-file.
+The casks need you to sign in before they send anything; a remote MCP
+server registered in one of them may need no sign-in at all.
 
 * VS Code and its extensions
 
@@ -286,9 +279,9 @@ aarch64-darwin. So =nix flake check= on nixOS proves that the Mac's
 configuration evaluates. What it evaluates is the template of a Mac's
 local flake against this checkout, placeholders included: exactly what
 a Mac receives, and nothing of the modules a Mac adds itself.
-Activation snippets are filled in with =builtins.replaceStrings= at
-evaluation time, because an import from derivation would make
-evaluation on Linux impossible again.
+Activation snippets interpolate the store paths of source files and
+packages directly; that needs no import from derivation, which would
+make evaluation on Linux impossible again.
 
 Evaluation catches unavailable packages (GIMP was the first),
 removed options, failed assertions and type errors. It misses:
@@ -312,8 +305,9 @@ On 10 October 2026 it planned 127 derivations to build and 1760
 paths to fetch (5.3 GiB download, 18.3 GiB unpacked). The only real
 compilations left were =terraform=, whose licence keeps it out of the
 binary cache, =bash-language-server= and =pi-mcp-adapter= with its npm
-dependencies; the rest are wrappers, fonts and generated files. These
-numbers move with every lock update.
+dependencies (the adapter has since left with the Pi coding agent); the
+rest are wrappers, fonts and generated files. These numbers move with
+every lock update.
 
 ** Why the laptop builds nothing for macOS
 

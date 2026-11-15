@@ -9,6 +9,7 @@ NixOS 26.05, GNOME/Wayland, Secure Boot).  The periodic checklist is in
 * Table of contents :TOC_2_org:
 - [[Full disk encryption (LUKS + Btrfs)][Full disk encryption (LUKS + Btrfs)]]
 - [[Secure Boot (lanzaboote)][Secure Boot (lanzaboote)]]
+- [[Firmware][Firmware]]
 - [[Firewall and network stack][Firewall and network stack]]
 - [[Kernel hardening][Kernel hardening]]
 - [[Audit subsystem][Audit subsystem]]
@@ -45,6 +46,27 @@ machine specific keys stored in =/etc/secureboot=.  Automatic key
 generation and enrollment are enabled, including Microsoft keys for
 firmware compatibility.
 
+Enrolment is automatic only once the firmware is in Setup Mode.
+Lanzaboote stages the keys on the ESP and sets systemd-boot's
+=secure-boot-enroll= to =force=, but a firmware that still holds its
+factory keys ignores them, and enforcing Secure Boot in that state
+makes it refuse to boot NixOS.  Erasing the factory keys is a manual
+step in the firmware setup:
+[[file:../how-to/nixOS-enable-secure-boot.org][Enable Secure Boot on nixOS]].
+
+The Microsoft keys stay because Lanzaboote refuses to enrol without
+them unless told it may brick the machine, and because the dbx updates
+that fwupd applies are signed with Microsoft's KEK.  The cost: the
+firmware also starts any Microsoft signed boot loader, such as a Linux
+distribution's USB stick.  What Secure Boot guarantees here is that
+this machine's own boot chain is not replaced; the data stays behind
+LUKS, and the supervisor password keeps the settings as they are.
+
+None of this can lock the disk: Secure Boot only decides which boot
+files the firmware starts, the firmware setup stays reachable to turn
+it off, and nothing is sealed in the TPM.  The one lockout is a lost
+supervisor password, so it is set last and stored first.
+
 =kernel.kexec_load_disabled= is set directly (rather than through
 =security.protectKernelImage=) because the latter also injects
 =nohibernate= into kernel params, which conflicts with
@@ -53,11 +75,40 @@ image is encrypted at rest and kexec remains blocked.
 
 Checked in [[file:../how-to/nixOS-audit-security.org::*Secure Boot][Audit nixOS security]].
 
+* Firmware
+
+The values are in [[file:../reference/nixOS-firmware-settings.org][nixOS firmware settings]].
+
+- *Supervisor password:* without it, anyone with a minute at the
+  keyboard can turn Secure Boot off or change the boot order.  It is
+  not a disk password: a lost one locks the setup, not the data.
+- *Drive passwords* stay unset.  LUKS already encrypts the drive, and
+  a lost drive password makes the drive unusable.
+- *BlockSID* makes the firmware lock the drive's TCG security
+  ownership at every boot, so that software cannot take it and lock
+  the drive.  It costs nothing, since this configuration uses no
+  hardware encryption.
+- *Chassis intrusion detection* warns at the next boot after the
+  chassis was opened: tamper evidence, at the price of a prompt after
+  your own repairs.
+- *TPM:* the firmware exposes Microsoft Pluton.  Nothing is sealed in
+  it yet; switching to AMD's fTPM, or clearing it, is free until
+  something is.
+- *Kernel lockdown* stays off: it disables hibernation, which this
+  machine relies on.
+- *Battery:* the BIOS charge limit of 60 % is the only limit.  Battery
+  Extender stays off: after its reset time on battery, it charges to
+  100 % at the next AC connection, overriding the limit, which UPower's
+  history showed in October 2026.
+
+Checked in [[file:../how-to/nixOS-audit-security.org::*Firmware settings][Audit nixOS security]].
+
 * Firewall and network stack
 
-The firewall is enabled fleet wide with zero open TCP/UDP ports.
-NetworkManager is the only network management daemon.  SSH is
-explicitly disabled.
+The NixOS firewall is on, as it is by default.  It opens 53317 TCP
+and UDP for LocalSend (=programs.localsend=) and 5353 UDP for mDNS.
+NetworkManager is the only network management daemon.  SSH is not
+enabled, which is the NixOS default.
 
 Kernel sysctls harden the network stack:
 
@@ -88,8 +139,8 @@ Checked in [[file:../how-to/nixOS-audit-security.org::*Kernel settings][Audit ni
 
 * Audit subsystem
 
-The Linux kernel audit framework is enabled via =security.audit.enable=
-and =security.auditd.enable=.  Rules log:
+The Linux kernel audit framework is enabled by =security.auditd.enable=,
+which turns =security.audit.enable= on.  Rules log:
 
 - Every =execve= call (catches unexpected binaries, reverse shells).
 - Write/attribute changes to =/etc/shadow=, =/etc/passwd=, =/etc/group=.
@@ -104,10 +155,14 @@ Checked in [[file:../how-to/nixOS-audit-security.org::*Audit log review][Audit n
 
 Three mechanisms ensure diagnostic data survives crashes:
 
-1. *pstore:* on kernel panic the firmware writes the last dmesg to
-   UEFI NVRAM.  =systemd-pstore= archives it to
-   =/var/lib/systemd/pstore/= on the next boot.  The kernel parameter
-   =printk.always_kmsg_dump=1= flushes the full ring buffer.
+1. *pstore:* on a kernel panic or oops, =efi_pstore= writes the tail
+   of dmesg to UEFI NVRAM.  =systemd-pstore= archives it to
+   =/var/lib/systemd/pstore/= on the next boot.  The kernel's
+   =printk.always_kmsg_dump= stays off: until October 2026 it added a
+   dump at every clean shutdown and reboot, 143 records in seven
+   months, each written to the firmware's flash and deleted at the
+   next boot.  That wears the flash and fills the variable store,
+   where a dbx update then no longer fits.
 
 2. *systemd-coredump:* userspace crashes produce coredumps stored in
    =/var/lib/systemd/coredump/= (compressed, capped at 2 GB).
@@ -134,6 +189,10 @@ Checked in [[file:../how-to/nixOS-audit-security.org::*Pstore review][Audit nixO
   arbitrary store paths.
 - =nix.settings.allowed-users = [ "@wheel" ]= restricts Nix daemon
   access to wheel members.
+- One polkit rule, =config/polkit/set-timezone.rules=, lets the active
+  local session set the system time zone without authentication, for
+  GNOME's automatic time zone and manual changes.  automatic-timezoned
+  does not need it: it runs as its own user, with its own rule.
 
 Checked in [[file:../how-to/nixOS-audit-security.org::*Wheel group][Audit nixOS security]].
 
@@ -181,13 +240,11 @@ Checked in [[file:../how-to/nixOS-audit-security.org::*Maestral sandbox][Audit n
 
 * Automatic updates
 
-=system.autoUpgrade= is enabled with =persistent = true=.  If the
-scheduled trigger at 04:00 is missed (laptop off, hibernated, or
-suspended), systemd catches up on the next boot.
-
-=allowReboot = false=: the system stages the new generation but does
-not reboot.  Updates take effect at the next manual reboot or
-=nixos-rebuild switch=.
+There are none.  =system.autoUpgrade= used to rebuild every night from
+the store copy of the flake that had built the running system, lock
+included, so it never brought anything new, and it was removed.
+Updates happen when the lock is updated and the system rebuilt, as
+[[file:../how-to/update-flake-inputs.org][Update flake inputs]] describes.
 
 Checked in [[file:../how-to/nixOS-audit-security.org::*Automatic updates][Audit nixOS security]].
 
@@ -214,6 +271,9 @@ explicitly whitelisted devices keep their pairing keys; everything
 else is removed on each =nixos-rebuild switch=.  The list of devices is
 a personal file, =hosts/nixOS/bluetooth-devices.nix=, that this
 repository does not publish: without it nothing manages the pairings.
+A listed device that is not paired yet gets a trusted stub entry; a
+paired one keeps its link keys while its name and trust are refreshed.
+Link keys cannot be declared, so each device needs one pairing by hand.
 [[file:../how-to/nixOS-personalise-a-fresh-install.org::*Bluetooth devices][Personalise a fresh install of nixOS]] shows how to write it.
 
 A defensive guard at the top of the sync script aborts if the adapter
@@ -246,8 +306,13 @@ Checked in [[file:../how-to/nixOS-audit-security.org::*Git object checks][Audit 
 
 Hourly btrbk snapshots of =/home/example= into =/.snapshots/= provide
 rollback for accidental deletions or destructive agent actions.
-Retention: 24 hourly, 5 daily, 3 weekly.  The timer is persistent, so
+Retention: 12 hourly, 7 daily, 2 weekly.  The timer is persistent, so
 missed snapshots are caught up on boot.
+
+History stops at about two weeks because a snapshot keeps every
+extent deleted or rewritten after it was taken.  Hourly snapshots
+cost little; the oldest ones hold the space, and four weeks of them
+helped fill the disk.
 
 A failure alert writes a prominent message to all user-owned PTYs
 and fires a GNOME desktop notification.

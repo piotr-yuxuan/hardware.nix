@@ -11,6 +11,11 @@ Find the symptom in the index, then follow its section.
 | The LUKS passphrase prompt uses the wrong keyboard layout                   | [[*LUKS passphrase prompt uses wrong keyboard layout][LUKS keyboard layout]]                |
 | Home Manager stops because a file already exists                            | [[*Home Manager: "file already exists"][Home Manager file conflicts]]         |
 | Lanzaboote says the firmware is not in Setup mode                           | [[*Secure Boot: "not in Setup mode"][Secure Boot enrolment]]               |
+| =sbctl status= shows =builtin-PK= and Secure Boot disabled                     | [[file:nixOS-enable-secure-boot.org::*Know where you start][Enable Secure Boot]]                  |
+| The firmware refuses to boot NixOS once Secure Boot is enforced            | [[file:nixOS-enable-secure-boot.org::*Undo][Undo Secure Boot]]                    |
+| A step of the Secure Boot enrolment did not go as described                | [[file:nixOS-enable-secure-boot.org::*If a step goes wrong][Secure Boot recovery]]                |
+| fwupd says "Not enough efivarfs space" for the UEFI dbx                    | [[*Firmware variable store full][Firmware variable store full]]        |
+| nixOS's battery charges past the BIOS charge limit                        | [[file:../reference/nixOS-firmware-settings.org::*Advanced][nixOS firmware settings]]            |
 | The disk fills up with Nix store paths                                      | [[*Nix store disk space][Nix store disk space]]                |
 | =passwd= changes nothing on nixOS                                            | [[*Password change (NixOS)][Password change]]                     |
 | A fresh nixOS install has the =us= layout, no Git identity or no mail        | [[file:nixOS-personalise-a-fresh-install.org][Personalise a fresh install]]         |
@@ -22,6 +27,8 @@ Find the symptom in the index, then follow its section.
 | Bluetooth on nixOS stays off after resuming from hibernation               | [[file:nixOS-fix-audio-playback.org::*Bluetooth stays off after resume][Bluetooth off after resume]]          |
 | Music moves to nixOS's own speakers when a Bluetooth output goes away      | [[file:nixOS-fix-audio-playback.org::*Music continues on the laptop speakers][Music on the laptop speakers]]        |
 | nixOS's own speakers play without Framework's speaker EQ                   | [[file:nixOS-fix-audio-playback.org::*Apply Framework's speaker EQ in the BIOS][Speaker EQ in the BIOS]]              |
+| New mail does not appear on nixOS                                          | [[file:nixOS-set-up-mail-sync.org::*Fetch mail][Fetch mail]]                          |
+| mu finds nothing after a nixOS rebuild                                     | [[file:nixOS-set-up-mail-sync.org::*If search finds nothing after a rebuild][Search after a rebuild]]              |
 | An installed font does not show up in applications                          | [[*Fonts not showing up][Fonts not showing up]]                |
 | A token is missing from new shells                                          | [[*Secrets file][Secrets file]]                        |
 | A Mac switch fails while building, before any activation                    | [[file:macOS-recover-from-a-failed-switch.org::*Fix a build failure][Fix a build failure]]                 |
@@ -108,17 +115,27 @@ and re-run the switch.
 
 * Secure Boot: "not in Setup mode"
 
-Lanzaboote auto-generates and enrols Secure Boot keys on the first boot.
-After rebooting, =sbctl status= should show "Secure Boot: enabled" with
-keys enrolled and the database signed.
+Lanzaboote generates the keys and stages them on the ESP, but
+systemd-boot enrols them only while the firmware is in Setup Mode, and
+a Framework laptop leaves the factory with its own keys installed.
+Erase them in the firmware setup, under Security, Secure Boot, as
+[[file:nixOS-enable-secure-boot.org][Enable Secure Boot on nixOS]] describes.
 
-If the keys are *not* enrolled:
+* Firmware variable store full
 
-1. Reboot into UEFI firmware settings (*F2* during POST).
-2. Navigate to the Secure Boot section and *clear/reset the keys* (puts
-   the firmware into "Setup Mode").
-3. Save and reboot; Lanzaboote will automatically enrol its keys.
-4. Enter UEFI once more and *enable Secure Boot*.
+fwupd refuses the UEFI dbx update when the firmware's variable store
+lacks room for it.
+
+1. Count the crash dumps waiting in NVRAM:
+   =ls /sys/firmware/efi/efivars | grep -c '^dump-type'=.
+   =systemd-pstore= moves them to =/var/lib/systemd/pstore/= at boot.
+2. Reboot once: the firmware reclaims the space of deleted variables
+   at boot.
+3. Run =fwupdmgr update= again.
+
+On nixOS, erasing the factory Secure Boot keys before enrolling this
+machine's keys may free room too, since it removes the old dbx; see
+[[file:nixOS-enable-secure-boot.org::*Apply the revocation list][Apply the revocation list]].
 
 * Nix store disk space
 

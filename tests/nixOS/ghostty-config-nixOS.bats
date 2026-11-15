@@ -3,10 +3,10 @@
 #
 # home/nixOS.nix writes the Ghostty config via xdg.configFile."ghostty/config",
 # which resolves to $XDG_CONFIG_HOME/ghostty/config (~/.config/ghostty/config).
-# On nixOS, Ghostty is installed as a Nix package (pkgs.ghostty is not broken
-# on Linux) via programs.ghostty.enable = true with no package = null override.
-# The Home Manager module wires up bash and zsh shell integration and writes the
-# config via xdg.configFile.
+# On nixOS, Ghostty is installed as a Nix package: home/base.nix enables
+# programs.ghostty with unstable.ghostty on Linux. The Home Manager module wires
+# up the shell integrations, and home/nixOS.nix writes the config via
+# xdg.configFile.
 #
 # The platform-specific suffix appended on nixOS is:
 #   \nfont-size = 11\n

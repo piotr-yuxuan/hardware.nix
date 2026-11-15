@@ -10,7 +10,9 @@
 #
 # Creates a fresh temporary HOME directory and asserts it is non-empty so
 # that teardown can never accidentally receive an empty path.  Stores the
-# path in $tmpdir (exported for use in test bodies).
+# path in $tmpdir (exported for use in test bodies), and in
+# $ISOLATION_TMPDIR for helpers: bats's `run` declares a local tmpdir,
+# which shadows $tmpdir in every function it calls.
 isolation_setup() {
 	tmpdir=$(mktemp -d)
 	[[ -n $tmpdir ]] || {
@@ -18,6 +20,7 @@ isolation_setup() {
 		return 1
 	}
 	export tmpdir
+	export ISOLATION_TMPDIR="$tmpdir"
 }
 
 # isolation_teardown
@@ -36,11 +39,14 @@ isolation_teardown() {
 # All paths are passed via environment variables; the subshell -c body
 # is a static string, never subject to word splitting from caller variables.
 # DRY_RUN_CMD defaults to empty (live mode) unless the caller sets it.
+# bash starts by its absolute path, so that PATH=$tmpdir/bin among the
+# pairs leaves the script only the fake binaries: a command without a
+# fake then fails instead of running the real one.
 run_script() {
 	local script_path="$1"
 	shift
 	local extra_env=("$@")
-	env HOME="$tmpdir" TEST_SCRIPT="$script_path" "${extra_env[@]}" bash -c '
+	env HOME="$ISOLATION_TMPDIR" TEST_SCRIPT="$script_path" "${extra_env[@]}" "$BASH" -c '
         export HOME
         source "$TEST_SCRIPT"
     '
@@ -54,7 +60,7 @@ run_script_dry() {
 	local script_path="$1"
 	shift
 	local extra_env=("$@")
-	env HOME="$tmpdir" TEST_SCRIPT="$script_path" DRY_RUN_CMD=echo \
+	env HOME="$ISOLATION_TMPDIR" TEST_SCRIPT="$script_path" DRY_RUN_CMD=echo \
 		"${extra_env[@]}" bash -c '
         export HOME DRY_RUN_CMD
         source "$TEST_SCRIPT"

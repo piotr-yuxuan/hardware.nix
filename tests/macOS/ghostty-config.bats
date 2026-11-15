@@ -4,9 +4,9 @@
 # home/macOS.nix writes the Ghostty config via xdg.configFile."ghostty/config",
 # which resolves to $XDG_CONFIG_HOME/ghostty/config (~/.config/ghostty/config).
 # On macOS, Ghostty is installed via the Homebrew cask (config/Brewfile) rather
-# than as a Nix package; pkgs.ghostty is marked broken on Darwin.  The Home
-# Manager module is therefore invoked with package = null so that it wires up
-# shell integration without adding the broken derivation to home.packages.
+# than as a Nix package; ghostty is Linux only in nixpkgs.  home/base.nix
+# therefore sets package = null on Darwin, so that Home Manager wires up shell
+# integration without adding a package to home.packages.
 #
 # These tests verify the content contract of the assembled config: that the
 # shared base (config/ghostty/config) is included verbatim, that the

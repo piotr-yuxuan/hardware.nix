@@ -24,7 +24,7 @@ local flake, and a change to this repository reaches it with
 * Garbage-collect old generations
 
 A weekly =nh clean= job deletes old generations on both hosts: a
-systemd service on nixOS and a launchd agent on macOS.  It keeps the
+systemd service on nixOS and a launchd daemon on macOS.  It keeps the
 last five generations and anything newer than seven days.  To collect
 garbage manually:
 

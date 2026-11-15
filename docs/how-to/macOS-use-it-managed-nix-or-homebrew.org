@@ -104,16 +104,14 @@ Consequences:
 Consequences:
 
 - No Linux builder from this configuration: unless IT provides one, the
-  Mac cannot build =aarch64-linux= derivations, and
-  =tests/docker-podman-firewall.nix= cannot run there.
+  Mac cannot build =aarch64-linux= derivations.
 - The substituters, their public keys, =require-sigs=, =trusted-users=
   and the experimental features come from Determinate's configuration,
-  not from this repository. Ask IT what they are; if the
-  =nix-wpe-webkit.cachix.org= cache is missing, some builds take longer.
+  not from this repository. Ask IT what they are.
 - nix-darwin no longer installs its own Nix (2.34.8 on 9 October 2026)
   nor runs the =nix-daemon= service. Determinate decides the Nix
   version.
-- The weekly store optimisation stops. The =nh-clean= agent still runs.
+- The weekly store optimisation stops. The =nh-clean= daemon still runs.
 - =nix= is no longer in =/run/current-system/sw/bin=, where the weekly
   staleness agent looks for it. Unless Determinate's =nix= is on
   launchd's default =PATH=, the agent stays silent.

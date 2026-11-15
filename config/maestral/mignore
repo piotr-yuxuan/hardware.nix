@@ -1,0 +1,98 @@
+# Maestral's ignore list, which home/nixOS.nix links as
+# ~/Dropbox (Maestral)/.mignore. Gitignore syntax, relative to the
+# Dropbox folder.
+#
+# Maestral reads it only when sync starts. A pattern that matches an
+# item already on Dropbox deletes it there and keeps it on disk.
+#
+# Every pattern but the first stays under */src, the source tree that
+# ~/src links to: outside it, archives and scores keep real content in
+# directories named target/ or out/. A name goes in only if no
+# repository commits it on purpose, a stricter rule than that of
+# config/gitignore, git's global ignore list.
+
+# This file: Home Manager links it from the Nix store.
+/.mignore
+
+# Git worktrees. Their commits live in the repository's .git; their
+# uncommitted edits are not backed up.
+*/src/**/.worktree/
+*/src/**/.worktrees/
+
+# Emacs: backups, auto-saves, lock files, native compilation.
+*/src/**/*~
+*/src/**/#*#
+*/src/**/.#*
+*/src/**/eln-cache/
+
+# Clojure: tools.deps, shadow-cljs, clj-kondo, clojure-lsp, nREPL, Leiningen.
+*/src/**/.cpcache/
+*/src/**/.shadow-cljs/
+*/src/**/.clj-kondo/.cache/
+*/src/**/.lsp/.cache/
+*/src/**/.nrepl-port
+*/src/**/.lein-*
+
+# Java, Clojure and Rust: Maven, Leiningen and Cargo output, Gradle.
+*/src/**/target/
+*/src/**/.gradle/
+
+# Python
+*/src/**/__pycache__/
+*/src/**/*.py[co]
+*/src/**/.venv/
+*/src/**/venv/
+*/src/**/*.egg-info/
+*/src/**/.eggs/
+*/src/**/.pytest_cache/
+*/src/**/.ruff_cache/
+*/src/**/.mypy_cache/
+*/src/**/.dmypy.json
+*/src/**/.hypothesis/
+*/src/**/.tox/
+*/src/**/.nox/
+*/src/**/.coverage
+*/src/**/.coverage.*
+*/src/**/htmlcov/
+*/src/**/.ipynb_checkpoints/
+
+# JavaScript and TypeScript
+*/src/**/node_modules/
+*/src/**/.eslintcache
+*/src/**/*.tsbuildinfo
+*/src/**/.next/
+*/src/**/.nuxt/
+*/src/**/.svelte-kit/
+*/src/**/.parcel-cache/
+*/src/**/.turbo/
+*/src/**/.nyc_output/
+
+# LaTeX: AUCTeX, latexmk, SyncTeX, Beamer, BibLaTeX, minted.
+*/src/**/*.aux
+*/src/**/*.bcf
+*/src/**/*.blg
+*/src/**/*.fdb_latexmk
+*/src/**/*.fls
+*/src/**/*.lof
+*/src/**/*.lot
+*/src/**/*.nav
+*/src/**/*.snm
+*/src/**/*.synctex.gz
+*/src/**/*.synctex(busy)
+*/src/**/*.toc
+*/src/**/*.vrb
+*/src/**/*.xdv
+*/src/**/_minted*/
+
+# Lua
+*/src/**/luac.out
+*/src/**/lua_modules/
+*/src/**/.luarocks/
+
+# Terraform: providers and modules, never the state.
+*/src/**/.terraform/
+*/src/**/crash.log
+*/src/**/crash.*.log
+
+# Nix: direnv's cached shells.
+*/src/**/.direnv/

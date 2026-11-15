@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2154
-# Variables nft_cmd and id_cmd are set by the Nix wrapper.
+# nft and id come from PATH.
 
 # Install nftables rules that redirect all outbound TCP through Tor's
 # TransPort (127.0.0.1:9040) and all DNS through Tor's DNSPort
@@ -8,12 +7,12 @@
 # (tor-transparent-proxy) so they can be removed cleanly without
 # affecting the NixOS firewall.
 
-TOR_UID=$("$id_cmd" -u tor)
+TOR_UID=$(id -u tor)
 TRANS_PORT=9040
 DNS_PORT=5353
 
 # IPv4 NAT and filter rules
-"$nft_cmd" -f - <<EOF
+nft -f - <<EOF
 table ip tor-transparent-proxy {
   chain nat-output {
     type nat hook output priority -100; policy accept;
@@ -59,7 +58,7 @@ table ip tor-transparent-proxy {
 EOF
 
 # IPv6: block all non-loopback outbound (Tor does not support IPv6 exit)
-"$nft_cmd" -f - <<EOF
+nft -f - <<EOF
 table ip6 tor-transparent-proxy {
   chain filter-output {
     type filter hook output priority 0; policy accept;

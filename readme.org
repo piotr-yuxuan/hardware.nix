@@ -64,10 +64,14 @@ explanation discusses why.  Host-specific pages carry a =nixOS-= or
 - [[file:docs/how-to/nixOS-personalise-a-fresh-install.org][Personalise a fresh install]]: write the personal files this
   repository does not publish, from the keyboard layout to the mail
   account.
+- [[file:docs/how-to/nixOS-set-up-mail-sync.org][Set up mail sync]]: fetch mail on request, send from any alias,
+  and leave deleting to other clients.
 - [[file:docs/how-to/nixOS-manage-btrfs-snapshots.org][Manage Btrfs snapshots]]: inspect, restore and prune btrbk
   snapshots.
 - [[file:docs/how-to/nixOS-connect-to-protonvpn.org][Connect to ProtonVPN]]: import and use WireGuard connections.
 - [[file:docs/how-to/nixOS-audit-security.org][Audit nixOS security]]: the periodic security checklist.
+- [[file:docs/how-to/nixOS-enable-secure-boot.org][Enable Secure Boot on nixOS]]: erase the factory keys, enrol
+  this machine's keys, check, undo.
 - [[file:docs/how-to/nixOS-fix-audio-playback.org][Fix audio playback]]: choose the microphone, take a call on
   the headphones, and fix music that sounds like a call, Bluetooth off
   after resume, music left on the laptop speakers and their EQ.
@@ -109,6 +113,8 @@ explanation discusses why.  Host-specific pages carry a =nixOS-= or
 - [[file:docs/reference/shell-key-bindings.org][Shell key bindings]]: fzf, prompt navigation and scrollback
   selection.
 - [[file:docs/reference/nixOS-disk-layout.org][nixOS disk layout]]: partitions, volumes and subvolumes.
+- [[file:docs/reference/nixOS-firmware-settings.org][nixOS firmware settings]]: the BIOS settings this configuration
+  expects, and how to check them.
 - [[file:docs/reference/macOS-configuration.org][macOS configuration]]: what the macOS host manages, its
   activation order, launchd jobs and the files it writes.
 - [[file:tests/README.org][Testing conventions]]: test frameworks, isolation and mock

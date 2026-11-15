@@ -1,0 +1,166 @@
+#+title: Set up mail sync on nixOS
+#+author: piotr-yuxuan
+
+Fetch mail into =~/Mail= with mbsync when you ask for it, send from any
+address of your domain with msmtp, and index the result with mu. Nothing
+polls the server, and removing a local file cannot delete or mark a message
+on it: deleting stays with other mail clients.
+
+The catch-up was run on nixOS, the settings were built but not activated,
+and the table below was checked against a scratch Dovecot with isync 1.5.1.
+The password step and the steps from the rebuild on had not been run when
+this page was written: if one behaves differently, write down what you saw
+so that this page can be corrected.
+
+* What a sync changes
+
+| Event                                | Effect                                            |
+|--------------------------------------+---------------------------------------------------|
+| A local file disappears              | None on the server: no flag, no deletion          |
+| A new local message, as a Sent copy  | Added to the server                               |
+| Read or flagged here                 | The flag reaches the server                       |
+| Deleted by another client            | Removed here at the next sync                     |
+| Moved by another client              | Moved here at the next sync                       |
+| Marked deleted by another client     | Removed here; left on the server for that client  |
+
+Do not move messages between folders in =~/Mail= by hand. To mbsync a move
+is a new message in one folder and a disappearance from another, so the
+server would keep the message in both. If the file keeps the =,U== part of
+its name, the target folder may refuse to sync, or the next sync may delete
+the file, which leaves the message only on the server.
+
+A =T= flag on a local file is the exception, because mbsync cannot propagate
+some flags only. =mu move FILE --flags=+T=, for example, makes the next sync
+mark the server's copy =\Deleted= and remove the local one. The server keeps
+the message until another client expunges it, so do not set that flag here.
+
+* Write the settings
+
+In =home/nixOS/personal.nix=, which the public export leaves out, with
+=unstable= added to the file's arguments. These keys go in your existing
+account and replace the same keys there, =passwordCommand= above all; that
+account also holds =realName=, =userName=, =primary= and =imap=.
+=home/nixOS.nix= already installs =secret-tool=.
+
+#+begin_src nix
+accounts.email.accounts.personal = {
+  address = "you@example.com";
+  # A pattern, so that mu counts every alias as yours. No backslash: see
+  # "If search finds nothing after a rebuild".
+  aliases = ["/@example[.]com$/"];
+  passwordCommand = "${unstable.libsecret}/bin/secret-tool lookup service mail user you@example.com";
+  smtp = {
+    host = "mail.example.net";
+    port = 465;
+    tls.enable = true;
+  };
+  msmtp.enable = true;
+  mbsync = {
+    enable = true;
+    create = "maildir";
+    expunge = "maildir";
+    patterns = ["*" "!Drafts"];
+    # A list: Home Manager quotes a string with spaces, which mbsync refuses.
+    extraConfig.channel.Sync = ["Pull" "PushNew" "PushFlags"];
+  };
+  mu.enable = true;
+};
+programs.mbsync.enable = true;
+programs.msmtp = {
+  enable = true;
+  package = unstable.msmtp;
+};
+#+end_src
+
+Leave =services.mbsync= off: it always comes with a timer.
+
+* Catch up existing mail
+
+Skip this on a new machine. If =~/Mail= is behind the server, catch up
+before the rebuild, in the direction that does not change the server:
+
+#+begin_src sh
+cp -a --reflink=always ~/Mail ~/Mail.before-setup
+mbsync --dry-run --pull personal
+mbsync --pull personal
+#+end_src
+
+=--pull= limits =Sync= and nothing else. Check first that =~/.config/isyncrc=
+says =Create Near=, =Remove None= and =Expunge Near=, and has no =ExpungeSolo=
+or =Trash= option: those are the settings under which this was seen to leave
+the server alone.
+
+The dry run prints what will change, for example =Near: +120 *15 #0 -3=:
+added, flags changed, and removed because another client deleted them. Stop
+if the last number is out of proportion to your mail. Remove the copy once
+you are satisfied.
+
+* Store the password
+
+Type the password when =secret-tool= asks. It goes into the GNOME login
+keyring, and nothing else keeps it:
+
+#+begin_src sh
+nix shell nixpkgs#libsecret -c secret-tool store --label='Mail' service mail user you@example.com
+#+end_src
+
+* Rebuild and log in
+
+#+begin_src sh
+sudo nixos-rebuild switch --flake '.#nixOS'
+#+end_src
+
+Then log out and back in. =EMACSLOADPATH= is fixed at login, so until then
+a new Emacs loads the old mu4e, whose version check refuses the new mu.
+
+The first activation empties mu's index, because the personal addresses
+changed. The next step rebuilds it, which takes a few minutes for tens of
+thousands of messages.
+
+* Build the index
+
+#+begin_src sh
+mu index
+mu info store
+mu find flag:personal --fields 'd' | wc -l
+#+end_src
+
+=mu info store= counts as many messages as there are files in the =cur= and
+=new= folders under =~/Mail=, and lists your address and the pattern as
+personal addresses.
+
+* Fetch mail
+
+Nothing fetches mail until you ask. In a terminal:
+
+#+begin_src sh
+mbsync personal
+mu index
+#+end_src
+
+While mu4e runs it holds the index, and =mu index= stops with exit status
+19, though =mu find= still works. Refresh the index from Emacs then, with
+=M-x mu4e-update-index=.
+
+* Send from an alias
+
+#+begin_src sh
+msmtp -f alias@example.com -t < message.txt
+#+end_src
+
+=message.txt= holds the headers and the body, with a =From:= giving the same
+alias. =msmtp --pretend= with the same arguments shows the settings it would
+use, with an asterisk for the password, and sends nothing.
+
+* If search finds nothing after a rebuild
+
+=mu init= over an existing store empties it and reports success. Home
+Manager runs it at activation whenever the addresses that =mu info store=
+lists differ from the configured ones, so changing an alias empties the
+index once. =mu index= rebuilds it.
+
+If it empties at every rebuild, the pattern holds a backslash. Home Manager
+passes the addresses to the shell unquoted, which removes it before mu
+stores it, so the two never compare equal. Write =[.]= rather than =\.=.
+
+Never run =mu init= by hand on this machine.

@@ -7,7 +7,10 @@ Covers: parse_event, classify_event, diagnose, find_touchpad_event_node,
 from __future__ import annotations
 
 import os
+import shutil
+import signal
 import struct
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -18,6 +21,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import touchpad_watchdog as tw
+
+WATCHDOG_LOOP = Path(__file__).resolve().parent.parent / "scripts" / "touchpad-watchdog.sh"
 
 
 # ---------------------------------------------------------------------------
@@ -605,175 +610,49 @@ sys.exit(1 if status is tw.HealthStatus.STUCK else 0)
             os.waitpid(pid, 0)
 
 
-class TestIntegrationZsh:
-    """Test the zsh watchdog loop script's exit-code dispatching."""
+class TestWatchdogLoop:
+    """Run scripts/touchpad-watchdog.sh itself, on a PATH that holds only
+    fake python3, modprobe and sleep. The fake sleep ends the loop at its
+    closing ``sleep 5`` poll, so each run is exactly one iteration."""
 
-    @pytest.fixture()
-    def zsh_bin(self) -> str | None:
-        """Return zsh path or skip if not available."""
-        import shutil
-        path = shutil.which("zsh")
-        if path is None:
-            pytest.skip("zsh not available")
-        return path
-
-    def test_healthy_iteration(self, tmp_path: Path, zsh_bin: str) -> None:
-        """When the Python checker exits 0, the zsh loop should not
-        invoke modprobe and should exit cleanly after one iteration."""
-        import subprocess
-
-        # Fake python_cmd that always exits 0 (healthy).
-        fake_python = tmp_path / "fake_python"
-        fake_python.write_text("#!/bin/sh\nexit 0\n")
-        fake_python.chmod(0o755)
-
-        # Fake modprobe that records invocations.
+    @pytest.mark.parametrize(
+        ("checker_status", "modprobe_calls"),
+        [
+            (0, []),
+            (1, ["-r i2c_hid_acpi", "i2c_hid_acpi"]),
+            (2, []),
+        ],
+    )
+    def test_one_iteration(
+        self, tmp_path: Path, checker_status: int, modprobe_calls: list[str]
+    ) -> None:
+        bash = shutil.which("bash")
+        assert bash is not None
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
         modprobe_log = tmp_path / "modprobe.log"
-        fake_modprobe = tmp_path / "fake_modprobe"
-        fake_modprobe.write_text(
-            f'#!/bin/sh\necho "$@" >> {modprobe_log}\n'
-        )
-        fake_modprobe.chmod(0o755)
-
-        # Write a one-shot version of the zsh script (exits after first iteration).
-        oneshot = tmp_path / "oneshot.zsh"
-        oneshot.write_text(
-            f"""#!{zsh_bin}
-python_cmd={fake_python}
-watchdog_py=/dev/null
-modprobe_cmd={fake_modprobe}
-sleep_cmd=true
-
-"$python_cmd" "$watchdog_py" 1
-rc=$?
-
-case $rc in
-    0) exit 0 ;;
-    2) exit 2 ;;
-    1)
-        "$modprobe_cmd" -r i2c_hid_acpi
-        "$sleep_cmd" 1
-        "$modprobe_cmd" i2c_hid_acpi
-        exit 1
-        ;;
-    *) exit 99 ;;
-esac
-"""
-        )
-        oneshot.chmod(0o755)
+        fakes = {
+            "python3": f"exit {checker_status}",
+            "modprobe": f'echo "$*" >> {modprobe_log}',
+            "sleep": '[ "$1" = 5 ] && kill "$PPID"; exit 0',
+        }
+        for name, body in fakes.items():
+            fake = bin_dir / name
+            fake.write_text(f"#!/bin/sh\n{body}\n")
+            fake.chmod(0o755)
 
         result = subprocess.run(
-            [zsh_bin, str(oneshot)],
+            [bash, str(WATCHDOG_LOOP), "/dev/null"],
+            env={"PATH": str(bin_dir)},
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
-        assert result.returncode == 0
-        assert not modprobe_log.exists(), "modprobe should not be called when healthy"
 
-    def test_stuck_iteration_triggers_modprobe(self, tmp_path: Path, zsh_bin: str) -> None:
-        """When the Python checker exits 1 (stuck), the zsh loop should
-        invoke modprobe to reload the module."""
-        import subprocess
-
-        fake_python = tmp_path / "fake_python"
-        fake_python.write_text("#!/bin/sh\nexit 1\n")
-        fake_python.chmod(0o755)
-
-        modprobe_log = tmp_path / "modprobe.log"
-        fake_modprobe = tmp_path / "fake_modprobe"
-        fake_modprobe.write_text(
-            f'#!/bin/sh\necho "$@" >> {modprobe_log}\n'
-        )
-        fake_modprobe.chmod(0o755)
-
-        oneshot = tmp_path / "oneshot.zsh"
-        oneshot.write_text(
-            f"""#!{zsh_bin}
-python_cmd={fake_python}
-watchdog_py=/dev/null
-modprobe_cmd={fake_modprobe}
-sleep_cmd=true
-
-"$python_cmd" "$watchdog_py" 1
-rc=$?
-
-case $rc in
-    0) exit 0 ;;
-    2) exit 2 ;;
-    1)
-        "$modprobe_cmd" -r i2c_hid_acpi
-        "$sleep_cmd" 1
-        "$modprobe_cmd" i2c_hid_acpi
-        exit 1
-        ;;
-    *) exit 99 ;;
-esac
-"""
-        )
-        oneshot.chmod(0o755)
-
-        result = subprocess.run(
-            [zsh_bin, str(oneshot)],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        assert result.returncode == 1
-        assert modprobe_log.exists()
-        lines = modprobe_log.read_text().strip().splitlines()
-        assert lines == ["-r i2c_hid_acpi", "i2c_hid_acpi"]
-
-    def test_no_device_iteration(self, tmp_path: Path, zsh_bin: str) -> None:
-        """When the Python checker exits 2 (no device), the loop should
-        not invoke modprobe."""
-        import subprocess
-
-        fake_python = tmp_path / "fake_python"
-        fake_python.write_text("#!/bin/sh\nexit 2\n")
-        fake_python.chmod(0o755)
-
-        modprobe_log = tmp_path / "modprobe.log"
-        fake_modprobe = tmp_path / "fake_modprobe"
-        fake_modprobe.write_text(
-            f'#!/bin/sh\necho "$@" >> {modprobe_log}\n'
-        )
-        fake_modprobe.chmod(0o755)
-
-        oneshot = tmp_path / "oneshot.zsh"
-        oneshot.write_text(
-            f"""#!{zsh_bin}
-python_cmd={fake_python}
-watchdog_py=/dev/null
-modprobe_cmd={fake_modprobe}
-sleep_cmd=true
-
-"$python_cmd" "$watchdog_py" 1
-rc=$?
-
-case $rc in
-    0) exit 0 ;;
-    2) exit 2 ;;
-    1)
-        "$modprobe_cmd" -r i2c_hid_acpi
-        "$sleep_cmd" 1
-        "$modprobe_cmd" i2c_hid_acpi
-        exit 1
-        ;;
-    *) exit 99 ;;
-esac
-"""
-        )
-        oneshot.chmod(0o755)
-
-        result = subprocess.run(
-            [zsh_bin, str(oneshot)],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        assert result.returncode == 2
-        assert not modprobe_log.exists()
+        assert result.returncode == -signal.SIGTERM, result.stderr
+        calls = modprobe_log.read_text().splitlines() if modprobe_log.exists() else []
+        assert calls == modprobe_calls
 
 
 class TestIntegrationRoundTrip:

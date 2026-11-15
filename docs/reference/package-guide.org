@@ -21,9 +21,12 @@ language and platform support.
 - [[Languages & runtimes][Languages & runtimes]]
   - [[python3][python3]]
   - [[uv][uv]]
+  - [[poetry][poetry]]
   - [[nodejs][nodejs]]
   - [[bun][bun]]
   - [[Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)][Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)]]
+  - [[sccache][sccache]]
+  - [[rust-code-analysis][rust-code-analysis]]
   - [[go][go]]
   - [[temurin-bin][temurin-bin]]
 - [[Clojure ecosystem][Clojure ecosystem]]
@@ -87,6 +90,7 @@ language and platform support.
   - [[lsof][lsof]]
   - [[pandoc][pandoc]]
   - [[zola][zola]]
+  - [[difftastic][difftastic]]
 - [[IaC / Cloud][IaC / Cloud]]
   - [[awscli2][awscli2]]
   - [[aws-vault][aws-vault]]
@@ -105,7 +109,8 @@ language and platform support.
   - [[kubernetes-helm][kubernetes-helm]]
   - [[kubelogin][kubelogin]]
   - [[azure-cli][azure-cli]]
-  - [[snowflake-cli (macOS only)][snowflake-cli (macOS only)]]
+  - [[snowflake-cli][snowflake-cli]]
+  - [[dbt][dbt]]
   - [[podman][podman]]
   - [[podman-compose][podman-compose]]
 - [[CloudFormation][CloudFormation]]
@@ -135,14 +140,17 @@ language and platform support.
 - [[AI coding][AI coding]]
   - [[ollama (nixOS only)][ollama (nixOS only)]]
   - [[Emacs MCP integration][Emacs MCP integration]]
-  - [[pi-coding-agent][pi-coding-agent]]
-  - [[pi-mcp-adapter][pi-mcp-adapter]]
   - [[codex-desktop-linux (nixOS only)][codex-desktop-linux (nixOS only)]]
   - [[claude-desktop (nixOS only)][claude-desktop (nixOS only)]]
   - [[claude, claude-code, codex and codex-app (macOS only)][claude, claude-code, codex and codex-app (macOS only)]]
 - [[Email][Email]]
   - [[mu / mu4e][mu / mu4e]]
   - [[isync (mbsync)][isync (mbsync)]]
+  - [[msmtp (nixOS only)][msmtp (nixOS only)]]
+  - [[libsecret (nixOS only)][libsecret (nixOS only)]]
+  - [[hylki (nixOS only)][hylki (nixOS only)]]
+  - [[penguin-mail (nixOS only)][penguin-mail (nixOS only)]]
+  - [[inlark (nixOS only)][inlark (nixOS only)]]
 - [[Spell & grammar][Spell & grammar]]
   - [[hunspell][hunspell]]
   - [[aspell][aspell]]
@@ -172,11 +180,11 @@ language and platform support.
   - [[vscode][vscode]]
   - [[maestral / maestral-gui][maestral / maestral-gui]]
   - [[signal-desktop][signal-desktop]]
-  - [[difftastic][difftastic]]
   - [[bubblewrap (nixOS only)][bubblewrap (nixOS only)]]
   - [[dust / duf][dust / duf]]
   - [[compsize][compsize]]
   - [[bees (nixOS only)][bees (nixOS only)]]
+  - [[smartmontools (nixOS only)][smartmontools (nixOS only)]]
   - [[bluez (Bluetooth)][bluez (Bluetooth)]]
   - [[USB-C monitor hotplug stabilisation][USB-C monitor hotplug stabilisation]]
   - [[touchpad-watchdog (nixOS only)][touchpad-watchdog (nixOS only)]]
@@ -222,7 +230,6 @@ language and platform support.
   - [[duti (macOS only)][duti (macOS only)]]
   - [[luarocks (macOS only)][luarocks (macOS only)]]
   - [[pipenv (macOS only)][pipenv (macOS only)]]
-  - [[poetry (macOS only)][poetry (macOS only)]]
   - [[gnugrep (macOS only)][gnugrep (macOS only)]]
   - [[gnused (macOS only)][gnused (macOS only)]]
   - [[localsend (macOS only)][localsend (macOS only)]]
@@ -302,6 +309,14 @@ single invocation:
 SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt uv run --locked dbt
 #+end_src
 
+** poetry
+Python dependency management and packaging.
+#+begin_src sh
+poetry new my-project                        # scaffold a project
+poetry add requests                          # add a dependency
+poetry install                               # install from lock file
+#+end_src
+
 ** nodejs
 JavaScript runtime.  Also provides =npm=.
 #+begin_src sh
@@ -333,6 +348,28 @@ Individual Rust components installed via Nix (=unstable.cargo=,
 cargo new hello && cd hello && cargo run   # create and run a project
 cargo build --release                      # optimised build
 rustfmt src/main.rs                        # format Rust code
+#+end_src
+
+** sccache
+A compilation cache for Rust, C and C++, which keeps its entries on
+the local disk or in cloud storage.  It is installed only: Cargo uses
+it once =RUSTC_WRAPPER= names it, and this configuration does not set
+that variable.
+#+begin_src sh
+RUSTC_WRAPPER=sccache cargo build          # one build through the cache
+sccache --show-stats                       # hits, misses and cache size
+sccache --stop-server                      # stop the background server
+#+end_src
+
+** rust-code-analysis
+Mozilla's source code metrics for Rust and several other languages:
+cyclomatic and cognitive complexity, Halstead measures, lines of code.
+The program is =rust-code-analysis-cli=.
+#+begin_src sh
+rust-code-analysis-cli -m -p src/main.rs   # metrics of one file
+mkdir -p metrics                           # the output directory must exist
+rust-code-analysis-cli -m -O json --pr -p src -o metrics   # one JSON file per source file
+rust-code-analysis-cli -F -p src/main.rs   # functions and their spans
 #+end_src
 
 ** go
@@ -566,7 +603,9 @@ prettier --check .
 ** sqlfluff
 SQL linter and formatter for many dialects, Snowflake among them.  The
 SQLFluff extension of VS Code calls it, when a team lints its SQL with
-SQLFluff.
+SQLFluff.  It comes from stable nixpkgs, an exception: the unstable
+one needs =diff-cover= 10.5.1, whose HTML snapshot tests fail under
+Pygments 2.21.
 #+begin_src sh
 sqlfluff lint models/ --dialect snowflake      # report the violations
 sqlfluff fix models/ --dialect snowflake       # apply the fixes
@@ -937,6 +976,13 @@ zola serve                                   # preview with live reload
 zola build                                   # render into public/
 #+end_src
 
+** difftastic
+Structural diff that understands syntax, not just lines.
+#+begin_src sh
+difft old.py new.py
+GIT_EXTERNAL_DIFF=difft git diff HEAD~1      # use with git
+#+end_src
+
 * IaC / Cloud
 
 ** awscli2
@@ -1091,18 +1137,71 @@ az account show                                # the active subscription
 az aks get-credentials --resource-group my-group --name my-cluster
 #+end_src
 
-** snowflake-cli (macOS only)
+** snowflake-cli
 Snowflake's command-line client; the command is =snow=.  The Snowflake
-extension of VS Code calls it for some of its features.  macOS installs
-the =snowflake-cli= formula of =config/Brewfile=, because the nixpkgs
+extension of VS Code calls it for some of its features.  The nixpkgs
 package does not build at the locked revision: the tests of
-=snowflake-connector-python= fail under Python 3.14, and the binary
-cache has no copy for either host.  nixOS does not install it.
+=snowflake-connector-python= fail under Python 3.14, the =click= and
+=typer= of nixpkgs are newer than the versions =snow= pins, and the
+binary cache has no copy for either host.  macOS installs the
+=snowflake-cli= formula of =config/Brewfile=.  nixOS installs it out
+of band with uv, as =~/.local/bin/snow=, with upstream's pins.
 #+begin_src sh
+uv tool install --python 3.13 snowflake-cli   # nixOS, once
+uv tool upgrade snowflake-cli                  # nixOS, from time to time
 snow --version
 snow connection list                           # the connections it knows
 snow connection test                           # try the default connection
 snow sql -q 'select current_version()'         # run one statement
+snow sql -x -q 'select current_role()'         # connect from SNOWFLAKE_* variables alone
+#+end_src
+
+** dbt
+The open source distribution of dbt v2, which builds the models of a
+dbt project in a warehouse.  nixpkgs has only dbt Core 1.11, so
+[[file:../../packages/dbt.nix][packages/dbt.nix]] installs the binary of the 2.0.11 GitHub release of
+[[https://github.com/dbt-labs/dbt][dbt-labs/dbt]], under Apache 2.0, on both hosts.  Its
+=dbt --version= prints =dbt-oss=.
+
+The dbt extension of VS Code installs dbt Labs' own distribution,
+which adds features under the dbt product licence, as
+=~/.local/bin/dbt=.  On nixOS the Nix profiles come first on =PATH=,
+so a terminal runs the open source one.  On macOS that order has not
+been checked: =command -v dbt= tells which one runs.
+
+On Linux, both dbt packages of this entry load =libstdc++= at startup:
+the database drivers that dbt loads, such as DuckDB's, need it, and
+the run path of the dbt binary does not reach their dependencies.
+#+begin_src sh
+dbt --version                                  # dbt-oss 2.0.11
+dbt parse                                      # parse and check the project
+dbt build --select my_model+                   # run and test a model and its children
+#+end_src
+
+To move to a newer release, change =version= in =packages/dbt.nix= and
+replace both hashes with those of the release's =SHA256SUMS=, in SRI
+form:
+#+begin_src sh
+gh release download v2.0.12 -R dbt-labs/dbt -p SHA256SUMS -O -
+nix hash convert --hash-algo sha256 --to sri <hexadecimal sum>
+#+end_src
+
+Version 2.0.9 exists only in dbt Labs' proprietary distribution: the
+open source repository went from 2.0.8 to 2.0.11.
+[[file:../../packages/dbt-proprietary.nix][packages/dbt-proprietary.nix]] installs it from dbt Labs' CDN, on both
+hosts, as =dbt-2.0.9=, so that it does not collide with =dbt=.  Its
+licence is the [[https://www.getdbt.com/dbt-fusion-engine-license-agreement][dbt product licence]], which Nix treats as unfree; the
+=unstable= set allows unfree packages.
+#+begin_src sh
+dbt-2.0.9 --version                            # dbt 2.0.9
+dbt-2.0.9 build                                # a project that pins 2.0.9
+#+end_src
+
+The CDN publishes no checksum file; the hash of another version comes
+from a prefetch, with the target =x86_64-unknown-linux-gnu= or
+=aarch64-apple-darwin=:
+#+begin_src sh
+nix store prefetch-file https://public.cdn.getdbt.com/fs/cli/fs-v2.0.9-aarch64-apple-darwin.tar.gz
 #+end_src
 
 ** podman
@@ -1250,7 +1349,9 @@ timidity output.midi           # play a MIDI file
 #+end_src
 
 ** audacity (nixOS only)
-Audio editor for recording, cutting, filtering, and mixing.
+Audio editor for recording, cutting, filtering, and mixing.  It comes
+from stable nixpkgs, an exception: the unstable 4.0.0 is not in the
+binary cache, so a rebuild compiles it.
 
 ** vlc (nixOS only)
 Media player that handles virtually any audio/video format.
@@ -1391,54 +1492,13 @@ codex mcp get emacs-tools
 #+end_src
 
 The bridge uses the shared Python 3 package. The shared =socat= package is
-also available for direct Unix-socket diagnostics and clients such as Pi.
-
-** pi-coding-agent
-Pi is the cross-platform terminal coding agent.  It keeps the core
-small and discovers global extensions under =~/.pi/agent/extensions/=
-without requiring its mutable =settings.json= to be generated by Home
-Manager.
-#+begin_src sh
-pi                              # start an interactive session
-pi -c                           # continue the latest session
-pi --list-models                # inspect available models
-#+end_src
-
-** pi-mcp-adapter
-A pinned custom package from
-[[https://github.com/nicobailon/pi-mcp-adapter][nicobailon/pi-mcp-adapter]] that adds Model Context Protocol support
-to Pi.  The derivation in =packages/pi-mcp-adapter.nix= installs only
-runtime dependencies and Home Manager links it into Pi's global
-extension directory.
-
-Server declarations live in =config/mcp.json= and are deployed to the
-tool-agnostic =~/.config/mcp/mcp.json= path.  All servers start lazily:
-
-- =emacs-tools= :: local Emacs Unix socket, bridged to MCP standard input
-  and output with =socat= and accessed through the adapter's proxy tool.
-- =clojure-mcp= :: starts =clojure -Tmcp= in the current project,
-  accessed through the proxy.  The Clojure tool itself is installed by
-  the =clojureMcpInstall= Home Manager activation.
-- =aws-knowledge= :: AWS-hosted, anonymous, read-only documentation
-  service.  Its tools are registered directly because they are used
-  frequently.
-
-Proxy mode keeps one small =mcp= schema in the model context and lets
-the agent search for a server tool on demand.  Direct mode registers
-each selected MCP tool as a regular Pi tool, which improves discovery
-at the cost of adding its schema to the prompt.
-#+begin_src sh
-pi-mcp-adapter --help           # adapter CLI
-# Inside Pi:
-/mcp                            # inspect servers and connection state
-#+end_src
+also available for direct Unix-socket diagnostics.
 
 ** codex-desktop-linux (nixOS only)
 The ChatGPT Community desktop application is an unofficial,
 community-maintained Nix repackaging of OpenAI's signed Linux desktop
 payload.  It is installed system-wide through the upstream NixOS module
-and keeps its default feature set.  This graphical application is separate
-from the terminal-based Pi coding agent.
+and keeps its default feature set.
 #+begin_src sh
 codex-desktop                  # launch the desktop application
 #+end_src
@@ -1476,21 +1536,101 @@ codex                                        # Codex CLI in this directory
 * Email
 
 ** mu / mu4e
-=mu= indexes your Maildir; =mu4e= is the Emacs frontend.
+=mu= indexes your Maildir; =mu4e= is the Emacs frontend. Both come from
+=unstable=, through =programs.mu.package=. Home Manager creates the store,
+so do not run =mu init= by hand: over an existing store it empties it and
+reports success.
 #+begin_src sh
-mu init -m ~/Maildir --my-address me@example.com
-mu index                       # (re)index mail
-mu find "from:alice subject:meeting"   # search from the CLI
+mu index                       # (re)index mail; refused while mu4e runs
+mu find "from:alice subject:meeting"   # search from the CLI, also while mu4e runs
+mu info store                  # message count and personal addresses
 #+end_src
 In Emacs: =M-x mu4e= to launch the email client.
 
 ** isync (mbsync)
-IMAP mailbox synchronisation.
+IMAP mailbox synchronisation. On nixOS it runs only when you ask, and a
+local deletion does not reach the server: [[file:../how-to/nixOS-set-up-mail-sync.org][Set up mail sync]] gives the
+settings and what a sync changes.
 #+begin_src sh
 mbsync -a                      # sync all configured accounts
 mbsync work                    # sync only the "work" channel
 #+end_src
-Configuration lives in =~/.mbsyncrc=.
+Home Manager generates the configuration at =~/.config/isyncrc=. An older
+=~/.mbsyncrc= is ignored, with a warning.
+
+** msmtp (nixOS only)
+Sends mail over SMTP, for mu4e and from a terminal. Home Manager generates
+=~/.config/msmtp/config= from =accounts.email=.
+#+begin_src sh
+msmtp -f alias@example.com -t < message.txt             # send from an alias
+msmtp --pretend -f alias@example.com -t < message.txt   # show the settings, send nothing
+#+end_src
+
+** libsecret (nixOS only)
+=secret-tool= reads and writes the GNOME login keyring, which holds the
+password that mbsync and msmtp use.
+#+begin_src sh
+secret-tool store --label='Mail' service mail user you@example.com   # asks for the value
+#+end_src
+
+** hylki (nixOS only)
+Hylki is a Rust and libadwaita mail client with a local full-text index.
+Home Manager installs it from [[https://github.com/clementpoiret/hylki-flake][the community packaging flake]], whose
+nixpkgs input follows this fleet's unstable channel; =flake.lock= pins the
+packaging revision.
+
+It is commented out in =home/nixOS.nix= for now: at 1.47.1 its build
+fails to link because it cannot find =libsqlite3=.  The flake input
+stays, so uncommenting the line brings it back.
+
+Its contacts come from its own address book and from Evolution Data Server,
+which holds the CardDAV accounts set up in Hylki and the address books of
+GNOME Online Accounts. An IMAP and SMTP account in GNOME Online Accounts
+carries mail only: with such a provider, address books need a "Calendar,
+Contacts and Files" account there. It has no calendar of its own and hands
+invitations to the application that opens calendar files.
+#+begin_src sh
+hylki                     # launch
+nix flake update hylki    # update only this input, then rebuild
+#+end_src
+
+** penguin-mail (nixOS only)
+Penguin Mail is a Rust and GTK 4 mail client. Home Manager installs it from
+[[https://github.com/c9dev/penguin-mail][the project's own flake]], whose nixpkgs input follows this fleet's unstable
+channel; =flake.lock= pins the revision.
+
+This package signs in to IMAP, POP3 and JMAP accounts, and to Gmail through
+a Google account in GNOME Online Accounts. Browser sign-in to Google or
+Microsoft needs client values at build time, which it does not carry. An IMAP
+or POP3 account keeps its calendar and contacts in the application's own
+store, over CalDAV and CardDAV where the provider offers them, without
+Evolution Data Server. =penguin-mail-cli account add= adds Gmail accounts
+only, with your own Google project keys; its other commands act on every mail
+account it can connect.
+#+begin_src sh
+penguin-mail                     # launch
+penguin-mail --demo              # sample mail in a throwaway store; nothing syncs
+nix flake update penguin-mail    # update only this input, then rebuild
+#+end_src
+
+** inlark (nixOS only)
+Inlark is a TypeScript mail client on Electron, in early preview, which
+leaves calendars, a full address book, rules and AI out for now. Home Manager
+installs it from [[https://github.com/inlark/inlark][the project's own flake]], whose nixpkgs input follows this
+fleet's unstable channel, so that a client rendering untrusted HTML gets
+Electron updates; =flake.lock= pins the revision. Its =programs.inlark= NixOS
+module is not used, because it builds from the stable channel of the system.
+
+The hash of its pnpm dependencies depends on the pnpm version. When unstable
+moves =pnpm_12= to a version that changes it, a rebuild can fail on
+=inlark-pnpm-deps= with a hash mismatch until upstream updates the hash.
+Update the input, or remove the package until then. The store path can show
+an older version than the release, because its Nix file reads the version
+from a =package.json= that upstream does not bump.
+#+begin_src sh
+inlark                     # launch
+nix flake update inlark    # update only this input, then rebuild
+#+end_src
 
 * Spell & grammar
 
@@ -1623,17 +1763,15 @@ Nix CLI helper that wraps =nixos-rebuild=, =darwin-rebuild=, and
 =nix-output-monitor=, a coloured diff of what is about to change via
 =dix=, and an interactive confirmation prompt before activation.
 
-Installed fleet-wide via =home/base.nix=.  On nixOS the NixOS module
-(=programs.nh= in =hosts/nixOS.nix=) also enables a weekly =nh clean=
+Installed on the Mac by =home/macOS.nix=, and on nixOS by the NixOS
+module (=programs.nh= in =hosts/nixOS.nix=), which also enables a weekly =nh clean=
 systemd timer that prunes old generations (keeps 5, anything newer than
-7 days).  On macOS an equivalent launchd user agent runs on the same
+7 days).  On macOS an equivalent root launchd daemon runs on the same
 schedule (Sunday 03:00) via =hosts/macOS.nix=.
 
-The =NH_FLAKE= session variable is intentionally unset: the flake path
-is user-specific and must be supplied at the call site or via a personal
-shell alias.  On nixOS, =NH_OS_FLAKE= is set automatically by the NixOS
-module (=programs.nh.flake=) and takes precedence over =NH_FLAKE= for
-=nh os= commands.
+No flake path is set, neither =NH_FLAKE= nor =NH_OS_FLAKE=: give it at
+the call site, for example =.= from the checkout, or through a personal
+shell alias.
 
 *** Seeing a human-friendly diff before switching
 
@@ -1643,21 +1781,19 @@ for confirmation before touching the running system.
 
 On NixOS (nixOS):
 #+begin_src sh
-nh os switch          # reads NH_OS_FLAKE; auto-detects hostname
-nh os switch -H nixOS   # explicit host
+nh os switch .           # from the checkout; auto-detects hostname
+nh os switch . -H nixOS # explicit host
 #+end_src
 
 On macOS:
 #+begin_src sh
-nh darwin switch          # reads NH_FLAKE; auto-detects hostname
+nh darwin switch . -H macOS  # from the Mac's own flake: its output is macOS
 #+end_src
 
-For Home Manager on any platform:
-#+begin_src sh
-nh home switch          # reads NH_FLAKE
-#+end_src
+Home Manager is a module of each system here, so these commands switch
+it too; the flake has no =homeConfigurations= for =nh home=.
 
-In all three cases =nh= will:
+In both cases =nh= will:
 1. Evaluate the flake and build the new system closure (output routed
    through =nix-output-monitor= for a readable build tree).
 2. Display a =dix= diff: a compact, colour-coded summary of every
@@ -1667,9 +1803,8 @@ In all three cases =nh= will:
 
 To preview without any risk of activation, use =--dry=:
 #+begin_src sh
-nh os switch --dry          # build + diff, never activate
-nh darwin switch --dry
-nh home switch --dry
+nh os switch . --dry        # build + diff, never activate
+nh darwin switch . -H macOS --dry
 #+end_src
 
 *** Garbage collection
@@ -1808,12 +1943,12 @@ extension out of its drift check.
 
 The programs that the extensions call have their own entries:
 [[kubectl][kubectl]], [[kubernetes-helm][kubernetes-helm]], [[kubelogin][kubelogin]], [[azure-cli][azure-cli]] and [[sqlfluff][sqlfluff]] on both
-hosts, [[terraform (macOS only)][terraform]], [[terraform-ls (macOS only)][terraform-ls]] and [[snowflake-cli (macOS only)][snowflake-cli]] on macOS.  On
+hosts, [[terraform (macOS only)][terraform]], [[terraform-ls (macOS only)][terraform-ls]] and [[snowflake-cli][snowflake-cli]] on macOS.  On
 nixOS the sandbox shows VS Code neither =~/.kube= nor =~/.azure=: the
 programs run there and cannot sign in.
 
-This configuration leaves dbt out: its extension installs the dbt v2
-binary itself, as =~/.local/bin/dbt=.
+The dbt extension installs its own binary, as =~/.local/bin/dbt=; the
+[[dbt][dbt]] entry says how it relates to the one of this configuration.
 
 ** maestral / maestral-gui
 Open-source Dropbox client.  =maestral= is the daemon, =maestral-gui=
@@ -1823,15 +1958,17 @@ maestral status                # check sync status
 maestral ls /                  # list Dropbox root
 #+end_src
 
+On nixOS, =home/nixOS.nix= links
+[[file:../../config/maestral/mignore][config/maestral/mignore]] as
+=~/Dropbox (Maestral)/.mignore=, Maestral's ignore list.  Its patterns
+cover the temporary files of the languages that the Emacs configuration
+edits, in the source tree =*/src= only, and the list itself.  Maestral
+reads the list when sync starts, so a switch that changes it restarts
+the daemon.  A pattern that matches an item already on Dropbox deletes
+it there and keeps it on disk.
+
 ** signal-desktop
 Encrypted messaging.
-
-** difftastic
-Structural diff that understands syntax, not just lines.
-#+begin_src sh
-difft old.py new.py
-GIT_EXTERNAL_DIFF=difft git diff HEAD~1      # use with git
-#+end_src
 
 ** bubblewrap (nixOS only)
 Unprivileged sandboxing tool that provides the =bwrap= executable.  It creates
@@ -1865,6 +2002,17 @@ journalctl -u beesd@root -f          # follow dedup activity
 sudo bees-status /run/bees/root.status  # live progress (if available)
 #+end_src
 
+** smartmontools (nixOS only)
+Drive health monitoring.  =hosts/nixOS.nix= installs =smartctl= at
+the system level and runs =smartd=, which scans the NVMe drive every
+30 minutes and reports a failing check to the journal, to logged-in
+terminals and as a GNOME notification, through =systembus-notify=.
+#+begin_src sh
+systemctl status smartd                # check the daemon status
+journalctl -u smartd                   # what smartd reported
+sudo smartctl -a /dev/nvme0            # wear, spare and media errors
+#+end_src
+
 ** bluez (Bluetooth)
 Bluetooth protocol stack.  Enabled via =hardware.bluetooth.enable= and
 managed by the declarative whitelist in =hosts/nixOS/bluetooth-devices.nix=.
@@ -1885,6 +2033,7 @@ Configured in =hosts/nixOS.nix=.
 References:
 - https://community.frame.work/t/tracking-usb-c-error-on-boot/52012
 - https://community.frame.work/t/display-connecting-infinitely-via-usb-c/68717
+- https://community.frame.work/t/solved-issues-connecting-to-usb-c-monitor-amd-ryzen-ai-350/68468
 
 Levers:
 - udev (=config/udev/99-iiyama-usb-hub.rules=) pins the Realtek hub
@@ -1908,7 +2057,7 @@ The watchdog service (=touchpad-watchdog=) samples raw evdev events
 every few seconds.  When it detects the stuck signature (timestamps
 flowing, no position data), it reloads the =i2c_hid_acpi= kernel
 module to reinitialise the firmware.  Configured in =hosts/nixOS.nix=,
-scripts in =scripts/touchpad_watchdog.py= and =scripts/touchpad-watchdog.zsh=.
+scripts in =scripts/touchpad_watchdog.py= and =scripts/touchpad-watchdog.sh=.
 #+begin_src sh
 systemctl status touchpad-watchdog     # watchdog running
 journalctl -u touchpad-watchdog -f     # watch for recovery events
@@ -2230,14 +2379,6 @@ Python virtual environment manager.
 #+begin_src sh
 pipenv install requests                      # add a dependency
 pipenv shell                                 # activate the virtual env
-#+end_src
-
-** poetry (macOS only)
-Python dependency management and packaging.
-#+begin_src sh
-poetry new my-project                        # scaffold a project
-poetry add requests                          # add a dependency
-poetry install                               # install from lock file
 #+end_src
 
 ** gnugrep (macOS only)

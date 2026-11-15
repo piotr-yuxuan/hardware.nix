@@ -6,10 +6,9 @@
 # and emits a macOS notification via osascript when any are found.
 #
 # Isolation strategy:
-# - NIX_BIN and JQ_BIN env vars override the tools the script calls, bypassing
-#   the /run/current-system/sw/bin prepend the script performs on PATH.
-# - OSASCRIPT_BIN overrides the hardcoded /usr/bin/osascript so notification
-#   calls can be intercepted without root access or a macOS environment.
+# - The script takes nix, jq and osascript from PATH, which the launchd agent
+#   sets. Tests put fakes first on PATH, so notification calls are intercepted
+#   without root access or a macOS environment.
 # - STALENESS_CUTOFF_SECONDS fixes the 14-day cutoff to a known epoch value,
 #   bypassing the platform-specific date invocation.
 # - TS_FROM_ISO_DATE points to a script that converts ISO 8601 strings to epoch
@@ -49,14 +48,11 @@ make_fake_ts_parser() {
 # Extra KEY=VALUE pairs (e.g. NH_FLAKE=... STALENESS_CUTOFF_SECONDS=...) are
 # passed as env assignments before the bash invocation via "$@".
 run_staleness() {
-    env HOME="$tmpdir" \
-        NIX_BIN="$tmpdir/bin/nix" \
-        JQ_BIN="$tmpdir/bin/jq" \
-        OSASCRIPT_BIN="$tmpdir/bin/osascript" \
-        TS_FROM_ISO_DATE="$tmpdir/bin/ts_parser" \
+    env HOME="$ISOLATION_TMPDIR" \
+        PATH="$ISOLATION_TMPDIR/bin:$PATH" \
+        TS_FROM_ISO_DATE="$ISOLATION_TMPDIR/bin/ts_parser" \
         "$@" \
-        bash -c 'export HOME NIX_BIN JQ_BIN OSASCRIPT_BIN TS_FROM_ISO_DATE NH_FLAKE \
-                        STALENESS_CUTOFF_SECONDS; source "$1"' \
+        bash -c 'export HOME TS_FROM_ISO_DATE NH_FLAKE STALENESS_CUTOFF_SECONDS; source "$1"' \
         _ "$SCRIPT"
 }
 
@@ -67,16 +63,16 @@ run_staleness() {
 @test "exits 0 when NH_FLAKE is unset" {
     make_fake_osascript
     run env -u NH_FLAKE HOME="$tmpdir" \
-        OSASCRIPT_BIN="$tmpdir/bin/osascript" \
-        bash -c 'export HOME OSASCRIPT_BIN; unset NH_FLAKE; source "$1"' _ "$SCRIPT"
+        PATH="$tmpdir/bin:$PATH" \
+        bash -c 'export HOME; unset NH_FLAKE; source "$1"' _ "$SCRIPT"
     [[ $status -eq 0 ]]
 }
 
 @test "no osascript call when NH_FLAKE is unset" {
     make_fake_osascript
     env -u NH_FLAKE HOME="$tmpdir" \
-        OSASCRIPT_BIN="$tmpdir/bin/osascript" \
-        bash -c 'export HOME OSASCRIPT_BIN; unset NH_FLAKE; source "$1"' _ "$SCRIPT"
+        PATH="$tmpdir/bin:$PATH" \
+        bash -c 'export HOME; unset NH_FLAKE; source "$1"' _ "$SCRIPT"
     [[ -z $(fake_calls) ]]
 }
 
@@ -88,8 +84,8 @@ run_staleness() {
     make_fake_osascript
     run env -u NH_FLAKE HOME="$tmpdir" \
         NH_FLAKE="/nonexistent/path/to/flake" \
-        OSASCRIPT_BIN="$tmpdir/bin/osascript" \
-        bash -c 'export HOME NH_FLAKE OSASCRIPT_BIN; source "$1"' _ "$SCRIPT"
+        PATH="$tmpdir/bin:$PATH" \
+        bash -c 'export HOME NH_FLAKE; source "$1"' _ "$SCRIPT"
     [[ $status -eq 0 ]]
 }
 
@@ -97,8 +93,8 @@ run_staleness() {
     make_fake_osascript
     env -u NH_FLAKE HOME="$tmpdir" \
         NH_FLAKE="/nonexistent/path/to/flake" \
-        OSASCRIPT_BIN="$tmpdir/bin/osascript" \
-        bash -c 'export HOME NH_FLAKE OSASCRIPT_BIN; source "$1"' _ "$SCRIPT"
+        PATH="$tmpdir/bin:$PATH" \
+        bash -c 'export HOME NH_FLAKE; source "$1"' _ "$SCRIPT"
     [[ -z $(fake_calls) ]]
 }
 
@@ -144,6 +140,8 @@ run_staleness() {
     local cutoff; cutoff=$(date -d '14 days ago' +%s 2>/dev/null || date -v-14d +%s)
     run run_staleness NH_FLAKE="$flake_dir" STALENESS_CUTOFF_SECONDS="$cutoff"
     [[ $status -eq 0 ]]
+    # The fakes ran under bats's run: run_staleness found them on PATH.
+    [[ $(fake_calls) == *osascript* ]]
 }
 
 @test "osascript called with 'Stale inputs' for a single stale input" {

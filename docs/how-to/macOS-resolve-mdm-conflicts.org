@@ -80,8 +80,8 @@ instead, on the personal laptop, and update
   and =socketfilterfw= refuses the change. Jamf users report the message
   "Firewall settings cannot be modified from command line on managed Mac
   computers"; its exit code is unknown. Activation runs with =set -e=,
-  so a failing call stops the switch at that step: the fonts, the
-  post-activation script and Home Manager are not activated. Separately,
+  so a failing call stops the switch at that step: the fonts and Home
+  Manager are not activated. Separately,
   =blockAllIncoming= blocks incoming connections that an IT support
   tool may need.
 - Change :: every option is nullable and defaults to =null=, and
@@ -144,20 +144,17 @@ instead, on the personal laptop, and update
   [[file:../../hosts/macOS.nix][hosts/macOS.nix]] (=GuestEnabled=, =DisableConsoleAccess= and
   =SHOWFULLNAME=), written as root into
   =/Library/Preferences/com.apple.loginwindow=. In addition,
-  [[file:../../scripts/darwin-post-activation.sh][scripts/darwin-post-activation.sh]] writes =ShowInputMenu= into the same
-  file.
+  =system.defaults.CustomSystemPreferences= writes =ShowInputMenu= into
+  the same file.
 - Managed when :: a profile has a =com.apple.loginwindow= payload, or
   =/Library/Managed Preferences= contains =com.apple.loginwindow.plist=.
 - Symptom :: none during the switch. The login window follows the
   profile, whatever the configuration says.
 - Change :: the three options are nullable with default =null=. Force
   the ones the profile manages to =null=, for example
-  =system.defaults.loginwindow.SHOWFULLNAME = lib.mkForce null;=.
-  =ShowInputMenu= has no override: it is written by the shared script.
-  Removing it is a change to this repository, where its =defaults write=
-  line goes together with the test that checks it in
-  [[file:../../tests/macOS/darwin-post-activation.bats][tests/macOS/darwin-post-activation.bats]]:
-  "defaults write is called with com.apple.loginwindow ShowInputMenu -bool true".
+  =system.defaults.loginwindow.SHOWFULLNAME = lib.mkForce null;=, and
+  the same for =ShowInputMenu=:
+  =system.defaults.CustomSystemPreferences."/Library/Preferences/com.apple.loginwindow".ShowInputMenu = lib.mkForce null;=.
 - Reset :: for each key you removed, for example
   =sudo defaults delete /Library/Preferences/com.apple.loginwindow SHOWFULLNAME=.
 

@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
 
-# This file supports both sourcing and direct execution.  ShellCheck analyzes
-# it as direct execution only and therefore mistakes the fallback exit branches
-# after return for unreachable code.
-# shellcheck disable=SC2317
-# Home Manager activation sources this file from bash/zsh.
-# Keep behaviour resilient: activation must not abort the full switch.
+# Home Manager activation runs this script with bash, as its own process,
+# and only warns when it fails: activation must not abort the full switch.
 set -uo pipefail
 
 : "${DRY_RUN_CMD:=}"
 
-# Sourced as a home-manager activation script. Runs on every
-# `home-manager switch` on macOS. BREWFILE is set by Nix interpolation
-# in macOS.nix before this script runs.
+# Runs on every switch on macOS. BREWFILE, the store path of
+# config/Brewfile, comes from the activation line in home/macOS.nix.
 #
 # Logging policy: every brew action below is preceded by a banner and
 # the command is echoed before it runs, so that the output of
@@ -38,7 +33,7 @@ if [[ -x "$_brew" ]]; then
 	eval "$("$_brew" shellenv)"
 else
 	echo "brewBundle: skipping Brewfile activation because Homebrew is not found." >&2
-	return 0 2>/dev/null || exit 0
+	exit 0
 fi
 
 # Homebrew 6 made ask mode the default: install and upgrade may stop to
@@ -76,7 +71,7 @@ fi
 _banner "installing and upgrading Brewfile entries (--upgrade)"
 if ! run brew bundle install --file "$BREWFILE" --upgrade; then
 	echo "brewBundle: brew bundle install failed; continuing." >&2
-	return 0 2>/dev/null || exit 0
+	exit 0
 fi
 
 # Greedy upgrade: also pull forward casks marked auto_updates or
@@ -108,7 +103,7 @@ if [[ -z $DRY_RUN_CMD ]] && ! run brew bundle cleanup --file "$BREWFILE" </dev/n
 			;;
 		e | E)
 			echo "brewBundle: aborting; edit $BREWFILE and rerun home-manager switch." >&2
-			return 1 2>/dev/null || exit 1
+			exit 1
 			;;
 		*) echo "brewBundle: drift left in place." >&2 ;;
 		esac

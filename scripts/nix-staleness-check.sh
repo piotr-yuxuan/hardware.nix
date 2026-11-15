@@ -1,15 +1,8 @@
 #!/bin/sh
 # Nix flake staleness check for macOS machines.
-# Called weekly by launchd agent com.user.nix-staleness-check.
+# Called weekly by launchd agent com.user.nix-staleness-check, whose PATH
+# gives nix, jq, date and osascript.
 # Warns via macOS notification if any flake input is older than 14 days.
-#
-# NIX_BIN, JQ_BIN, and OSASCRIPT_BIN may be overridden for testing;
-# they default to the standard paths found via PATH / absolute path.
-
-export PATH="/run/current-system/sw/bin:$PATH"
-
-_nix="${NIX_BIN:-nix}"
-_jq="${JQ_BIN:-jq}"
 
 flake_dir="${NH_FLAKE:-}"
 if [ ! -d "$flake_dir" ]; then exit 0; fi
@@ -32,9 +25,9 @@ while IFS='=' read -r name date_str; do
 		stale="$stale $name"
 	fi
 done <<EOF
-$("$_nix" flake metadata --json "$flake_dir" 2>/dev/null | "$_jq" -r '.locks.nodes | to_entries[] | select(.value.locked.lastModified) | "\(.key)=\(.value.locked.lastModified | todate | split("T") | .[0] + "T" + (.[1] | split("+") | .[0]))"')
+$(nix flake metadata --json "$flake_dir" 2>/dev/null | jq -r '.locks.nodes | to_entries[] | select(.value.locked.lastModified) | "\(.key)=\(.value.locked.lastModified | todate | split("T") | .[0] + "T" + (.[1] | split("+") | .[0]))"')
 EOF
 
 if [ -n "$stale" ]; then
-	"${OSASCRIPT_BIN:-/usr/bin/osascript}" -e "display notification \"Stale inputs:$stale\" with title \"Nix flake inputs are outdated\" subtitle \"Run: nix flake update\""
+	osascript -e "display notification \"Stale inputs:$stale\" with title \"Nix flake inputs are outdated\" subtitle \"Run: nix flake update\""
 fi

@@ -1,0 +1,86 @@
+#+title: nixOS firmware settings
+#+author: piotr-yuxuan
+
+The firmware (BIOS) settings that this configuration expects on
+nixOS, a Framework Laptop 16 with a Ryzen 7 7840HS, no graphics
+module, BIOS 4.05. These are target values: on 2026-10-30 the machine
+still had Secure Boot off with the factory keys, no supervisor
+password, BlockSID and chassis intrusion detection off, and Battery
+Extender on. The menu names were read from photographs of the setup;
+the target values were not yet set when this page was written.
+
+Press *F2* at power on to open the setup, from a full shutdown, never
+from hibernation. Settings not listed keep their default. The reasons are in
+[[file:../explanation/nixOS-security-posture.org::*Firmware][nixOS security posture]].
+
+* Table of contents :TOC_2_org:
+- [[Firmware versions][Firmware versions]]
+- [[Security][Security]]
+- [[Storage password setup page][Storage password setup page]]
+- [[Advanced][Advanced]]
+
+* Firmware versions
+
+| Component     | Version at 2026-10-30      | Where to read it                         |
+|---------------+----------------------------+------------------------------------------|
+| BIOS          | 4.05 (=IFGP6.04.05=)       | =fwupdmgr get-devices=                   |
+| EC            | =lotus-4.0.5=              | Main page of the setup                   |
+| AGESA         | PhoenixPI-FP8-FP7 1.2.0.0f | =fwupdmgr get-devices=, Secure Processor |
+| CPU microcode | =0xa70410a=                | =grep -m1 microcode /proc/cpuinfo=       |
+| NVMe SN850X   | =620361WD=                 | =cat /sys/class/nvme/nvme0/firmware_rev= |
+
+fwupd updates the BIOS by capsule at the next boot, on AC power;
+=fwupdmgr get-updates= lists what is pending. The SN850X has no update
+through fwupd. After a BIOS update, check Secure Boot as
+[[file:../how-to/nixOS-enable-secure-boot.org::*After a BIOS update][Enable Secure Boot on nixOS]] says.
+
+* Security
+
+| Setting                          | Value                             | Check from Linux                 |
+|----------------------------------+-----------------------------------+----------------------------------|
+| Current TPM Device               | TPM 2.0 (MSFT), Pluton            | =fwupdmgr get-devices=, TPM      |
+| TPM Availability                 | Available                         | =ls /dev/tpmrm0=                 |
+| TPM Operation, Clear TPM         | No Operation, off                 |                                  |
+| Secure Boot, Enforce Secure Boot | Enabled, with this machine's keys | =sbctl status=                   |
+| Supervisor Password              | Installed                         | The setup asks for it            |
+| Set All Hdd Password             | Not set                           |                                  |
+| Set All Master Hdd Password      | Not set                           |                                  |
+| Chassis Intrusion Detection      | Enabled                           | The setup warns at the next boot |
+
+- Secure Boot is set up by [[file:../how-to/nixOS-enable-secure-boot.org][Enable Secure Boot on nixOS]], not by hand.
+- Set the supervisor password last, once Secure Boot works, and save
+  it in the password manager before typing it. Framework has no simple
+  reset for a lost one, and it is the only firmware setting that can
+  lock you out of the setup.
+- Switching the TPM device or clearing the TPM destroys what is sealed
+  in it. Nothing is sealed in it today.
+
+* Storage password setup page
+
+Under Security.
+
+| Setting                                         | Value        |
+|-------------------------------------------------+--------------|
+| BlockSID                                        | Enabled      |
+| Require physical presence when disable BlockSID | Enabled      |
+| TCG Storage Action                              | No Operation |
+
+* Advanced
+
+| Setting                            | Value    | Check from Linux                                        |
+|------------------------------------+----------+---------------------------------------------------------|
+| iGPU Memory                        | Auto     |                                                         |
+| PCIE Dynamic Link Power Management | Enabled  |                                                         |
+| USB4 device measured boot          | Enabled  |                                                         |
+| Standalone operation               | Disabled |                                                         |
+| Linux Audio Compatibility          | Linux    |                                                         |
+| Battery Charge limit               | 60       | =cat /sys/class/power_supply/BAT1/status= on AC at 60 % |
+| Battery Extender                   | Disabled | Charge stays at 60 % after an hour on battery           |
+
+On AC power with the battery at the limit, =status= reads
+=Not charging=. GNOME's "Preserve battery health" stays off, so that
+the BIOS alone sets the limit. Battery wear and charge history:
+
+#+begin_src zsh
+upower -i /org/freedesktop/UPower/devices/battery_BAT1
+#+end_src

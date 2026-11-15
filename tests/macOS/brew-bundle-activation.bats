@@ -12,8 +12,8 @@
 # - The fake brew records every invocation in $HOME/.fake-calls and emits
 #   valid shellenv output so the PATH setup inside the script succeeds.
 # - BREWFILE is set to a known path inside $tmpdir.
-# - The script is zsh-based and is sourced in a zsh subshell; zsh must be
-#   available (it is on all supported platforms for this project).
+# - Home Manager activation runs the script with bash, as its own process;
+#   so do the tests.
 #
 # All tests run on Linux and macOS alike.
 
@@ -65,21 +65,15 @@ make_fake_brew() {
 }
 
 # run_brew [extra KEY=VALUE env pairs]
-# Sources the script in live mode in a zsh subshell.
+# Runs the script in live mode.
 run_brew() {
-    env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" "$@" zsh -c '
-        export HOME BREWFILE HOMEBREW_PREFIX
-        source "$1"
-    ' _ "$SCRIPT"
+    env HOME="$ISOLATION_TMPDIR" BREWFILE="$ISOLATION_TMPDIR/Brewfile" "$@" bash "$SCRIPT"
 }
 
 # run_brew_dry [extra KEY=VALUE env pairs]
-# Sources the script in dry-run mode (DRY_RUN_CMD=echo).
+# Runs the script in dry-run mode (DRY_RUN_CMD=echo).
 run_brew_dry() {
-    env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" DRY_RUN_CMD=echo "$@" zsh -c '
-        export HOME BREWFILE DRY_RUN_CMD HOMEBREW_PREFIX
-        source "$1"
-    ' _ "$SCRIPT"
+    env HOME="$ISOLATION_TMPDIR" BREWFILE="$ISOLATION_TMPDIR/Brewfile" DRY_RUN_CMD=echo "$@" bash "$SCRIPT"
 }
 
 # ---------------------------------------------------------------------------
@@ -89,20 +83,14 @@ run_brew_dry() {
 @test "exits 0 when Homebrew is not found (non-fatal)" {
     run env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" \
         HOMEBREW_PREFIX="$tmpdir/no-brew" \
-        zsh -c '
-            export HOME BREWFILE HOMEBREW_PREFIX
-            source "$1"
-        ' _ "$SCRIPT"
+        bash "$SCRIPT"
     [[ $status -eq 0 ]]
 }
 
 @test "prints 'Homebrew is not found' to stderr when no brew is available" {
     run env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" \
         HOMEBREW_PREFIX="$tmpdir/no-brew" \
-        zsh -c '
-            export HOME BREWFILE HOMEBREW_PREFIX
-            source "$1" 2>&1
-        ' _ "$SCRIPT"
+        bash "$SCRIPT" 2>&1
     [[ $output == *"Homebrew is not found"* ]]
 }
 
@@ -191,10 +179,7 @@ run_brew_dry() {
     # if the script ever waits for a second answer.
     make_fake_brew "$tmpdir/brew" 0 0 1
     printf 'u\n' | python3 -c 'import pty, signal, sys; signal.alarm(30); pty.spawn(sys.argv[1:])' \
-        env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" HOMEBREW_PREFIX="$tmpdir/brew" zsh -c '
-        export HOME BREWFILE HOMEBREW_PREFIX
-        source "$1"
-    ' _ "$SCRIPT"
+        env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" HOMEBREW_PREFIX="$tmpdir/brew" bash "$SCRIPT"
     local env_log; env_log=$(cat "$tmpdir/.fake-env")
     [[ $env_log == *"HOMEBREW_BUNDLE_CLEANUP_NO_VSCODE=1 brew bundle cleanup --file $tmpdir/Brewfile --force"* ]]
 }
@@ -228,10 +213,7 @@ run_brew_dry() {
     make_fake_brew "$tmpdir/brew"
     run env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" DRY_RUN_CMD=echo \
         HOMEBREW_PREFIX="$tmpdir/brew" \
-        zsh -c '
-            export HOME BREWFILE DRY_RUN_CMD HOMEBREW_PREFIX
-            source "$1"
-        ' _ "$SCRIPT"
+        bash "$SCRIPT"
     [[ $status -eq 0 ]]
 }
 
@@ -239,10 +221,7 @@ run_brew_dry() {
     make_fake_brew "$tmpdir/brew"
     run env HOME="$tmpdir" BREWFILE="$tmpdir/Brewfile" DRY_RUN_CMD=echo \
         HOMEBREW_PREFIX="$tmpdir/brew" \
-        zsh -c '
-            export HOME BREWFILE DRY_RUN_CMD HOMEBREW_PREFIX
-            source "$1"
-        ' _ "$SCRIPT"
+        bash "$SCRIPT"
     [[ $output == *"brew update"* ]]
     [[ $output == *"brew bundle install"* ]]
 }

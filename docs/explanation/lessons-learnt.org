@@ -83,7 +83,8 @@ Tools no longer in active use. Kept for historical reference.
 
 ** oh-my-zsh
 
-Replaced by Home Manager's =programs.zsh= with explicit plugins.
+Replaced by Home Manager's =programs.zsh= and its options
+(autosuggestions, syntax highlighting, completion).
 Oh-my-zsh was useful for themes (=bullet-train=) and the =emacs= plugin,
 but it's a heavy framework for a handful of features.
 

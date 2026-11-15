@@ -72,6 +72,22 @@ previous =flake.lock=, or the next switch applies the update again.
 committed, so stage the new one with =git add flake.lock= only once you
 are happy with the update.
 
+** Remove the old nh-clean agent
+
+Since =nh clean= became a root daemon, the first switch to that release
+leaves the user agent of the same name behind: nix-darwin removes a
+user agent only while it still declares user agents or user environment
+variables, and it declares none. Remove it once, after that switch:
+
+#+begin_src zsh
+launchctl bootout "gui/$(id -u)/org.nixos.nh-clean"
+rm -f ~/Library/LaunchAgents/org.nixos.nh-clean.plist
+#+end_src
+
+=launchctl print "gui/$(id -u)/org.nixos.nh-clean"= then reports that
+the service is not found, and =sudo launchctl print
+system/org.nixos.nh-clean= shows the daemon.
+
 * Choose what the Mac follows
 
 The line =inputs.base.url= of =flake.nix= decides what
@@ -110,8 +126,7 @@ darwin-rebuild build --flake '.#macOS' --override-input base 'github:piotr-yuxua
 * Change the account name
 
 =user= in =flake.nix= must equal the output of =id -un=. The home
-directory, the Nix trusted users and the Home Manager user derive from
-it. The template ships the placeholder =example=. While the name is
+directory and the Home Manager user derive from it. The template ships the placeholder =example=. While the name is
 wrong, a switch stops before it changes anything:
 
 #+begin_example

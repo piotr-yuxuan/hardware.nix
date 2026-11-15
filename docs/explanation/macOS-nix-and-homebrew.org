@@ -100,10 +100,10 @@ nixpkgs, and nixOS takes =texliveFull= from Nix, but the Brewfile
 records that Homebrew's =texlive= handles macOS font and path
 registration more reliably.
 
-For Ghostty, =home/macOS.nix= sets =programs.ghostty.package = null=:
-Home Manager still writes the configuration and the shell integration,
-and the cask provides the app. Its comment calls nixpkgs' Ghostty
-broken on darwin; in fact the package is simply not built for darwin.
+For Ghostty, =home/base.nix= sets =programs.ghostty.package= to =null=
+on darwin: Home Manager still writes the shell integration,
+=home/macOS.nix= writes the configuration, and the cask provides the
+app, since nixpkgs builds Ghostty for Linux only.
 
 A few formulae have other reasons, each recorded next to its line in
 the Brewfile: =curl= because =HOMEBREW_FORCE_BREWED_CURL=1= makes
@@ -123,8 +123,8 @@ the BSD =fortune=, so its options may differ.
 
 This is an exception with an exit: once Hydra builds =recode= for
 aarch64-darwin again, both move back to =home/base.nix= and leave the
-Brewfile. The comments in =home/base.nix=, =home/nixOS.nix= and
-=config/Brewfile= say so. The upstream fix,
+Brewfile. The comments in =home/nixOS.nix= and =config/Brewfile= say
+so. The upstream fix,
 [[https://github.com/NixOS/nixpkgs/pull/571390][nixpkgs PR #571390]] (=recode= 3.7.17), was merged on 8 October 2026,
 after the lock was taken. It helps only once nixos-unstable carries it
 and =flake.lock= is updated; check the Hydra build before moving the
@@ -154,17 +154,21 @@ builds on neither: the tests of its dependency
 of the locked nixos-unstable revision, and the binary cache has the
 package for no system. This was seen on nixOS; for the Mac it is
 inferred from the missing binary. The Mac therefore takes the
-=snowflake-cli= formula from Homebrew. nixOS goes without it: nothing
-unfree or built from source is added there for VS Code.
+=snowflake-cli= formula from Homebrew. nixOS installs it out of band
+with =uv tool install=, which takes upstream's pinned dependencies;
+nothing unfree or built from source is added there.
 
 This exception has an exit too: once the binary cache has
-=snowflake-cli= for both systems, it can move to =home/base.nix= and
-leave the Brewfile. The comments in =home/base.nix= and
-=config/Brewfile= name the failure.
+=snowflake-cli= for both systems, it can move to =home/base.nix=,
+leave the Brewfile, and leave uv on nixOS. The comments in
+=home/base.nix= and =config/Brewfile= name the failure.
 
 Plan 077 rejected an override (see its changelog): building against
 Python 3.13 and skipping the package's own tests works on nixOS, but
-it is a source build, and nothing could check it for the Mac.
+it is a source build, and nothing could check it for the Mac. Plan 088
+found a second obstacle: with the connector's failing tests skipped,
+=snowflake-cli= fails its own, because the =click= and =typer= of
+nixpkgs are newer than the versions it pins.
 
 * The per-host split
 
@@ -177,9 +181,9 @@ PyCharm, enca and fortune followed.
 both hosts belong there. AGENTS.md also allows =meta.availableOn= or a
 platform guard at the point of use, but moving a package between files
 needs no conditional at all, and each host file keeps reading as the
-full list for its host. Comments in =home/base.nix=,
-=home/nixOS.nix= and the Brewfile explain the split for VisualVM,
-PyCharm, enca and fortune, so a pair can be found from either end.
+full list for its host. Comments in =home/nixOS.nix= and the Brewfile
+explain the split for VisualVM, PyCharm, enca and fortune, so a pair
+can be found from either host's file.
 
 * How the Brewfile is applied during activation
 
@@ -193,11 +197,11 @@ Manager's nix-darwin module appends the user's activation to
 =launchctl asuser ... sudo -u <user> --set-home=.
 
 Inside the Home Manager activation, the =brewBundle= entry runs after
-=writeBoundary=. It calls [[file:../../scripts/hm-activation/brew-bundle.sh][scripts/hm-activation/brew-bundle.sh]], which
-runs [[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]] with =BREWFILE= set to a copy of
-=config/Brewfile= in the Nix store. The values are substituted with
-=builtins.replaceStrings= at evaluation time, so the Mac's
-configuration can be evaluated from Linux. =defaultApps= (duti) and
+=writeBoundary=. It runs [[file:../../scripts/brew-bundle-activation.sh][scripts/brew-bundle-activation.sh]] with bash and
+=BREWFILE= set to a copy of =config/Brewfile= in the Nix store, and
+turns a failure into a warning. The line interpolates store paths
+directly, without an import from derivation, so the Mac's configuration
+can be evaluated from Linux. =defaultApps= (duti) and
 =homeLayoutMacOS= run after =brewBundle=, so the apps exist before the
 default handlers point at them.
 

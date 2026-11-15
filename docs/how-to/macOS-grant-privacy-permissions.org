@@ -142,8 +142,8 @@ The configuration leaves =time.timeZone= unset so that macOS follows the
 current location, and sets =AppleInterfaceStyleSwitchesAutomatically=
 so that the appearance follows sunrise and sunset. Both need Location
 Services. The automatic time zone itself is not set by the
-configuration since commit 5545128 removed it from
-[[file:../../scripts/darwin-post-activation.sh][scripts/darwin-post-activation.sh]], so turn it on by hand:
+configuration since commit 5545128 removed it from the post-activation
+script, so turn it on by hand:
 
 1. System Settings > Privacy & Security > Location Services: turn
    Location Services on.
@@ -218,7 +218,8 @@ no longer starts. The configuration declares =com.user.rectangle=,
 =com.user.notunes=, =com.user.docker-desktop=,
 =com.user.clear-hushlogin=, =com.user.nix-staleness-check=,
 =org.nix-community.home.gpg-agent=,
-=org.nix-community.home.tldr-update= and =org.nixos.nh-clean=.
+=org.nix-community.home.tldr-update= and, as a system daemon,
+=org.nixos.nh-clean=.
 
 * Files and folders
 

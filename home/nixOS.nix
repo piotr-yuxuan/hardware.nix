@@ -1,38 +1,32 @@
-# Home Manager nixOS-specific overrides (NixOS, Framework 16 AMD).
-#
-# Imported alongside home/base.nix for the example user on nixOS.
-# `unstable` is available via extraSpecialArgs.
+# Home Manager settings of nixOS only; home/base.nix holds the shared ones.
 {
   pkgs,
   lib,
   config,
   unstable,
-  claudeDesktop,
+  inputs,
   ...
 }: let
-  monoFont = "IosevkaTerm Nerd Font Mono";
   monoFontSize = 11;
 
-  # Build a MIME-type -> desktop-file mapping from a flat list of MIME types,
-  # all handled by the same application.  Merge several calls with // to
-  # assemble the full defaultApplications attrset.
+  # Maps each MIME type of a list to one desktop file.
   mimeGroup = desktop: types: lib.genAttrs types (_: [desktop]);
 in {
   # Identities, mail, bookmarks, keyboard layout and world clocks.
   imports = lib.optional (builtins.pathExists ./nixOS/personal.nix) ./nixOS/personal.nix;
 
-  # nixOS-only packages
   home.packages =
     [
       # GUI apps
       unstable.papirus-icon-theme
       unstable.emacs-pgtk
       unstable.libreoffice
-      claudeDesktop
-      # Firefox, VSCode, Signal, VLC, and Transmission are sandboxed
-      # via Firejail at the system level (hosts/nixOS.nix). Do not
-      # install them here or the unwrapped binaries would shadow the
-      # sandboxed wrappers.
+      inputs.claude-desktop.packages.${pkgs.stdenv.hostPlatform.system}.claude-desktop
+      #inputs.hylki.packages.${pkgs.stdenv.hostPlatform.system}.default # Fails to link against sqlite3 at 1.47.1.
+      #inputs.penguin-mail.packages.${pkgs.stdenv.hostPlatform.system}.default # Doesn't compile right now, might enable it again on a tag.
+      #inputs.inlark.packages.${pkgs.stdenv.hostPlatform.system}.default
+      # Firefox, VS Code, Signal, VLC and Transmission come sandboxed from
+      # hosts/nixOS.nix: a copy here would shadow the wrappers.
       unstable.maestral
       unstable.maestral-gui
       unstable.google-chrome
@@ -59,43 +53,30 @@ in {
       unstable.gnumake
       unstable.libtool
 
-      # Languages (personal)
-      #unstable.jdk17
-
-      # Profiling (JVM)
-      # visualvm lives here rather than home/base.nix because on macOS it
-      # is installed via the Homebrew cask (config/Brewfile); base.nix is
-      # shared, so keeping it here avoids a duplicate Nix copy on macOS.
-      # async-profiler and flamegraph stay cross-platform in base.nix.
+      # Profiling (JVM); the Mac takes VisualVM's Homebrew cask.
       unstable.visualvm # JVM monitoring & profiling GUI
 
-      # recode fails to build on aarch64-darwin (nixpkgs#568679), so
-      # these two live here while macOS uses Homebrew (config/Brewfile).
-      # Move them back to home/base.nix once Hydra builds recode for
-      # aarch64-darwin again (nixpkgs PR #571390).
+      # Here while recode fails on aarch64-darwin (nixpkgs#568679) and the
+      # Mac takes Homebrew's; back to home/base.nix once Hydra builds it.
       unstable.fortune
       unstable.enca
 
-      # Graphics
-      # gimp is Linux only in nixpkgs; macOS uses the Homebrew cask
-      # (config/Brewfile), as for visualvm above.
+      # Graphics; Linux only in nixpkgs, so the Mac takes the Homebrew cask.
       unstable.gimp
 
-      # IDE
-      # macOS uses the Homebrew cask (config/Brewfile) so that no Nix .app
-      # needs App Management permission at switch time.
+      # IDE; the Mac takes the cask, so that no Nix .app needs App
+      # Management permission at each switch.
       unstable.jetbrains.pycharm
 
       # Misc
       unstable.bubblewrap # bwrap, unprivileged sandboxing for applications
       unstable.sqlite
       unstable.wl-clipboard # wl-copy / wl-paste for Wayland terminal Emacs
-      unstable.difftastic # structural diffs (difftastic.el)
       unstable.editorconfig-core-c # .editorconfig support
       unstable.dust
       unstable.duf
       unstable.wget
-      unstable.mermaid-cli
+      unstable.openssl
 
       # OSX-KVM (macOS virtualisation via QEMU/KVM)
       unstable.dmg2img # convert BaseSystem.dmg to raw image
@@ -103,8 +84,10 @@ in {
       unstable.cdrtools # mkisofs/genisoimage for ISO creation
       unstable.tesseract # OCR engine for automated install helpers
 
-      # Audio editing
-      unstable.audacity # audio editor
+      pkgs.audacity # stable on purpose: AGENTS.md, "Package channels"
+
+      # Stores the mail password in the login keyring
+      unstable.libsecret # secret-tool
 
       # LaTeX
       unstable.texliveFull # full TeX Live (XeLaTeX, LuaLaTeX, latexmk, …)
@@ -113,10 +96,9 @@ in {
       unstable.lilypond # music engraving
       unstable.frescobaldi # LilyPond GUI editor (score preview, Qt6)
       unstable.timidity # MIDI playback (LilyPond preview audio)
+
       # Python (Emacs tooling)
       unstable.python3Packages.pip
-      unstable.python3Packages.jedi
-      unstable.python3Packages.rope
 
       # GNOME Shell extensions
       unstable.gnomeExtensions.date-menu-formatter # custom panel clock format
@@ -131,136 +113,112 @@ in {
 
   fonts.fontconfig.enable = true;
 
-  # Fontconfig: map "monospace" to our Nerd Font for starship glyphs
+  # "monospace" maps to the Nerd Font, for the prompt's glyphs.
   xdg.configFile."fontconfig/fonts.conf".source = ../config/fontconfig/fonts.conf;
-
-  # `settings` is intentionally unset so the module does not generate
-  # a config file; the shared config is written below via
-  # xdg.configFile.
-  programs.ghostty = {
-    enable = true;
-    package = unstable.ghostty;
-    enableBashIntegration = true;
-    enableZshIntegration = true;
-  };
 
   xdg.configFile."ghostty/config".text =
     (lib.fileContents ../config/ghostty/config)
     + "\nfont-size = ${toString monoFontSize}\n";
 
-  # Macchina for welcome message
-  xdg.configFile."macchina/macchina.toml".source = ../config/macchina/macchina.toml;
-  xdg.configFile."macchina/themes/NixOS.toml".source = ../config/macchina/themes/NixOS.toml;
-  xdg.configFile."macchina/nixos-ascii.txt".source = ../config/macchina/nixos-ascii.txt;
-
-  # Restore the GTK theme name previously set by the removed surface service.
-  dconf.settings."org/gnome/desktop/interface".gtk-theme = "Adwaita";
-  dconf.settings."org/gnome/desktop/interface".icon-theme = "Papirus";
-
-  # Gnome Console (and any GTK app querying "monospace") reads this
-  # GSettings key, NOT fontconfig. Without it GNOME falls back to
-  # Adwaita Mono which has no Nerd Font symbols.
-  dconf.settings."org/gnome/desktop/interface".monospace-font-name = "${monoFont} ${toString monoFontSize}";
-
-  dconf.settings."org/gnome/desktop/background" = {
-    picture-uri = "file://${../img/wallpaper.jpg}";
-    picture-uri-dark = "file://${../img/wallpaper.jpg}";
-    picture-options = "zoom";
+  # Macchina for welcome message, one link per file of config/macchina
+  xdg.configFile.macchina = {
+    source = ../config/macchina;
+    recursive = true;
   };
 
-  # The stock GNOME clock hardcodes abbreviated weekdays. Date Menu
-  # Formatter overrides it with a Luxon format string.
-  # Ordinal suffixes ("19th") are not available in Luxon.
-  # Result: "Thursday, 19 March  15:53".
-  dconf.settings."org/gnome/shell" = {
-    enabled-extensions = [
-      "date-menu-formatter@marcinjakubowski.github.com"
-      "emoji-copy@felipeftn"
-      "grand-theft-focus@zalckos.github.com"
-      "appindicatorsupport@rgcjonas.gmail.com"
-      "nightthemeswitcher@romainvigier.fr"
-      "clipboard-history@alexsaveau.dev"
-      "auto-power-profile@dmy3k.github.io"
-    ];
-    favorite-apps = ["emacsclient.desktop"];
-    always-show-log-out = true;
+  dconf.settings = {
+    "org/gnome/desktop/interface" = {
+      # The GTK theme an earlier service used to set.
+      gtk-theme = "Adwaita";
+      icon-theme = "Papirus";
+      # GNOME's "monospace" comes from here, not from fontconfig.
+      monospace-font-name = "IosevkaTerm Nerd Font Mono ${toString monoFontSize}";
+      clock-show-weekday = true;
+      clock-show-date = true;
+      clock-format = "24h";
+    };
+
+    "org/gnome/desktop/background" = {
+      picture-uri = "file://${../img/wallpaper.jpg}";
+      picture-uri-dark = "file://${../img/wallpaper.jpg}";
+      picture-options = "zoom";
+    };
+
+    # Date Menu Formatter gives the clock full weekdays, with a Luxon
+    # pattern: "Thursday, 19 March  15:53".
+    "org/gnome/shell" = {
+      enabled-extensions = [
+        "date-menu-formatter@marcinjakubowski.github.com"
+        "emoji-copy@felipeftn"
+        "grand-theft-focus@zalckos.github.com"
+        "appindicatorsupport@rgcjonas.gmail.com"
+        "nightthemeswitcher@romainvigier.fr"
+        "clipboard-history@alexsaveau.dev"
+        "auto-power-profile@dmy3k.github.io"
+      ];
+      favorite-apps = ["emacsclient.desktop"];
+      always-show-log-out = true;
+    };
+
+    "org/gnome/shell/extensions/date-menu-formatter" = {
+      pattern = "EEEE, d MMMM  HH:mm:ss";
+      update-level = "3";
+    };
+
+    # Show ISO week numbers in the dropdown calendar.
+    "org/gnome/desktop/calendar".show-weekdate = true;
+
+    "org/gnome/desktop/datetime".automatic-timezone = true;
+
+    # Location services on, without which geoclue refuses every request.
+    "org/gnome/system/location".enabled = true;
+
+    "org/gnome/shell/weather".automatic-location = true;
+
+    "org/gnome/desktop/peripherals/keyboard".numlock-state = true;
+
+    "org/gnome/desktop/peripherals/touchpad" = {
+      speed = 1.0;
+      two-finger-scrolling-enabled = true;
+    };
+
+    "org/gnome/gnome-system-monitor" = {
+      cpu-stacked-area-chart = true;
+      graph-data-points = 600;
+      graph-update-interval = 499;
+      logarithmic-scale = true;
+      network-in-bits = false;
+      resources-memory-in-iec = true;
+      show-dependencies = false;
+      show-whose-processes = "user";
+    };
+
+    # GNOME Shell saves to ~/Pictures/Screenshots, which
+    # scripts/home-layout-nixOS.sh links to this directory.
+    "org/gnome/gnome-screenshot".auto-save-directory = "file://${config.home.homeDirectory}/Pictures/screenshots";
+
+    # No alert or event sounds.
+    "org/gnome/desktop/sound".event-sounds = false;
   };
 
-  dconf.settings."org/gnome/shell/extensions/date-menu-formatter" = {
-    pattern = "EEEE, d MMMM  HH:mm:ss";
-    update-level = "3";
-  };
+  # Maestral's ignore list. Maestral reads it only when sync starts, so
+  # a switch that changes it restarts the daemon below.
+  home.file."Dropbox (Maestral)/.mignore".source = ../config/maestral/mignore;
 
-  dconf.settings."org/gnome/desktop/interface" = {
-    clock-show-weekday = true;
-    clock-show-date = true;
-    clock-format = "24h";
-  };
-
-  # Show ISO week numbers in the dropdown calendar.
-  dconf.settings."org/gnome/desktop/calendar".show-weekdate = true;
-
-  # GNOME: automatic timezone based on geolocation
-  dconf.settings."org/gnome/desktop/datetime".automatic-timezone = true;
-
-  # Master switch for GNOME location services (Privacy > Location).
-  # Without this geoclue refuses all requests from UID 1000 regardless
-  # of the per-app configuration.
-  dconf.settings."org/gnome/system/location".enabled = true;
-
-  # GNOME Shell geoclue agent provides location data for the datetime
-  # plugin above and for the weather panel.  The polkit rule in
-  # hosts/nixOS.nix allows the active session to call SetTimezone
-  # without a password prompt.
-  dconf.settings."org/gnome/shell/weather".automatic-location = true;
-
-  # GNOME: keyboard preferences
-  dconf.settings."org/gnome/desktop/peripherals/keyboard".numlock-state = true;
-
-  # GNOME: touchpad preferences
-  dconf.settings."org/gnome/desktop/peripherals/touchpad" = {
-    speed = 1.0;
-    two-finger-scrolling-enabled = true;
-  };
-
-  # GNOME: System Monitor preferences
-  dconf.settings."org/gnome/gnome-system-monitor" = {
-    cpu-stacked-area-chart = true;
-    graph-data-points = 600;
-    graph-update-interval = 499;
-    logarithmic-scale = true;
-    network-in-bits = false;
-    resources-memory-in-iec = true;
-    show-dependencies = false;
-    show-whose-processes = "user";
-  };
-
-  # GNOME: screenshots
-
-  # Direct the legacy gnome-screenshot tool to the canonical directory.
-  # GNOME Shell 42+ saves instead to ~/Pictures/Screenshots (capital S);
-  # a symlink from that path to the lowercase directory is created by
-  # scripts/home-layout-nixOS.sh so both land in the same place.
-  dconf.settings."org/gnome/gnome-screenshot" = {
-    auto-save-directory = "file://${config.home.homeDirectory}/Pictures/screenshots";
-  };
-
-  # Silence all desktop event sounds. Corresponds to GNOME Settings >
-  # Sound > "Alert and event sounds".
-  dconf.settings."org/gnome/desktop/sound" = {
-    "event-sounds" = false;
-  };
-
-  # Maestral Dropbox daemon (background sync)
+  # Maestral Dropbox daemon (background sync). Home Manager, not NixOS
+  # systemd.user.services: system-wide user units also start in the GDM
+  # greeter, and crash there.
   systemd.user.services.maestral = {
-    Unit.Description = "Maestral Dropbox daemon";
+    Unit = {
+      Description = "Maestral Dropbox daemon";
+      X-Restart-Triggers = ["${config.home.file."Dropbox (Maestral)/.mignore".source}"];
+    };
     Service = {
       ExecStart = "${unstable.maestral}/bin/maestral start --foreground";
       ExecStop = "${unstable.maestral}/bin/maestral stop";
       Restart = "on-failure";
       Nice = "10";
-      # Sandboxing
-      # "full" (not "strict") so /home stays writable for Dropbox sync.
+      # Sandboxing; "full", not "strict", so that /home stays writable.
       ProtectSystem = "full";
       PrivateTmp = true;
       NoNewPrivileges = true;
@@ -279,6 +237,10 @@ in {
     Unit = {
       Description = "Maestral Qt tray icon";
       After = ["maestral.service" "graphical-session.target"];
+      # The icon does not follow the daemon through a restart: it quits,
+      # or stays with a dead connection. Restart it with the daemon, as a
+      # switch that changes .mignore does.
+      PartOf = ["maestral.service"];
     };
     Service = {
       ExecStart = "${unstable.maestral-gui}/bin/maestral_qt";
@@ -286,7 +248,7 @@ in {
       # Provide the GTK3 GSettings schemas that maestral_qt requires
       Environment = [
         "XDG_DATA_DIRS=${lib.concatStringsSep ":" [
-          "${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}"
+          "${unstable.gtk3}/share/gsettings-schemas/${unstable.gtk3.name}"
           "/run/current-system/sw/share"
           "%h/.local/share"
         ]}"
@@ -451,7 +413,7 @@ in {
       ];
   };
 
-  # Clear .hushlogin at login so the shell greeting runs once per sessionvariables
+  # Clear .hushlogin at login so the shell greeting runs once per session
   systemd.user.services.clear-hushlogin = {
     Unit.Description = "Remove .hushlogin so the next interactive shell shows the greeting";
     Service = {
@@ -465,25 +427,25 @@ in {
 
   xdg.userDirs = {
     enable = true;
+    package = unstable.xdg-user-dirs;
     createDirectories = true;
-    # Pin the stateVersion-gated default (flips true->false at 26.05) so the
-    # XDG_*_DIR session variables keep being exported regardless of
-    # stateVersion; silences the 26.05 deprecation trace.
+    # Keep exporting XDG_*_DIR, whatever stateVersion says.
     setSessionVariables = true;
   };
 
-  #  Hide default XDG folders from Nautilus
-  #
-  # GLib-based file managers (Nautilus, Thunar) read ~/.hidden and omit
-  # every listed name from the directory view.  The real folders still
-  # exist and any application can use them; they simply don't appear
-  # when browsing $HOME.
+  # On by Home Manager's default on Linux; named here for its packages.
+  xdg.mime = {
+    sharedMimeInfoPackage = unstable.shared-mime-info;
+    desktopFileUtilsPackage = unstable.desktop-file-utils;
+  };
+
+  # File managers hide the default folders that ~/.hidden lists.
 
   home.file.".hidden".text = lib.fileContents ../config/hidden;
 
   #  Linux-specific HOME layout additions (mov -> Videos, Dropbox redirects)
 
-  home.activation.homeLayoutnixOS = lib.hm.dag.entryAfter ["homeLayout"] ''
-    ${lib.fileContents ../scripts/home-layout-nixOS.sh}
-  '';
+  home.activation.homeLayoutnixOS =
+    lib.hm.dag.entryAfter ["homeLayout"]
+    (lib.fileContents ../scripts/home-layout-nixOS.sh);
 }

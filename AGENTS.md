@@ -20,10 +20,12 @@ Run all applicable checks after every non-trivial change:
 ``` zsh
 nix flake check           # evaluates all NixOS and nix-darwin configs
                           # (macOS through the darwin-macOS-eval check,
-                          # defined for x86_64-linux and aarch64-darwin)
+                          # defined for x86_64-linux and aarch64-darwin),
+                          # and checks the channel of Home Manager's
+                          # packages (hm-packages-unstable)
 statix check              # Nix anti-pattern linter
-deadnix                   # dead-code detection
-shellcheck scripts/**/*.sh
+deadnix --fail            # dead-code detection
+find scripts hosts -name '*.sh' -print0 | xargs -0 shellcheck
 ```
 
 For NixOS-specific integration tests, use `nixos-test` expressions
@@ -105,7 +107,7 @@ it.
 - `home/base.nix`: Cross-platform Home Manager config (shared by all
   machines).
 - `home/<name>.nix`: Per-host Home Manager overrides.
-- `fonts.nix`: Shared font list, imported by `home/base.nix` and
+- `fonts.nix`: Shared font list, imported by `home/nixOS.nix` and
   `hosts/macOS.nix`.
 - `packages/`: Custom Nix derivations (e.g. `zapfino.nix`,
   `tw-moe-fonts.nix`).
@@ -180,10 +182,27 @@ the public export leaves out too.
 - **`unstable`** is the default for all user-facing packages in
   `home/base.nix`, `home/<name>.nix`, and `fonts.nix`. It is passed
   via `extraSpecialArgs` from the flake.
+- Home Manager's own `pkgs` is the stable set (`useGlobalPkgs`), so a
+  module that installs a package names `package = unstable.…`
+  explicitly. The flake check `hm-packages-unstable`
+  (`tests/hm-packages-unstable.nix`) reads `home.packages` and the few
+  module packages it lists, and fails, naming the package, when a
+  stable one appears outside the exceptions below. Packages that a
+  Home Manager module hard-codes from `pkgs` without an option stay
+  stable and unseen: `zsh-autosuggestions` and the default tmux plugins.
 - **`pkgs`** (stable) is used only at the NixOS system level
-  (`flake.nix` `sharedModule`, `hosts/nixOS.nix`).
-- `home/base.nix` does **not** take `pkgs` as an argument. Everything
-  goes through `unstable`.
+  (`hosts/nixOS.nix`), and for these exceptions, which the check
+  allows by name on either host:
+  - `sqlfluff`, in `home/base.nix`: the unstable one needs `diff-cover`
+    10.5.1, whose HTML snapshot tests fail under Pygments 2.21.
+  - `audacity`, in `home/nixOS.nix`: the unstable one is 4.0.0, which
+    the binary cache lacks, so a rebuild compiles it.
+  - `zsh`, for `programs.zsh` in `home/base.nix`: on nixOS the login
+    shell is NixOS's stable zsh, and on the Mac nix-darwin puts the
+    stable zsh on `PATH` with its `/etc/zshrc`; a second zsh would point
+    `HELPDIR` at a version that shell lacks. The Mac's login shell stays
+    Apple's `/bin/zsh`, which no choice here matches.
+  - `nix-zsh-completions`, which Home Manager's zsh module hard-codes.
 
 ## Dependency upgrade
 
@@ -237,6 +256,13 @@ services.example.enable = unstable.lib.mkIf unstable.stdenv.hostPlatform.isAarch
 Use sentence case for document titles. Do not use hyphens as
 punctuation; restructure the sentence instead. Hyphenated words (e.g.
 "platform-specific") are fine.
+
+A comment in Nix says why, in a few lines, what the code cannot say by
+itself. A longer story (an incident, a workaround and its references,
+the alternatives tried) goes in `docs/`, and the comment names the
+page by its path. A fact that no page holds stays in the comment until
+one does. Leave out comments that repeat the code, the option's
+documentation or the history of a renamed option.
 
 ## Inline scripts
 

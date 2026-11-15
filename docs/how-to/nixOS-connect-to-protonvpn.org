@@ -2,7 +2,7 @@
 #+author: piotr-yuxuan
 
 nixOS uses NetworkManager (=networking.networkmanager.enable = true= in
-=flake.nix=), which has native WireGuard support.  ProtonVPN connections
+=hosts/nixOS.nix=), which has native WireGuard support.  ProtonVPN connections
 are imported at runtime as NetworkManager profiles rather than declared
 in Nix.  Once imported, they appear in GNOME Settings > Network > VPN
 and persist across reboots in

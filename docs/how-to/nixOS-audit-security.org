@@ -16,10 +16,26 @@ encrypted device is the sole persistent storage.
 
 * Secure Boot
 
-Run =sudo sbctl verify= to confirm all boot files carry valid
-signatures.  Check that the audit rule on =/etc/secureboot= is loaded
-with =sudo auditctl -l | grep secureboot=, and review the changes it
+Run =sbctl status= and confirm Setup Mode disabled, Secure Boot
+enabled, and no =builtin-PK= among the vendor keys; otherwise follow
+[[file:nixOS-enable-secure-boot.org][Enable Secure Boot on nixOS]].  Run =fwupdmgr get-updates= and
+confirm UEFI dbx has no pending update.  Run =sudo sbctl verify= to
+confirm all boot files carry valid signatures.  Check that the audit
+rule on =/etc/secureboot= is loaded with
+=sudo auditctl -l | grep secureboot=, and review the changes it
 recorded with =sudo ausearch -k secureboot=.
+
+* Firmware settings
+
+Run =fwupdmgr get-updates= for firmware updates.  Open the firmware
+setup once a quarter, from a full shutdown, and compare it with
+[[file:../reference/nixOS-firmware-settings.org][nixOS firmware settings]]: it must ask for the supervisor password.
+
+* Drive health
+
+Run =journalctl -u smartd -p warning= and confirm it shows nothing
+new.  Run =sudo smartctl -a /dev/nvme0= and read =Percentage Used=,
+=Available Spare= and =Media and Data Integrity Errors=.
 
 * Firewall rules
 
@@ -73,7 +89,7 @@ Run =coredumpctl list= and investigate any unexpected entries.
 
 After every unexpected reboot, run =ls /var/lib/systemd/pstore/= for
 panic dumps and =journalctl -b -1 -p err= for the previous boot's
-errors.
+errors.  A clean shutdown leaves no dump.
 
 * Firejail check
 
@@ -88,8 +104,9 @@ Run =systemctl --user show maestral | grep -i protect= and verify that
 
 * Automatic updates
 
-Run =journalctl -u nixos-upgrade.service= to check the last upgrade
-attempt and its outcome.
+Nothing updates the system by itself.  Run =nix flake metadata= in the
+checkout to see how old each input is, and update as
+[[file:update-flake-inputs.org][Update flake inputs]] describes.
 
 * Thunderbolt devices
 

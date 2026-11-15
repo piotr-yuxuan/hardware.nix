@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2154
-# Variables stat_cmd, id_cmd, notify_send, and emacsclient are set by the
-# Nix wrapper.
+# stat, id, notify-send and emacsclient come from PATH.
 
 msg="SNAPSHOT FAILURE: btrbk-home.service failed. Run: journalctl -u btrbk-home.service"
 
@@ -14,15 +12,15 @@ msg="SNAPSHOT FAILURE: btrbk-home.service failed. Run: journalctl -u btrbk-home.
 # so it is covered by the emacsclient warning below instead.
 for pts in /dev/pts/[0-9]*; do
 	[ -c "$pts" ] || continue
-	owner=$("$stat_cmd" -c %U "$pts" 2>/dev/null) || continue
+	owner=$(stat -c %U "$pts" 2>/dev/null) || continue
 	[ "$owner" = "example" ] || continue
 	printf '\n\033[1;31m*** %s ***\033[0m\n' "$msg" >"$pts" 2>/dev/null || true
 done
 
-uid=$("$id_cmd" -u example)
+uid=$(id -u example)
 
 # Emacs warning buffer (covers mistty and any Emacs frame).
-/run/wrappers/bin/sudo -u example "$emacsclient" -e \
+/run/wrappers/bin/sudo -u example emacsclient -e \
 	"(display-warning 'btrbk \"$msg\" :error)" \
 	2>/dev/null || true
 
@@ -30,7 +28,7 @@ uid=$("$id_cmd" -u example)
 if [ -d "/run/user/$uid" ]; then
 	/run/wrappers/bin/sudo -u example \
 		DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
-		"$notify_send" -u critical \
+		notify-send -u critical \
 		"Snapshot FAILED" \
 		"btrbk-home.service failed. Run: journalctl -u btrbk-home.service"
 fi

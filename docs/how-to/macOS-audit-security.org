@@ -70,8 +70,8 @@ Run =brew update && brew outdated= to check for lagging packages.
 
 * Nix settings
 
-Run =nix config show trusted-users= and verify that only =root= and
-your account are listed.  Run =nix config show require-sigs= and verify
+Run =nix config show trusted-users= and verify that only =root= is
+listed.  Run =nix config show require-sigs= and verify
 it prints =true=.
 
 * Nix store trust

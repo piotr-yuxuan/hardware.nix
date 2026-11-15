@@ -2,13 +2,11 @@
   config,
   lib,
   pkgs,
-  self,
   unstable,
   ...
 }: let
-  # Provide icons and metadata from firejail-wrapped packages so GNOME
-  # can display them in the application grid.  Only share/ is kept;
-  # the actual binaries are shadowed by firejail wrappers.
+  # Icons and desktop metadata of the firejail-wrapped apps, for GNOME's
+  # grid; their binaries stay behind the firejail wrappers.
   sandboxedAppIcons = pkgs.symlinkJoin {
     name = "sandboxed-app-icons";
     paths = [
@@ -37,9 +35,8 @@
   # "VLC's launchers".
   vlcDesktop = pkgs.runCommand "vlc-desktop" {} ''mkdir -p $out/share/applications && substitute ${unstable.vlc}/share/applications/vlc.desktop $out/share/applications/vlc.desktop --replace-fail "${unstable.vlc}/bin/vlc" "${vlcNoHwDecode}"'';
 
-  # Signal's Electron shell opens links by spawning xdg-open.  Put a narrow
-  # portal client first on Signal's PATH so the host launches the configured
-  # Firejail-wrapped browser instead of nesting Firefox inside Signal's jail.
+  # Signal opens links with xdg-open: a portal client first on its PATH
+  # makes the host start the sandboxed browser, not one inside Signal's jail.
   signalPortalXdgOpen = pkgs.writeShellApplication {
     name = "xdg-open";
     runtimeInputs = [pkgs.glib];
@@ -54,13 +51,42 @@ in {
   imports =
     # Paired Bluetooth devices.
     lib.optional (builtins.pathExists ./nixOS/bluetooth-devices.nix) ./nixOS/bluetooth-devices.nix
-    # Time zone, locales and keyboard layout.
+    # Locales and keyboard layout.
     ++ lib.optional (builtins.pathExists ./nixOS/personal.nix) ./nixOS/personal.nix;
 
   networking.hostName = "nixOS";
 
+  nixpkgs.config.allowUnfree = true;
+
+  nix.settings = {
+    experimental-features = ["nix-command" "flakes"];
+    auto-optimise-store = true;
+    # Only wheel users may talk to the Nix daemon (build, fetch, etc.).
+    allowed-users = ["@wheel"];
+    # example rather than @wheel, so that a future account cannot push
+    # store paths that bypass signatures. NixOS adds root itself.
+    trusted-users = ["example"];
+  };
+
+  networking.networkmanager.enable = true;
+
+  security.sudo.execWheelOnly = true;
+
+  # Passwords change only through hashedPasswordFile and a rebuild.
+  users.mutableUsers = false;
+
+  users.users.example = {
+    isNormalUser = true;
+    description = "Example";
+    shell = pkgs.zsh;
+    extraGroups = ["wheel" "networkmanager" "video" "audio" "kvm" "libvirtd" "input"];
+    hashedPasswordFile = "/etc/secrets/example-password";
+  };
+
+  # Puts zsh in /etc/shells; Home Manager configures it.
+  programs.zsh.enable = true;
+
   # Boot
-  boot.loader.systemd-boot.enable = lib.mkForce false;
   boot.loader.efi.canTouchEfiVariables = true;
 
   boot.lanzaboote = {
@@ -73,43 +99,22 @@ in {
     };
   };
 
-  # Initrd
-  boot.initrd.systemd.enable = true;
-  # LUKS device is declared by disko; do NOT redeclare it here.
-  # Early KMS (amdgpu in initrd) is handled by nixos-hardware's
-  # framework-16-7040-amd profile via hardware.amdgpu.initrd.enable.
-
-  # Hibernate
-  boot.resumeDevice = "/dev/vg-nixOS/lv-swap";
-
-  # Kernel: the 7.2 series, fixed since 7.2.8 for a TTM use-after-free that crashed this laptop after hibernation.
-  # 6.18.57 carries that defect without its fix. Why, and when to change: docs/explanation/nixOS-kernel-choice.org.
+  # The 7.2 series, fixed since 7.2.8 for a crash after hibernation. Why
+  # and when to change: docs/explanation/nixOS-kernel-choice.org.
   boot.kernelPackages = pkgs.linuxPackages_7_2;
 
-  # Keyboard layout (EVERYWHERE)
-  # The XKB layout itself (services.xserver.xkb, used by GNOME/Wayland)
-  # is a personal setting: see hosts/nixOS/personal.nix.
-  # Virtual console (TTY): derive from xkb so they always match
+  # The console and the LUKS prompt use the XKB layout that
+  # hosts/nixOS/personal.nix sets.
   console.useXkbConfig = true;
-  # Push the keymap into initrd so the LUKS passphrase prompt uses it too
   console.earlySetup = true;
 
-  # GNOME + Wayland
   services.xserver.enable = true;
   services.displayManager.gdm.enable = true;
   services.desktopManager.gnome.enable = true;
 
-  # Iiyama PL3494WQ: editable default at fixed 120 Hz, avoiding video
-  # blanking with VRR. GNOME's saved user profiles take precedence.
-  # Physical monitor: Extra2 > USB-C > USB 2.0; see
-  # docs/explanation/nixOS-iiyama-display.org.
+  # Default layout of the Iiyama monitor, at a fixed 120 Hz; GNOME's saved
+  # profiles win. Why: docs/explanation/nixOS-iiyama-display.org.
   environment.etc."xdg/monitors.xml".source = ../config/gnome/monitors.xml;
-
-  # Wayland: GNOME 50 (NixOS 26.05) is Wayland-only; the former
-  # services.displayManager.gdm.wayland toggle was removed.
-
-  services.gnome.gnome-keyring.enable = true;
-  security.pam.services.gdm-password.enableGnomeKeyring = true;
 
   programs.codexDesktopLinux.enable = true;
 
@@ -131,51 +136,29 @@ in {
     ];
   };
 
-  # Automatic timezone (automatic-timezoned via geoclue)
-  #
-  # Override any static time zone (hosts/nixOS/personal.nix sets a
-  # fallback) so the timezone can be set dynamically via geolocation.
-  #
-  # automatic-timezoned queries geoclue for the current location,
-  # resolves it to a timezone using an offline tzf-rs database (no
-  # external API call), and calls org.freedesktop.timedate1.SetTimezone
-  # via systemd-timedated.  It re-runs on every LocationUpdated signal
-  # from geoclue, which fires each time the network changes.
-  #
-  # The GNOME desktop module sets enableDemoAgent = false and removes
-  # "geoclue-demo-agent" from the geoclue agent whitelist, because
-  # GNOME Shell acts as the session agent.  automatic-timezoned runs
-  # its own copy of the demo agent as a system service; we must add it
-  # back to the whitelist explicitly, otherwise geoclue rejects the
-  # agent and stops emitting LocationUpdated after the first boot query.
-  #
-  # WiFi is left enabled (BeaconDB) so the source is properly
-  # initialised with a valid URL.  geoclue also runs a GeoIP source in
-  # parallel; when no WiFi networks are visible (e.g. USB/phone
-  # tethering) the GeoIP result is used instead.  Disabling WiFi via
-  # the NixOS option omits the url= key from the config file, which
-  # causes geoclue to log "Could not parse locate URL ''" and fail.
-  #
-  # gsd-datetime (enabled by automatic-timezone = true in dconf) was
-  # tried first but it depends on a Nominatim API response that does not
-  # always include a timezone field, causing a null-pointer assertion.
-  time.timeZone = lib.mkForce null;
+  # The time zone follows geoclue's location, resolved offline, again at
+  # each network change. GNOME drops geoclue-demo-agent from the
+  # whitelist, but automatic-timezoned runs it: without it geoclue stops
+  # reporting after the first query. Keep geoclue's WiFi source, with
+  # GeoIP beside it for tethering: disabling WiFi removes url= from the
+  # configuration, and geoclue fails with "Could not parse locate URL ''".
+  # gsd-datetime alone failed on Nominatim answers without a time zone.
   services.automatic-timezoned.enable = true;
   services.geoclue2.whitelistedAgents = ["gnome-shell" "geoclue-demo-agent"];
 
+  # Lets the active local session set the time zone without a prompt:
+  # GNOME's own automatic time zone (dconf, home/nixOS.nix) and manual
+  # changes. automatic-timezoned brings its own rule for its own user.
   security.polkit.extraConfig = builtins.readFile ../config/polkit/set-timezone.rules;
 
-  # Time synchronisation
-  # NTP via systemd-timesyncd: keeps the hardware clock accurate.
-  # mkDefault so the qemu-vm module can disable it inside the VM.
-  services.timesyncd.enable = lib.mkDefault true;
-
-  # Btrfs tools
   environment.systemPackages = [
+    pkgs.vim
+    pkgs.git
+    pkgs.sbctl # for debugging Secure Boot after install
     pkgs.compsize
+    pkgs.smartmontools
     sandboxedAppIcons
     pkgs.virt-manager
-    pkgs.qemu_kvm
     unstable.torsocks
   ];
 
@@ -198,6 +181,7 @@ in {
         "quay.io" = [{type = "insecureAcceptAnything";}];
         "docker.elastic.co" = [{type = "insecureAcceptAnything";}];
         "ghcr.io" = [{type = "insecureAcceptAnything";}];
+        "mcr.microsoft.com" = [{type = "insecureAcceptAnything";}];
       };
       transports."containers-storage" = {
         "[overlay@/home/example/.local/share/containers/storage]" = [
@@ -208,13 +192,8 @@ in {
     registries.search = ["docker.io"];
   };
 
-  # QEMU/KVM virtualisation (OSX-KVM and general VM use)
-  #
-  # libvirtd provides a management daemon for QEMU/KVM VMs.
-  # virt-manager offers a GUI for creating and managing VMs.
-  # The KVM modprobe options are required for macOS guest support on
-  # AMD: ignore_msrs prevents crashes on unhandled MSR accesses, and
-  # nested=1 enables nested virtualisation.
+  # QEMU/KVM, with virt-manager. macOS guests on AMD (OSX-KVM) need KVM
+  # to ignore unhandled MSRs; nesting allows VMs in VMs.
   virtualisation.libvirtd = {
     enable = true;
     qemu = {
@@ -228,24 +207,24 @@ in {
     options kvm ignore_msrs=1 report_ignored_msrs=0
   '';
 
-  # Btrfs maintenance
+  # NVMe health, reported to the journal, terminals and GNOME. Any local
+  # user may then send notifications, fine on a single-user laptop; the
+  # X11 path (xmessage) does not reach Wayland.
+  services.smartd = {
+    enable = true;
+    notifications.systembus-notify.enable = true;
+    notifications.x11.enable = false;
+  };
+
   services.btrfs.autoScrub = {
     enable = true;
-    interval = "monthly";
+    # Monthly by default. Named, not derived, because the VM mounts no
+    # btrfs and its scrub assertion needs a file system.
     fileSystems = ["/"];
   };
 
-  # Btrfs block-level deduplication (bees)
-  #
-  # Bees scans the filesystem for duplicate extents and deduplicates
-  # them in the background using FIDEDUPERANGE.  This is transparent
-  # to user programmes and users: files keep their original paths,
-  # permissions, and contents.  Bees is compression-aware and works
-  # well with the zstd compression already enabled on all subvolumes.
-  #
-  # All subvolumes (@root, @example, @example-cache, @.snapshots) live
-  # on the same btrfs filesystem (lv-btrfs), so one bees instance
-  # covers everything.
+  # Background deduplication; one instance covers every subvolume of the
+  # single btrfs file system.
   services.beesd.filesystems.root = {
     spec = "/";
     hashTableSizeMB = 128;
@@ -253,16 +232,14 @@ in {
     extraOptions = ["--loadavg-target" "4.0"];
   };
 
-  # Automated btrfs snapshots (home directory)
-  # Hourly local snapshots of /home/example into /.snapshots/.
-  # Persistent=true on the timer guarantees a snapshot on every boot
-  # (catches up missed runs while the machine was off).
+  # Hourly snapshots of /home/example in /.snapshots; a run missed while
+  # the machine was off happens at the next boot.
   services.btrbk.instances.home = {
     onCalendar = "hourly";
     settings = {
       snapshot_create = "always"; # no remote target, so force local snapshots
       snapshot_preserve_min = "2h";
-      snapshot_preserve = "24h 5d 3w"; # 24 hourly, 5 daily, 3 weekly
+      snapshot_preserve = "12h 7d 2w"; # 12 hourly, 7 daily, 2 weekly
 
       volume."/" = {
         snapshot_dir = ".snapshots";
@@ -271,29 +248,18 @@ in {
     };
   };
 
-  systemd.timers."btrbk-home".timerConfig.Persistent = true;
-
-  # The btrbk service uses sudo to run btrfs commands as root.
-  # security.sudo.execWheelOnly restricts the sudo binary to wheel
-  # members, so the btrbk system user needs to be in that group.
-  # Its actual privileges are still limited by sudoers rules (only
-  # btrfs, mkdir, readlink with NOPASSWD).
+  # btrbk runs btrfs through sudo, which execWheelOnly keeps to wheel;
+  # its sudoers rules still allow only btrfs, mkdir and readlink.
   users.users.btrbk.extraGroups = ["wheel"];
 
-  # Snapshot failure alert
-  # PTY broadcast + critical desktop notification when btrbk fails.
+  # When a snapshot fails: a message in every terminal, Emacs and GNOME.
   systemd.services."btrbk-home".unitConfig.OnFailure = ["btrbk-home-failure-alert.service"];
   systemd.services."btrbk-home-failure-alert" = {
     description = "Alert on btrbk snapshot failure";
+    path = [pkgs.libnotify unstable.emacs-pgtk];
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "btrbk-failure-alert" ''
-        stat_cmd=${pkgs.coreutils}/bin/stat
-        id_cmd=${pkgs.coreutils}/bin/id
-        notify_send=${pkgs.libnotify}/bin/notify-send
-        emacsclient=${unstable.emacs-pgtk}/bin/emacsclient
-        ${builtins.readFile ../scripts/btrbk-failure-alert.sh}
-      '';
+      ExecStart = "${pkgs.bash}/bin/bash ${../scripts/btrbk-failure-alert.sh}";
     };
   };
 
@@ -303,66 +269,37 @@ in {
     HandlePowerKey = "hibernate";
   };
 
-  # 26.05: systemd.sleep.extraConfig was replaced by settings.Sleep.
   systemd.sleep.settings.Sleep.HibernateDelaySec = "30min";
 
-  # Touchpad watchdog
-  #
-  # The PixArt PIXA3854 I2C HID touchpad sometimes enters a stuck
-  # state where the firmware sends only MSC_TIMESTAMP heartbeat
-  # events with no position data.  This happens both after
-  # suspend/resume and spontaneously during normal use.  The
-  # watchdog samples raw evdev events and reloads i2c_hid_acpi when
-  # it detects the stuck signature, recovering the touchpad within
-  # seconds without user intervention.
+  # Reloads i2c_hid_acpi when the PixArt touchpad sends timestamps but no
+  # positions, as it sometimes does: docs/reference/package-guide.org.
   systemd.services."touchpad-watchdog" = {
     description = "PixArt touchpad stuck-state watchdog";
     wantedBy = ["multi-user.target"];
     after = ["systemd-modules-load.service"];
+    path = [pkgs.python3 pkgs.kmod];
     serviceConfig = {
       Type = "simple";
       Restart = "always";
       RestartSec = 5;
-      ExecStart = pkgs.writeScript "touchpad-watchdog" ''
-        #!${pkgs.zsh}/bin/zsh
-        python_cmd=${pkgs.python3}/bin/python3
-        watchdog_py=${../scripts/touchpad_watchdog.py}
-        modprobe_cmd=${pkgs.kmod}/bin/modprobe
-        sleep_cmd=${pkgs.coreutils}/bin/sleep
-        ${builtins.readFile ../scripts/touchpad-watchdog.zsh}
-      '';
+      ExecStart = "${pkgs.bash}/bin/bash ${../scripts/touchpad-watchdog.sh} ${../scripts/touchpad_watchdog.py}";
     };
   };
 
+  # Kernel and network hardening, value by value in
+  # docs/explanation/nixOS-security-posture.org. kexec is locked by hand:
+  # security.protectKernelImage would also forbid hibernation.
   boot.kernel.sysctl = {
-    # Kernel hardening security.protectKernelImage adds
-    # kexec_load_disabled (good) but also injects "nohibernate" into
-    # boot.kernelParams, which conflicts with suspend-then-hibernate
-    # and the explicit resume device. Since this laptop uses
-    # LUKS-encrypted swap and Secure Boot, the hibernate image is
-    # encrypted at rest and the boot chain validated, so hibernation
-    # is not an attack vector. Apply the kexec lockdown manually
-    # instead.
     "kernel.kexec_load_disabled" = true;
-    # Restrict ptrace to direct parent only (blocks debugger-based escalation)
     "kernel.yama.ptrace_scope" = 2;
-    # Hide kernel pointers from unprivileged users
     "kernel.kptr_restrict" = 2;
-    # Disable Magic SysRq (not needed on a personal laptop)
     "kernel.sysrq" = 0;
-    # Prevent unprivileged BPF (large kernel attack surface)
     "kernel.unprivileged_bpf_disabled" = 1;
-    # Harden BPF JIT compiler
     "net.core.bpf_jit_harden" = 2;
-    # Restrict dmesg to processes with CAP_SYSLOG (root / journalctl)
     "kernel.dmesg_restrict" = 1;
 
-    # Network stack hardening
-    # Strict reverse path filtering: drop packets whose source address
-    # would not be routed back through the same interface.
     "net.ipv4.conf.all.rp_filter" = 1;
     "net.ipv4.conf.default.rp_filter" = 1;
-    # Reject ICMP redirects (not a router, never needs them)
     "net.ipv4.conf.all.accept_redirects" = false;
     "net.ipv4.conf.default.accept_redirects" = false;
     "net.ipv6.conf.all.accept_redirects" = false;
@@ -371,43 +308,17 @@ in {
     "net.ipv4.conf.default.send_redirects" = false;
     "net.ipv4.conf.all.secure_redirects" = false;
     "net.ipv4.conf.default.secure_redirects" = false;
-    # Log martian (impossible source) packets for detection
     "net.ipv4.conf.all.log_martians" = true;
     "net.ipv4.conf.default.log_martians" = true;
   };
 
-  # Thunderbolt / USB4 authorisation
-  # Framework 16 AMD 7040 has USB4 (Thunderbolt 4). Bolt lets GNOME
-  # prompt the user before authorising new Thunderbolt/USB4 devices,
-  # preventing rogue DMA attacks from plugged-in peripherals.
+  # GNOME asks before authorising a new Thunderbolt or USB4 device.
   services.hardware.bolt.enable = true;
 
-  # USB-C monitor (Iiyama PL3494WQ) hotplug stabilisation
-  #
-  # The Infineon CYPD82xx PD controller firmware on Framework AMD
-  # laptops has a race during USB-C DP Alt Mode negotiation that
-  # tears down the USB4 tunnel, disconnecting the monitor's Realtek
-  # hub (0bda:5420) and restarting the handshake.  This is a known,
-  # unfixed issue across all Framework AMD models (7040, AI 300,
-  # AI 370), tracked since June 2024.  No kernel parameter,
-  # firmware update, or upstream patch resolves it.
-  #
-  # References:
-  #   https://community.frame.work/t/tracking-usb-c-error-on-boot/52012
-  #   https://community.frame.work/t/display-connecting-infinitely-via-usb-c/68717
-  #   https://community.frame.work/t/solved-issues-connecting-to-usb-c-monitor-amd-ryzen-ai-350/68468
-  #
-  # Two layers cooperate to mitigate this:
-  #
-  # 1. udev (99-iiyama-usb-hub.rules): disable runtime PM on the
-  #    Realtek hub, pin the xHCI controller (0000:c3:00.3) to D0,
-  #    and forbid D3cold.  This narrows the race window.
-  #
-  # 2. Watchdog (usbc-monitor-stabilize): polls journalctl for rapid
-  #    disconnect events on bus 5-1.  When cycling is detected it
-  #    reloads ucsi_acpi and rebinds the xHCI controller, forcing a
-  #    clean Alt Mode renegotiation.  This breaks the loop that
-  #    otherwise takes minutes to self-resolve.
+  # A firmware race of Framework AMD laptops makes the Iiyama's USB hub
+  # cycle. The udev rules keep the hub and its controller powered; the
+  # watchdog resets the USB-C stack when it sees the cycle. Story and
+  # references: docs/reference/package-guide.org.
   services.udev.extraRules =
     builtins.readFile ../config/udev/99-iiyama-usb-hub.rules;
 
@@ -415,54 +326,32 @@ in {
     description = "Watchdog for USB-C monitor hub cycling";
     wantedBy = ["multi-user.target"];
     after = ["systemd-journald.service"];
+    path = [pkgs.kmod];
     serviceConfig = {
       Type = "simple";
       Restart = "always";
       RestartSec = 5;
-      ExecStart = pkgs.writeShellScript "usbc-monitor-stabilize" ''
-        journalctl_cmd=${pkgs.systemd}/bin/journalctl
-        grep_cmd=${pkgs.gnugrep}/bin/grep
-        modprobe_cmd=${pkgs.kmod}/bin/modprobe
-        sleep_cmd=${pkgs.coreutils}/bin/sleep
-        ${builtins.readFile ../scripts/usbc-monitor-stabilize.sh}
-      '';
+      ExecStart = "${pkgs.bash}/bin/bash ${../scripts/usbc-monitor-stabilize.sh}";
     };
   };
 
-  # Crash logging (pstore)
-  # On kernel panic, the firmware writes the last dmesg to UEFI NVRAM
-  # ("pstore").  systemd-pstore (already enabled by NixOS) archives it
-  # to /var/lib/systemd/pstore/ on the next boot.  The kernel param
-  # below ensures the full ring buffer is flushed to pstore on panic.
   boot.kernelParams = [
-    "printk.always_kmsg_dump=1"
     "quiet"
-    "splash"
   ];
 
-  # Plymouth (graphical boot splash)
   boot.plymouth.enable = true;
 
-  # GPU acceleration (AMD Radeon 780M / Phoenix iGPU)
-  # nixos-hardware already enables:
-  #   • hardware.graphics.enable       (Mesa: OpenGL + Vulkan/RADV)
-  #   • hardware.graphics.enable32Bit  (32-bit Mesa for Wine/Steam)
-  #   • hardware.amdgpu.initrd.enable  (early KMS in initrd)
-  # VA-API: hardware video decode/encode that saves battery on laptop.
+  # VA-API decoding saves battery; Mesa and the rest come with
+  # nixos-hardware's profile.
   hardware.graphics.extraPackages = with pkgs; [
-    # AMD VA-API driver (H.264, HEVC, VP9, AV1 decode on the iGPU)
     libvdpau-va-gl # VDPAU-over-VA-API shim for apps that use VDPAU
   ];
-
-  # Tell VA-API to use the radeonsi driver (Mesa's built-in)
-  environment.variables.LIBVA_DRIVER_NAME = "radeonsi";
 
   # Local model inference through the Radeon 780M's Mesa Vulkan driver.
   # Start and stop explicitly with sudo systemctl start/stop ollama.
   services.ollama = {
     enable = true;
     package = unstable.ollama-vulkan;
-    host = "127.0.0.1";
     environmentVariables = {
       OLLAMA_NO_CLOUD = "1";
       OLLAMA_DEBUG = "1";
@@ -470,36 +359,27 @@ in {
   };
   systemd.services.ollama.wantedBy = lib.mkForce [];
 
-  # Audit subsystem (intrusion detection)
-  security.audit.enable = true;
+  # Audit: every execve, and writes to the user, Secure Boot and sudo
+  # files (docs/explanation/nixOS-security-posture.org).
   security.auditd.enable = true;
   security.audit.rules = [
-    # Log all execve calls (catches reverse shells, unexpected binaries)
     "-a always,exit -F arch=b64 -S execve -k exec"
-    # Monitor changes to authentication databases
     "-w /etc/shadow -p wa -k shadow"
     "-w /etc/passwd -p wa -k passwd"
     "-w /etc/group -p wa -k group"
-    # Monitor Secure Boot key material
     "-w /etc/secureboot -p wa -k secureboot"
-    # Monitor sudo configuration
     "-w /etc/sudoers -p wa -k sudoers"
     "-w /etc/sudoers.d -p wa -k sudoers"
   ];
 
-  # Polkit: create missing FHS rules directories so polkitd does not
-  # log harmless "Error opening directory" warnings at startup.
+  # Directories polkitd looks for, so that it logs no warning at start.
   systemd.tmpfiles.rules = [
     "d /run/polkit-1/rules.d 0755 polkitd root -"
     "d /usr/local/share/polkit-1/rules.d 0755 polkitd root -"
   ];
 
-  # Coredump capture for userspace crashes
-  # systemd-coredump stores dumps in /var/lib/systemd/coredump/ so you
-  # can inspect them after reboot with `coredumpctl list` / `coredumpctl info`.
+  # Crash dumps in /var/lib/systemd/coredump, read with coredumpctl.
   systemd.coredump = {
-    enable = true;
-    # 26.05: extraConfig was replaced by settings.Coredump.
     settings.Coredump = {
       Storage = "external";
       Compress = "yes";
@@ -507,61 +387,34 @@ in {
     };
   };
 
-  # /tmp as tmpfs (RAM backed, cleared on reboot)
-  # Prevents sensitive temporary files from persisting on disk.
-  # Defaults to 50 % of RAM; large builds should use ~/tmp instead.
+  # /tmp in RAM (half of it at most), so nothing there reaches the disk.
   boot.tmp.useTmpfs = true;
 
-  # Automatic security updates
-  # Persistent=true ensures missed triggers (laptop off or hibernated)
-  # are caught up on the next boot.
-  system.autoUpgrade = {
-    enable = true;
-    flake = toString self;
-    dates = "04:00";
-    randomizedDelaySec = "30min";
-    persistent = true;
-  };
-
-  # Firejail: filesystem sandboxing for GUI applications
-  #
-  # Each profile is wrapped with builtins.path so Nix copies it into
-  # its own store entry that the derivation references.  Without this,
-  # the profile resolves to the flake-source store path, which is NOT
-  # registered as a build input and gets garbage-collected.
+  # Firejail sandboxes for GUI apps. Each profile is an interpolated
+  # string: the module applies toString, so a bare path would leave the
+  # wrapper without a dependency on its profile, which the garbage
+  # collector would then remove.
   programs.firejail = {
     enable = true;
     wrappedBinaries = {
       firefox-devedition = {
         executable = "${unstable.firefox-devedition}/bin/firefox-devedition";
-        profile = builtins.path {
-          path = ../config/firejail/firefox.profile;
-          name = "firejail-firefox-profile";
-        };
+        profile = "${../config/firejail/firefox.profile}";
         desktop = "${unstable.firefox-devedition}/share/applications/firefox-devedition.desktop";
       };
       code = {
         executable = "${unstable.vscode}/bin/code";
-        profile = builtins.path {
-          path = ../config/firejail/vscode.profile;
-          name = "firejail-vscode-profile";
-        };
+        profile = "${../config/firejail/vscode.profile}";
         desktop = "${unstable.vscode}/share/applications/code.desktop";
       };
       signal-desktop = {
         executable = "${signalDesktopWithPortal}/bin/signal-desktop-with-portal";
-        profile = builtins.path {
-          path = ../config/firejail/signal.profile;
-          name = "firejail-signal-profile";
-        };
+        profile = "${../config/firejail/signal.profile}";
         desktop = "${unstable.signal-desktop}/share/applications/signal.desktop";
       };
       vlc = {
         executable = "${vlcNoHwDecode}";
-        profile = builtins.path {
-          path = ../config/firejail/vlc.profile;
-          name = "firejail-vlc-profile";
-        };
+        profile = "${../config/firejail/vlc.profile}";
         desktop = "${vlcDesktop}/share/applications/vlc.desktop";
       };
       # The player of Emacs ready-player; not in home.packages, which
@@ -569,41 +422,25 @@ in {
       # "mpv for ready-player".
       mpv = {
         executable = "${unstable.mpv.override {scripts = [unstable.mpvScripts.mpris];}}/bin/mpv";
-        profile = builtins.path {
-          path = ../config/firejail/mpv.profile;
-          name = "firejail-mpv-profile";
-        };
+        profile = "${../config/firejail/mpv.profile}";
       };
       Discord = {
         executable = "${unstable.discord}/bin/discord";
-        profile = builtins.path {
-          path = ../config/firejail/discord.profile;
-          name = "firejail-discord-profile";
-        };
+        profile = "${../config/firejail/discord.profile}";
         desktop = "${unstable.discord}/share/applications/discord.desktop";
       };
       transmission-gtk = {
         executable = "${unstable.transmission_4-gtk}/bin/transmission-gtk";
-        profile = builtins.path {
-          path = ../config/firejail/transmission-gtk.profile;
-          name = "firejail-transmission-gtk-profile";
-        };
+        profile = "${../config/firejail/transmission-gtk.profile}";
         desktop = "${unstable.transmission_4-gtk}/share/applications/transmission-gtk.desktop";
       };
     };
   };
 
-  # User avatar for GDM and GNOME
-  #
-  # AccountsService reads /var/lib/AccountsService/icons/<user> to
-  # display the profile picture on the lock screen and in Settings.
-  system.activationScripts.accountsservice-avatar = lib.mkIf (builtins.pathExists ../img/nixOS/avatar.png) (lib.stringAfter ["users"] ''
-    avatar_src=${../img/nixOS/avatar.png}
-    ${builtins.readFile ../scripts/accountsservice-avatar.sh}
-  '');
+  # The picture GDM and GNOME Settings show for the user.
+  system.activationScripts.accountsservice-avatar = lib.mkIf (builtins.pathExists ../img/nixOS/avatar.png) (lib.stringAfter ["users"] "install -D -m 0644 ${../img/nixOS/avatar.png} /var/lib/AccountsService/icons/example");
 
-  # LocalSend: cross-platform file sharing (AirDrop alternative)
-  # The NixOS module opens firewall port 53317 (TCP+UDP) by default.
+  # LocalSend, file sharing like AirDrop; opens port 53317.
   programs.localsend = {
     enable = true;
     package = unstable.localsend;
@@ -616,32 +453,19 @@ in {
   # Reuse the NixOS bundle, including any configured additional roots.
   environment.etc."ssl/cert.pem".source = "/etc/ssl/certs/ca-certificates.crt";
 
-  # nh: Nix CLI helper providing human-friendly rebuild, diff, and GC.
-  # The module sets NH_OS_FLAKE (which takes precedence over NH_FLAKE for
-  # `nh os` commands) and installs a weekly `nh clean` systemd service.
+  # nh, with a weekly `nh clean`. No flake is set: run `nh os switch .`
+  # in the checkout.
   programs.nh = {
     enable = true;
     package = unstable.nh;
-    flake = toString self;
     clean = {
       enable = true;
-      # Keep the last 5 generations and anything touched in the last 7 days.
       extraArgs = "--keep 5 --keep-since 7d";
     };
   };
 
-  # Disable the fleet-wide nix.gc.automatic (set in flake.nix sharedModule)
-  # because nh clean (above) provides a more capable replacement: it prunes
-  # gcroots in addition to old generations and respects --keep-since.
-  nix.gc.automatic = lib.mkForce false;
-
-  # Tor: anonymous communication network
-  #
-  # The daemon runs at all times (lightweight, only listens on
-  # localhost) so the circuit is already established when the
-  # transparent proxy is toggled on.  TransPort and DNSPort handle
-  # redirected traffic; the default SOCKSPort (9050) remains available
-  # for apps that can use SOCKS directly (e.g. torsocks).
+  # Tor runs all the time, on localhost only, so that its circuit is
+  # ready when the transparent proxy below starts; SOCKS stays on 9050.
   services.tor = {
     enable = true;
     client.enable = true;
@@ -662,78 +486,47 @@ in {
     };
   };
 
-  # Tor transparent proxy (toggleable)
-  #
-  # A oneshot service that installs nftables redirect rules on start
-  # and removes them on stop.  Not started at boot; the user must
-  # explicitly run: sudo systemctl start tor-transparent-proxy
-  #
-  # The nftables rules live in a dedicated table
-  # (tor-transparent-proxy) that is independent of the NixOS firewall
-  # table.  Deleting it on stop cannot corrupt the system firewall.
+  # Routes all traffic through Tor while started by hand
+  # (`sudo systemctl start tor-transparent-proxy`), with nftables rules in
+  # a table of their own, apart from the firewall's.
   systemd.services."tor-transparent-proxy" = {
     description = "Tor transparent proxy (nftables redirect)";
     requires = ["tor.service"];
     after = ["tor.service"];
+    path = [pkgs.nftables];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      ExecStart = pkgs.writeShellScript "tor-transparent-proxy-on" ''
-        nft_cmd=${pkgs.nftables}/bin/nft
-        id_cmd=${pkgs.coreutils}/bin/id
-        ${builtins.readFile ../scripts/tor-transparent-proxy-on.sh}
-      '';
-      ExecStop = pkgs.writeShellScript "tor-transparent-proxy-off" ''
-        nft_cmd=${pkgs.nftables}/bin/nft
-        ${builtins.readFile ../scripts/tor-transparent-proxy-off.sh}
-      '';
+      ExecStart = "${pkgs.bash}/bin/bash ${../scripts/tor-transparent-proxy-on.sh}";
+      ExecStop = "${pkgs.bash}/bin/bash ${../scripts/tor-transparent-proxy-off.sh}";
     };
   };
 
   system.stateVersion = "25.11";
 
-  # Maestral systemd user services are defined in home/nixOS.nix
-  # (Home Manager) so they only start for user example, not for the
-  # GDM greeter. Placing them here in systemd.user.services would
-  # install global unit files under /etc/systemd/user/ visible to
-  # every user session, causing repeated crashes and coredumps in
-  # the greeter that block the login screen.
-
-  # VM variant: `nixos-rebuild build-vm --flake .#nixOS`
-  # Builds a QEMU VM that shares the full host configuration.
-  # Log in as example / test.
+  # `nixos-rebuild build-vm --flake .#nixOS` builds this configuration as
+  # a VM; log in as example, password test.
   virtualisation.vmVariant = {
     virtualisation = {
       memorySize = 4096;
       cores = 4;
-      graphics = true;
     };
 
-    # Test credentials (real config uses hashedPasswordFile)
     users.users.example = {
-      password = lib.mkForce "test";
+      password = "test";
       hashedPasswordFile = lib.mkForce null;
     };
 
-    # The LVM swap volume does not exist inside the VM.
-    boot.resumeDevice = lib.mkForce "";
-    swapDevices = lib.mkForce [];
+    # Lanzaboote (Secure Boot) is not available in the VM, so it boots
+    # with systemd-boot.
+    boot.lanzaboote.enable = lib.mkForce false;
+    boot.loader.systemd-boot.enable = true;
 
-    # Lanzaboote (Secure Boot) is not available in the VM.
-    # Re-enable systemd-boot so the VM can boot normally.
-    # mkOverride 10 wins over the host's mkForce (priority 50).
-    boot.lanzaboote.enable = lib.mkOverride 10 false;
-    boot.loader.systemd-boot.enable = lib.mkOverride 10 true;
-
-    # Disko disk layout targets bare-metal NVMe/LUKS/LVM.
-    # The qemu-vm module provides its own virtual disk and
-    # filesystem mounts, so disable all disko devices.
+    # The VM has its own disk, not the laptop's disko layout.
     disko.devices = lib.mkForce {};
 
-    # The host initrd loads dm-snapshot for LVM and amdgpu for early KMS.
-    # Neither exists in the VM; strip them so the systemd-based initrd
-    # does not stall waiting for nonexistent devices.
-    boot.initrd.kernelModules = lib.mkForce [];
+    # The VM has no amdgpu: without this, the initrd would stall waiting
+    # for it.
     hardware.amdgpu.initrd.enable = lib.mkForce false;
   };
 }

@@ -171,7 +171,10 @@ nix flake check
 
 =nix flake check= does not know =darwinConfigurations= by itself, so the
 flake adds a =darwin-macOS-eval= check.  It evaluates the whole macOS
-configuration without building it, on nixOS as well as on the Mac.
+configuration without building it, on nixOS as well as on the Mac.  A
+second check, =hm-packages-unstable=, fails when Home Manager installs a
+stable package on either host outside the allowed exceptions; its
+message names each one.
 [[*Verify the macOS configuration from Linux][Verify the macOS configuration from Linux]] says what this proves and
 what it does not.
 
@@ -233,7 +236,8 @@ derivations to build, 1760 paths to fetch, 5.3 GiB download and
 18.3 GiB unpacked. Besides wrappers, generated files and small
 packages such as fonts and dictionaries, that list holds two Node.js
 builds: =bash-language-server-5.8.1= and =pi-mcp-adapter-2.27.0= (with
-=pi-mcp-adapter-2.27.0-npm-deps=). It also holds =terraform-1.16.4=,
+=pi-mcp-adapter-2.27.0-npm-deps=); the adapter has since left the
+configuration with the Pi coding agent. It also holds =terraform-1.16.4=,
 which is expected there: the package is unfree, Hydra never builds it,
 and the Mac compiles it. The numbers move with every lock update.
 
@@ -294,13 +298,17 @@ checks that:
 - other repositories refuse to commit until the work identity is set,
   and get neither the personal signing key nor its SSH command;
 - the SSH configuration has no =Host github.com= block;
-- the =brewBundle= and =defaultApps= activation snippets have no
-  =@...@= placeholder left, and =brewBundle= installs this repository's
-  =config/Brewfile=;
+- git pages through delta and filters =git add -p= with it;
+- =brewBundle= installs this repository's =config/Brewfile=, and
+  =defaultApps= runs =set-macos-defaults.sh= with =DUTI_BIN= pointing at
+  duti;
+- =nh clean= is a root daemon with =nix= on its =PATH= and its log
+  outside =/tmp=, and nix-darwin declares no user agent;
+- only =root= is a trusted Nix user;
 - the staleness agent's =NH_FLAKE= points at =~/src/local/macOS=, the
   documented directory of a Mac's local flake.
 
-Eight =ok= lines without =# skip= is a pass. When the evaluation itself
+Eleven =ok= lines without =# skip= is a pass. When the evaluation itself
 fails, every test reports
 =# skip nix eval of darwinConfigurations.macOS unavailable= instead of
 failing: treat skips as a failure and run =nix flake check= to see the

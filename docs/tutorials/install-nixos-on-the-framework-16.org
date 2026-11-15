@@ -131,13 +131,17 @@ sudo sbctl verify
 #+end_src
 
 =sbctl status= should show "Secure Boot: enabled" with keys enrolled
-and the database signed.  If the keys are *not* enrolled, follow
-[[file:../how-to/troubleshoot-common-problems.org::*Secure Boot: "not in Setup mode"][Secure Boot enrolment]].
+and the database signed.  A new Framework laptop still holds its
+factory keys, so on the first install it shows =builtin-PK= and Secure
+Boot disabled instead: follow [[file:../how-to/nixOS-enable-secure-boot.org][Enable Secure Boot on nixOS]], then
+set the firmware as [[file:../reference/nixOS-firmware-settings.org][nixOS firmware settings]] lists.
 
 * Post-install checklist
 
 - [ ] Verify Wi-Fi: =nmcli device wifi list=
-- [ ] Set up Maestral (Dropbox): =maestral setup=
+- [ ] Set up Maestral (Dropbox): =maestral setup=.  Home Manager has
+  already created =~/Dropbox (Maestral)= for the link =.mignore=: when
+  asked, choose =merge=, since =replace= deletes the folder.
 - [ ] Add your personal settings: [[file:../how-to/nixOS-personalise-a-fresh-install.org][Personalise a fresh install of nixOS]]
 - [ ] Import GPG keys: =gpg --import <key-file>=
 - [ ] Create =~/.zshenv.secrets= with any tokens (gitignored)

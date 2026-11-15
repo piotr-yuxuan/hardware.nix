@@ -76,7 +76,7 @@ sudo nixos-rebuild switch --flake .#nixOS
 =hosts/nixOS.nix= follows the 7.2 kernel series: bumping =nixpkgs=
 brings its point releases, and a newer series needs an edit of that
 line; [[file:../explanation/nixOS-kernel-choice.org][Kernel choice and the hibernation crash]] says when.  AMD
-microcode is handled by =hardware-configuration.nix=
+microcode updates come from the AMD CPU profile of =nixos-hardware=
 (=hardware.cpu.amd.updateMicrocode=).
 
 ** Device firmware (UEFI, SSD, etc.) via fwupd

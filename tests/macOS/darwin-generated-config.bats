@@ -1,8 +1,9 @@
 #!/usr/bin/env bats
 # shellcheck disable=SC2154  # tmpdir is set by isolation_setup before any test body runs
 # Verify configuration generated for the macOS host that no evaluation
-# check covers: the work and personal Git identities, the activation
-# snippet substitutions and the staleness agent environment.
+# check covers: the work and personal Git identities, the delta pager,
+# the activation snippets, the staleness agent environment, the
+# garbage-collection daemon and the trusted Nix users.
 #
 # The values come from one `nix eval` of darwinConfigurations.macOS, which
 # is the Mac template (templates/macOS) evaluated against this checkout,
@@ -35,6 +36,11 @@ setup_file() {
 		  nhFlake = hm.launchd.agents.nix-staleness-check.config.EnvironmentVariables.NH_FLAKE or "";
 		  brewBundle = hm.home.activation.brewBundle.data;
 		  defaultApps = hm.home.activation.defaultApps.data;
+		  userAgents = builtins.concatStringsSep " " (builtins.attrNames c.config.launchd.user.agents);
+		  nhDaemonPath = c.config.launchd.daemons.nh-clean.serviceConfig.EnvironmentVariables.PATH or "";
+		  nhDaemonLog = c.config.launchd.daemons.nh-clean.serviceConfig.StandardOutPath or "";
+		  nhDaemonErrLog = c.config.launchd.daemons.nh-clean.serviceConfig.StandardErrorPath or "";
+		  trustedUsers = builtins.concatStringsSep " " c.config.nix.settings.trusted-users;
 		}' >"$EVAL_JSON" 2>/dev/null </dev/null; then
 		export EVAL_DISABLED=1
 	fi
@@ -117,18 +123,38 @@ teardown() { isolation_teardown; }
 	[[ $(field sshConfig) != *"Host github.com"* ]]
 }
 
-@test "activation snippets have no placeholder left" {
-	require_eval
-	run grep -E '@[A-Z_]+@' <<<"$(field brewBundle)$(field defaultApps)"
-	[[ $status -ne 0 ]]
-}
-
 @test "the Brewfile activation installs this repository's Brewfile" {
 	require_eval
 	local brewfile
-	brewfile=$(field brewBundle | sed -n 's/^export BREWFILE="\(.*\)"$/\1/p')
+	brewfile=$(field brewBundle | sed -n 's/^BREWFILE=\([^ ]*\) bash .*/\1/p')
 	[[ -n $brewfile ]]
 	cmp "$brewfile" "$REPO_ROOT/config/Brewfile"
+}
+
+@test "the default-apps activation gives its script duti" {
+	require_eval
+	[[ $(field defaultApps) =~ ^DUTI_BIN=/nix/store/[a-z0-9]{32}-duti-[^/]*/bin/duti\ bash\ /nix/store/[a-z0-9]{32}-set-macos-defaults\.sh$ ]]
+}
+
+@test "git pages and filters interactive staging through delta" {
+	require_eval
+	run git config --file "$GIT_HOME/gitconfig" --get pager.diff
+	[[ $output == /nix/store/*-delta-*/bin/delta ]]
+	run git config --file "$GIT_HOME/gitconfig" --get interactive.diffFilter
+	[[ $output == /nix/store/*-delta-*/bin/delta\ --color-only ]]
+}
+
+@test "nh clean is a root daemon with nix on its PATH, logging outside /tmp" {
+	require_eval
+	[[ -z $(field userAgents) ]]
+	[[ :$(field nhDaemonPath): == *:/run/current-system/sw/bin:* ]]
+	[[ $(field nhDaemonLog) == /var/log/* ]]
+	[[ $(field nhDaemonErrLog) == /var/log/* ]]
+}
+
+@test "only root is a trusted Nix user" {
+	require_eval
+	[[ $(field trustedUsers) == root ]]
 }
 
 @test "the staleness agent points at the documented directory of the Mac's flake" {

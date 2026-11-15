@@ -1,22 +1,25 @@
-# Home Manager macOS overrides (nix-darwin).
-#
-# Imported alongside home/base.nix for the macOS user.
-# `unstable` is available via extraSpecialArgs.
+# Home Manager settings of the Mac only; home/base.nix holds the shared ones.
 {
   lib,
   unstable,
   ...
-}: {
-  #  macOS only packages
-
+}: let
+  # A launchd agent that runs `open` with these arguments once per login.
+  openAtLogin = name: arguments: {
+    enable = true;
+    config = {
+      Label = "com.user.${name}";
+      ProgramArguments = ["/usr/bin/open"] ++ arguments;
+      RunAtLoad = true;
+      StandardErrorPath = "/dev/null";
+      StandardOutPath = "/dev/null";
+    };
+  };
+in {
   home.packages = [
     # Languages & runtimes (macOS specific)
     unstable.luarocks
     unstable.pipenv
-    unstable.poetry
-
-    # Language servers (macOS specific)
-    # texlab moved to home/base.nix (cross-platform)
 
     # VCS / GitOps
     unstable.glab
@@ -34,15 +37,17 @@
     unstable.gnugrep
     unstable.gnused
 
+    # Nix CLI helper; nixOS has it from programs.nh at system level.
+    unstable.nh
+
     # Default-app management (sets UTI/MIME handlers via LaunchServices)
     unstable.duti
+    unstable.kubelogin # Azure kubelogin: signs kubectl in to AKS clusters
+    #unstable.azure-cli # az
   ];
 
-  #  Git identity
-  #
-  # The identities of a Mac live in that Mac's own flake
-  # (templates/macOS/identity.nix), never here. Until they are filled in,
-  # a commit fails instead of carrying a guessed name or address.
+  # The Git identities live in the Mac's own flake (templates/macOS); until
+  # they are filled in, a commit fails rather than guess a name.
   programs.git.settings.user.useConfigOnly = true;
 
   # Keep SSH key passphrases in the login Keychain (Apple's ssh only).
@@ -61,20 +66,9 @@
 
     ARCHFLAGS = "-arch arm64";
 
-    # Puppeteer / mermaid-cli (mmdc) on darwin.
-    #
-    # mermaid-cli is bundled with a puppeteer-core that pins an exact
-    # Chromium revision (e.g. 131.0.6778.85).  On every nixpkgs bump the
-    # pinned revision drifts, the user has to re-run
-    # `npx puppeteer browsers install` and the binary that lands in
-    # ~/.cache/puppeteer never matches what THIS mermaid-cli wants.
-    #
-    # Solution: tell puppeteer-core to use the system Chrome (managed
-    # via Brewfile cask "google-chrome") and skip its own download
-    # entirely.  Picked up by Emacs GUI via exec-path-from-shell, which
-    # sources the shell init files where home.sessionVariables lands.
-    #
-    # Source of the convention: https://pptr.dev/api/puppeteer.configuration
+    # mermaid-cli's Puppeteer uses the cask's Chrome rather than download
+    # its own pinned Chromium, which drifts at each nixpkgs update. Emacs.app
+    # does not see these: docs/how-to/macOS-troubleshoot-emacs.org.
     PUPPETEER_EXECUTABLE_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
     PUPPETEER_SKIP_DOWNLOAD = "true";
   };
@@ -82,38 +76,23 @@
   # Bootstrap Homebrew into the shell environment.
   programs.zsh.profileExtra = lib.fileContents ../config/brew-shellenv.zsh;
 
-  # Restore macOS-specific interactive shell features (COMBINING_CHARS,
-  # disable log builtin, Terminal.app hooks) that nix-darwin's generated
-  # /etc/zshrc omits.
+  # The parts of Apple's /etc/zshrc that nix-darwin's leaves out.
   programs.zsh.initContent = lib.fileContents ../config/macos-zshrc.zsh;
 
-  # Brewfile integration (imperative bridging for macOS GUI apps)
-
-  # Substitute at evaluation time rather than with pkgs.replaceVars:
-  # reading a derivation's output would need an aarch64-darwin build
-  # during evaluation, so the configuration could not be evaluated on
-  # Linux.
+  # Brewfile integration (imperative bridging for macOS GUI apps). A
+  # failure only warns: activation must not abort the whole switch.
   home.activation.brewBundle =
     lib.hm.dag.entryAfter ["writeBoundary"]
-    (builtins.replaceStrings
-      ["@BREWFILE@" "@BREW_BUNDLE_SCRIPT@"]
-      ["${../config/Brewfile}" "${../scripts/brew-bundle-activation.sh}"]
-      (builtins.readFile ../scripts/hm-activation/brew-bundle.sh));
+    "BREWFILE=${../config/Brewfile} bash ${../scripts/brew-bundle-activation.sh} || echo 'brewBundle: warning: Brewfile activation failed; continuing.' >&2";
 
-  # Default applications (UTI and URL-scheme handlers via duti)
-
+  # Default applications (UTI and URL-scheme handlers via duti); the
+  # script skips a handler whose application is missing.
   home.activation.defaultApps =
     lib.hm.dag.entryAfter ["brewBundle"]
-    (builtins.replaceStrings
-      ["@DUTI_BIN@" "@DEFAULT_APPS_SCRIPT@"]
-      ["${unstable.duti}/bin/duti" "${../scripts/set-macos-defaults.sh}"]
-      (builtins.readFile ../scripts/hm-activation/default-apps.sh));
+    "DUTI_BIN=${unstable.duti}/bin/duti bash ${../scripts/set-macos-defaults.sh}";
 
-  # macOS desktop wallpaper is intentionally NOT managed here. macOS persists
-  # it per-user, and the wallpaper store format (com.apple.wallpaper) is an
-  # undocumented binary plist that changed shape across releases (Type
-  # "linked" -> "individual"), so scripted edits set the wrong wallpaper. Set
-  # it once via System Settings.
+  # The wallpaper is set by hand: its undocumented store changes shape
+  # between macOS releases, so scripted edits set the wrong one.
 
   # Clear .hushlogin at login so the shell greeting runs once per session
 
@@ -128,24 +107,18 @@
     };
   };
 
-  # Nix flake staleness check (weekly)
-  #
-  # Warns via terminal notification if any flake input is older than
-  # 14 days.  Runs weekly on Monday at 09:00; launchd catches up after
-  # sleep or shutdown automatically.
+  # On Mondays, a notification when a flake input is over 14 days old.
 
   launchd.agents.nix-staleness-check = {
     enable = true;
     config = {
       Label = "com.user.nix-staleness-check";
-      ProgramArguments = [
-        "/bin/sh"
-        "-c"
-        (lib.fileContents ../scripts/nix-staleness-check.sh)
-      ];
-      # launchd agents do not inherit shell variables: without NH_FLAKE
-      # the script finds no flake and exits silently. The Mac's own flake
+      ProgramArguments = ["/bin/sh" "${../scripts/nix-staleness-check.sh}"];
+      # launchd agents do not inherit shell variables. PATH gives the
+      # script nix and Apple's jq and osascript. Without NH_FLAKE the
+      # script finds no flake and exits silently: the Mac's own flake
       # sets it to its own directory (templates/macOS/identity.nix).
+      EnvironmentVariables.PATH = "/run/current-system/sw/bin:/usr/bin:/bin:/usr/sbin:/sbin";
       StartCalendarInterval = [
         {
           Weekday = 1;
@@ -158,14 +131,8 @@
     };
   };
 
-  # Docker: bind published ports to localhost by default
-  #
-  # Docker publishes `-p` ports to 0.0.0.0 (all interfaces) by default, which
-  # would expose containers — e.g. prod data dumps — to the local network.
-  # Setting "ip" makes `docker run -p PORT:PORT` (and compose without an
-  # explicit host IP) default to 127.0.0.1. Managed here, not via Docker
-  # Desktop's UI, so it is reproducible and cannot silently drift; edit engine
-  # config in this attrset rather than the Docker Desktop "Docker Engine" pane.
+  # Published ports bind to 127.0.0.1, not to every interface, as containers
+  # may hold production data. Edit the engine here, not in Docker Desktop.
   home.file.".docker/daemon.json".text = builtins.toJSON {
     ip = "127.0.0.1";
     experimental = false;
@@ -176,63 +143,16 @@
   };
 
   # Start apps at login
+  launchd.agents.docker-desktop = openAtLogin "docker-desktop" ["-g" "-j" "-a" "Docker"];
+  launchd.agents.notunes = openAtLogin "notunes" ["-a" "NoTunes"];
+  launchd.agents.rectangle = openAtLogin "rectangle" ["-a" "Rectangle"];
 
-  launchd.agents.docker-desktop = {
-    enable = true;
-    config = {
-      Label = "com.user.docker-desktop";
-      ProgramArguments = ["/usr/bin/open" "-g" "-j" "-a" "Docker"];
-      RunAtLoad = true;
-      StandardErrorPath = "/dev/null";
-      StandardOutPath = "/dev/null";
-    };
-  };
-
-  launchd.agents.notunes = {
-    enable = true;
-    config = {
-      Label = "com.user.notunes";
-      ProgramArguments = ["/usr/bin/open" "-a" "NoTunes"];
-      RunAtLoad = true;
-      StandardErrorPath = "/dev/null";
-      StandardOutPath = "/dev/null";
-    };
-  };
-
-  launchd.agents.rectangle = {
-    enable = true;
-    config = {
-      Label = "com.user.rectangle";
-      ProgramArguments = ["/usr/bin/open" "-a" "Rectangle"];
-      RunAtLoad = true;
-      StandardErrorPath = "/dev/null";
-      StandardOutPath = "/dev/null";
-    };
-  };
-
-  # macOS overrides for Ghostty terminal emulator
-  #
-  # ghostty is installed via the Homebrew cask (config/Brewfile), not
-  # via Nix: pkgs.ghostty is marked broken on Darwin.  Setting
-  # package = null prevents the Home Manager module from adding the
-  # broken derivation to home.packages while still wiring up shell
-  # integration and XDG config-file management.
-  # base.nix enables programs.ghostty and deploys the shared config;
-  # we only override what differs on macOS.
-
-  programs.ghostty.package = null; # installed via Homebrew cask
-
-  xdg.configFile."ghostty/config".text = lib.mkForce (
+  # Ghostty comes from the Homebrew cask (home/base.nix sets no package).
+  xdg.configFile."ghostty/config".text =
     (lib.fileContents ../config/ghostty/config)
-    + "\n# Platform\nfont-size = 22\nshell-integration = detect\n"
-  );
+    + "\n# Platform\nfont-size = 22\nshell-integration = detect\n";
 
-  # macOS-specific HOME layout (mov -> Movies, hide default folders)
-  #
-  # Creates the mov alias pointing at ~/Movies and applies the
-  # UF_HIDDEN flag (chflags hidden) to the default macOS folders so
-  # that Finder omits them when browsing $HOME.  The folders remain
-  # fully functional for all applications.
+  # ~/mov links to ~/Movies, and Finder hides the default folders.
 
   home.activation.homeLayoutMacOS =
     lib.hm.dag.entryAfter ["brewBundle" "writeBoundary"]

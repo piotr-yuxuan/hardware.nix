@@ -74,6 +74,9 @@ The flake defines five top-level outputs:
 - =checks.<system>.darwin-macOS-eval= for =x86_64-linux= and
   =aarch64-darwin=: evaluates that macOS configuration so that
   =nix flake check= covers it without building it.
+- =checks.<system>.hm-packages-unstable=, defined in
+  =tests/hm-packages-unstable.nix=: fails when Home Manager installs a
+  stable package on either host outside the exceptions of =AGENTS.md=.
 
 Both hosts import =home/base.nix= (cross-platform CLI tools, Zsh, Git,
 GPG, Starship, direnv, etc.) plus a host-specific layer
@@ -82,7 +85,8 @@ GPG, Starship, direnv, etc.) plus a host-specific layer
 The flake pins two channels:
 - =nixpkgs= (stable =nixos-26.05=): system foundation.
 - =nixpkgs-unstable=: bleeding-edge packages passed as =unstable= via
-  =extraSpecialArgs=.
+  =extraSpecialArgs=, which every Home Manager module names explicitly
+  as its =package=.
 
 On macOS, GUI apps are managed through Homebrew (=config/Brewfile=): the
 Home Manager activation runs =brew bundle install= automatically.

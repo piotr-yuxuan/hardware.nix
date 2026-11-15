@@ -775,7 +775,7 @@ Run these from the local flake's directory, =~/src/local/macOS=.
    launchctl list | grep -E 'org\.nixos|com\.user|org\.nix-community'
    #+end_src
 
-   Expect =org.nixos.nh-clean=, =com.user.clear-hushlogin=,
+   Expect =com.user.clear-hushlogin=,
    =com.user.nix-staleness-check=, =com.user.docker-desktop=,
    =com.user.notunes=, =com.user.rectangle=,
    =org.nix-community.home.gpg-agent= and
@@ -788,7 +788,8 @@ Run these from the local flake's directory, =~/src/local/macOS=.
    #+end_src
 
    Expect =org.nixos.nix-daemon=, =org.nixos.linux-builder=,
-   =org.nixos.nix-optimise= and =org.nixos.activate-system=, plus
+   =org.nixos.nix-optimise=, =org.nixos.nh-clean= and
+   =org.nixos.activate-system=, plus
    =org.nixos.darwin-store=, which the Nix installer added to mount the
    Nix Store volume.
 
