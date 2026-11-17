@@ -2424,7 +2424,8 @@ glab ci status
 #+end_src
 
 ** gitlab-runner
-Run CI/CD jobs locally.
+Run CI/CD jobs locally.  [[file:../../home/macOS.nix][home/macOS.nix]] builds it without its
+tests: at 19.5.2 its kubernetes tests do not compile on Darwin.
 #+begin_src sh
 gitlab-runner exec docker test_job
 #+end_src

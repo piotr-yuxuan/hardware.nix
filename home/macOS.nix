@@ -23,7 +23,9 @@ in {
 
     # VCS / GitOps
     unstable.glab
-    unstable.gitlab-runner
+    # At 19.5.2 its kubernetes tests do not compile on Darwin, so no
+    # cache serves it and the build fails.
+    (unstable.gitlab-runner.overrideAttrs {doCheck = false;})
 
     # Linux gets the wrapped Podman package from its NixOS module.
     unstable.podman
