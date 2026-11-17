@@ -111,6 +111,7 @@ language and platform support.
   - [[azure-cli][azure-cli]]
   - [[snowflake-cli][snowflake-cli]]
   - [[dbt][dbt]]
+  - [[dbt-lsp-plus][dbt-lsp-plus]]
   - [[podman][podman]]
   - [[podman-compose][podman-compose]]
 - [[CloudFormation][CloudFormation]]
@@ -139,6 +140,7 @@ language and platform support.
   - [[flamegraph][flamegraph]]
 - [[AI coding][AI coding]]
   - [[ollama (nixOS only)][ollama (nixOS only)]]
+  - [[rtk][rtk]]
   - [[Emacs MCP integration][Emacs MCP integration]]
   - [[codex-desktop-linux (nixOS only)][codex-desktop-linux (nixOS only)]]
   - [[claude-desktop (nixOS only)][claude-desktop (nixOS only)]]
@@ -352,11 +354,13 @@ rustfmt src/main.rs                        # format Rust code
 
 ** sccache
 A compilation cache for Rust, C and C++, which keeps its entries on
-the local disk or in cloud storage.  It is installed only: Cargo uses
-it once =RUSTC_WRAPPER= names it, and this configuration does not set
-that variable.
+the local disk or in cloud storage.  =home.sessionVariables= in
+=home/base.nix= sets =RUSTC_WRAPPER= to its store path, so every
+Cargo build started from a login session goes through the cache.
+Crates that Cargo compiles incrementally, the workspace members of a
+debug build, are not cached.
 #+begin_src sh
-RUSTC_WRAPPER=sccache cargo build          # one build through the cache
+env -u RUSTC_WRAPPER cargo build           # one build without the cache
 sccache --show-stats                       # hits, misses and cache size
 sccache --stop-server                      # stop the background server
 #+end_src
@@ -1204,6 +1208,25 @@ from a prefetch, with the target =x86_64-unknown-linux-gnu= or
 nix store prefetch-file https://public.cdn.getdbt.com/fs/cli/fs-v2.0.9-aarch64-apple-darwin.tar.gz
 #+end_src
 
+** dbt-lsp-plus
+A language server in front of =dbt lsp=, which adds the outline of a
+model, workspace symbols, the call hierarchy of models and macros, and
+the last run's failures as diagnostics; with =dbt-oss=, which has no
+=dbt lsp=, it runs alone.  It is not in nixpkgs, and its releases
+publish no binaries, so [[file:../../packages/dbt-lsp-plus.nix][packages/dbt-lsp-plus.nix]] builds the tag of
+the release from [[https://github.com/piotr-yuxuan/dbt-lsp-plus][piotr-yuxuan/dbt-lsp-plus]], on both hosts.  The build
+skips two of its tests, which call =unshare=, forbidden in the build
+sandbox.  dbt-mode, in the Emacs configuration, starts it in place of
+=dbt lsp=.
+#+begin_src sh
+dbt-lsp-plus --version                         # dbt-lsp-plus 0.1.5
+dbt-lsp-plus -- dbt-2.0.9 lsp --project-dir .  # what an editor starts
+#+end_src
+
+To move to a newer release, change =version= in
+=packages/dbt-lsp-plus.nix=, set both hashes to =lib.fakeHash=, and
+build: each failure prints the hash to write in its place.
+
 ** podman
 Rootless container engine (Docker-compatible).
 
@@ -1450,7 +1473,11 @@ perf script | stackcollapse-perf.pl | flamegraph.pl > flame.svg
 Local model inference, installed with its systemd service through
 =services.ollama= in =hosts/nixOS.nix=. The system package
 =pkgs.ollama-vulkan= uses the Radeon 780M's existing Mesa Vulkan driver.
-The service listens on =127.0.0.1:11434=, disables Ollama Cloud features,
+Ollama drops an integrated Vulkan GPU by default, with the journal line
+=dropping integrated GPU=, so =OLLAMA_IGPU_ENABLE = "1"= keeps it. The
+GPU then reports its 2 GiB of dedicated memory plus the system memory it
+may share (GTT, half of RAM), about 32 GiB, and Ollama's default context
+grows from 4096 to 32768 tokens accordingly. The service listens on =127.0.0.1:11434=, disables Ollama Cloud features,
 and starts only when requested. No models are downloaded automatically.
 
 NixOS's =enable = true= installs the service and CLI; overriding
@@ -1476,6 +1503,63 @@ show whether the intended GPU backend is actually used. Vulkan support
 in the package alone does not prove GPU offloading on this machine.
 Stopping a model or the service keeps the downloaded files for later use.
 See the [[https://docs.ollama.com/faq][Ollama FAQ]] and [[https://docs.ollama.com/gpu][hardware support documentation]].
+
+** rtk
+[[https://github.com/rtk-ai/rtk][Rust Token Killer]] shortens the output of common commands (git, gh,
+ls, grep, find, pytest, ruff, npm, cargo, go, docker, kubectl,
+terraform, sqlfluff and more) before a coding agent reads it, so that
+fewer tokens reach its context. A command it does not know runs
+unchanged.
+
+For Claude Code, rtk is two hooks. Before a =Bash= call, it rewrites
+=git status= as =rtk git status=. After a call, it shortens the output
+of commands it did not rewrite, such as =nix build=: past 300 lines it
+keeps the first 50 and the last 200, and marks the cut with
+=[N lines elided]= and an =rtk recall= command that prints the whole
+output. An error in the elided middle reaches the agent only through
+that command. The hooks never approve a call, so permission rules and
+prompts apply as before.
+
+Home Manager installs the binary and links two files from
+=config/rtk/= into rtk's configuration directory: =~/.config/rtk/= on
+nixOS, =~/Library/Application Support/rtk/= on the Mac.
+- =config.toml= holds preferences: no emoji, and directories that
+  rtk's =ls=, =find= and =grep= skip, among them =.worktree=, where
+  the worktrees of =workflow:plans= copy the whole repository.
+- =pipeline.toml= adopts the built-in =rtk:posthook= and leaves diffs
+  untouched in both directions, because a review must see the entire
+  diff: rtk otherwise cuts a long one to a sample and says so only at
+  its end. A command line counts as a diff when it names =git= and,
+  after it, =diff= or =show=, or =log= with =-p= or =--patch=; so
+  =git -C dir diff= and =cd dir && git diff= count too.
+
+The hooks live in =~/.claude/settings.json=, which Claude Code also
+writes, so they are registered once per host, after the rebuild, and
+again whenever =pipeline.toml= starts using a new hook event:
+#+begin_src sh
+rtk init -g --hook-only --auto-patch  # add the hooks; backs up settings.json
+rtk init --show                       # check that the hooks are registered
+rtk pipeline validate                 # check pipeline.toml
+rtk gain                              # tokens saved so far
+rtk discover                          # missed savings, from Claude Code's history
+rtk init -g --uninstall               # remove the hooks
+#+end_src
+=--hook-only= skips =~/.claude/RTK.md=, which would teach Claude the
+meta commands =gain=, =discover= and =bypass=. Claude Code's file
+watcher picks up hook changes in =settings.json=, so neither Claude
+Code nor its sessions need a restart. rtk records each command it
+handles in =~/.local/share/rtk/history.db=, and by default keeps the
+last 200 full outputs behind its recall hints, for 30 days. The nixpkgs
+build has no telemetry endpoint, as =rtk telemetry status= reports.
+
+The pipeline engine that =rtk:posthook= needs is rtk's BUSL-1.1 part,
+which the nixpkgs build includes although its licence field names
+only Apache-2.0; its grant allows free use, but not resale. The same
+engine can hand long output to a cheaper model (a =digest= task with
+an Ollama upstream). It is left out for now: Ollama truncated each log
+to about 2,000 tokens, its default context of 4096 then, and when a
+small model answered with a blank line, =rtk digest-log= printed that
+blank line in place of the output.
 
 ** Emacs MCP integration
 The Emacs configuration runs =rhblind/emacs-mcp-server= on a local Unix

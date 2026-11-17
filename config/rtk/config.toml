@@ -1,0 +1,32 @@
+# rtk's preferences; behaviour is in pipeline.toml, next to this file.
+# docs/reference/package-guide.org, section "rtk", explains the choices.
+
+[tracking]
+enabled = true # rtk gain and rtk discover read this history
+history_days = 90
+
+[display]
+colors = true
+emoji = false # costs the agent tokens and adds nothing
+max_width = 120
+
+[filters]
+# Skipped by rtk's ls, find, grep and read.
+ignore_dirs = [
+    ".git",
+    ".worktree", # workflow:plans worktrees, copies of the whole repository
+    ".direnv",
+    "node_modules",
+    "target",
+    "__pycache__",
+    ".venv",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "vendor",
+    "eln-cache", # Emacs native compilation
+]
+ignore_files = ["*.lock", "*.min.js", "*.min.css"]
+
+[telemetry]
+enabled = false

@@ -47,7 +47,7 @@ in {
       unstable.rustc
       unstable.rustfmt
       unstable.rust-analyzer
-      unstable.sccache # compilation cache; not set as RUSTC_WRAPPER
+      unstable.sccache # compilation cache
       unstable.rust-code-analysis # rust-code-analysis-cli: source code metrics
 
       # Java runtime (required by Clojure CLI / deps.edn).
@@ -161,6 +161,8 @@ in {
       pkgs.sqlfluff # stable on purpose: AGENTS.md, "Package channels"
       (unstable.callPackage ../packages/dbt.nix {})
       (unstable.callPackage ../packages/dbt-proprietary.nix {}) # dbt-2.0.9, unfree
+      # No binary cache serves it: a small Rust build, accepted on both hosts.
+      (unstable.callPackage ../packages/dbt-lsp-plus.nix {})
       unstable.pre-commit # runs the hooks of a repository's .pre-commit-config.yaml
 
       # CloudFormation
@@ -177,6 +179,7 @@ in {
 
       # AI and LLM
       unstable.llama-cpp
+      unstable.rtk # shortens command output for coding agents
 
       # Build tools
       unstable.meson
@@ -456,6 +459,12 @@ in {
 
   home.sessionVariables.DICPATH = lib.makeSearchPath "share/hunspell" hunspellDicts;
 
+  home.sessionVariables.RUSTC_WRAPPER = lib.getExe unstable.sccache;
+
+  # For programs installed by hand, such as `cargo install --root
+  # ~/.local`. A login shell must see it: Emacs reads PATH from one.
+  home.sessionPath = [ "$HOME/.local/bin" ];
+
   xdg.configFile."enchant/enchant.ordering".text = lib.fileContents ../config/enchant.ordering;
   home.file.".aspell.conf".text = lib.fileContents ../config/aspell.conf;
 
@@ -559,4 +568,17 @@ in {
   # Maven fetches the sources of every dependency, so that clojure-lsp
   # opens Java sources rather than decompiled classes.
   home.file.".m2/settings.xml".source = ../config/maven/settings.xml;
+
+  # rtk reads the platform's configuration directory, which on the Mac
+  # is not XDG's. Linked file by file, so the directory stays writable.
+  home.file."rtk" = {
+    target =
+      if unstable.stdenv.hostPlatform.isDarwin
+      then "Library/Application Support/rtk"
+      else if unstable.stdenv.hostPlatform.isLinux
+      then "${config.xdg.configHome}/rtk"
+      else throw "rtk: unsupported platform";
+    source = ../config/rtk;
+    recursive = true;
+  };
 }

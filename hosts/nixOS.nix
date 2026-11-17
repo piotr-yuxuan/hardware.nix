@@ -355,6 +355,9 @@ in {
     environmentVariables = {
       OLLAMA_NO_CLOUD = "1";
       OLLAMA_DEBUG = "1";
+      # Ollama drops integrated Vulkan GPUs unless told otherwise, and
+      # then runs on the CPU alone.
+      OLLAMA_IGPU_ENABLE = "1";
     };
   };
   systemd.services.ollama.wantedBy = lib.mkForce [];

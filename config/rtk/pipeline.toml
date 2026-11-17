@@ -1,0 +1,22 @@
+# What rtk does around each tool call; preferences are in config.toml.
+# docs/reference/package-guide.org, section "rtk", explains the choices.
+schema_version = 1
+
+[pipeline]
+# Also shortens the output of commands rtk does not rewrite, such as
+# nix build, keeping the full output for rtk recall.
+extends = "rtk:posthook"
+
+# Reviews read diffs, which must reach the agent whole: neither
+# rewritten before the command nor shortened after it. The pattern
+# matches git anywhere in the line, as in `git -C dir diff` or
+# `cd dir && git diff`; a false match only forgoes a saving.
+[[hook.before_tool.shell]]
+name = "keep-diffs"
+when = { command_matches = '\bgit\b.*\b(diff|show)\b|\bgit\b.*\blog\b.*\s(-p|--patch)\b' }
+action = "passthrough"
+
+[[hook.after_tool.shell]]
+name = "verbatim-diffs"
+when = { command_matches = '\bgit\b.*\b(diff|show)\b|\bgit\b.*\blog\b.*\s(-p|--patch)\b' }
+action = "passthrough"
