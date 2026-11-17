@@ -63,8 +63,10 @@ jobs:
       - name: Check the workflow files
         env:
           GH_TOKEN: ${{ github.token }} # zizmor asks GitHub about the pinned actions
+        # zizmor from the stable channel: the unstable one fails to build
+        # (aws-lc-sys finds no system AWS-LC), and no cache serves it.
         run: |
-          nix shell --inputs-from . nixpkgs-unstable#actionlint nixpkgs-unstable#shellcheck nixpkgs-unstable#zizmor -c bash -euo pipefail -c '
+          nix shell --inputs-from . nixpkgs-unstable#actionlint nixpkgs-unstable#shellcheck nixpkgs#zizmor -c bash -euo pipefail -c '
             actionlint
             zizmor .github/workflows
           '
@@ -86,6 +88,16 @@ jobs:
                 echo "::group::tap $tap"
                 brew tap "$tap"
                 echo "::endgroup::"
+              done
+      # Homebrew loads a third-party tap's casks only once trusted, as the
+      # Brewfile's trusted: true entries tell brew bundle on the Mac.
+      - name: Trust what the Brewfile trusts
+        run: |
+          awk '/trusted: true/ {gsub(/[",]/, "", $2);
+                                kind = ($1 == "brew") ? "formula" : $1;
+                                print kind " " $2}' config/Brewfile \
+            | while IFS=' ' read -r kind name; do
+                brew trust "--$kind" "$name"
               done
       - name: Verify all formulas and casks are resolvable
         run: |

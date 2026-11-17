@@ -13,7 +13,13 @@ rustPlatform.buildRustPackage (finalAttrs: {
     owner = "piotr-yuxuan";
     repo = "dbt-lsp-plus";
     tag = finalAttrs.version;
-    hash = "sha256-WudSvl6UZezeMdb/x6EMY+GZPRYF4rZJief7azcvc2E=";
+    # Four fixtures differ only by case, which macOS's file system merges
+    # into one, so the source would hash differently there. Only a test
+    # that the build skips (it needs a real dbt) reads them.
+    postFetch = ''
+      rm -rf "$out"/tests/fixtures/conformance/flag-{false,False,fAlse,FALSE}
+    '';
+    hash = "sha256-WkTBGZq3vlYWJ8cVVvJTyrGFMWdT5MqgjTScjtBo0eE=";
   };
 
   cargoHash = "sha256-56iLjurXnwahoCAjVn+HF8C3FNfDIx8ly0Ww0dAvz18=";

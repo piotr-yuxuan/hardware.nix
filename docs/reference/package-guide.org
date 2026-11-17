@@ -1216,7 +1216,8 @@ the last run's failures as diagnostics; with =dbt-oss=, which has no
 publish no binaries, so [[file:../../packages/dbt-lsp-plus.nix][packages/dbt-lsp-plus.nix]] builds the tag of
 the release from [[https://github.com/piotr-yuxuan/dbt-lsp-plus][piotr-yuxuan/dbt-lsp-plus]], on both hosts.  The build
 skips two of its tests, which call =unshare=, forbidden in the build
-sandbox.  dbt-mode, in the Emacs configuration, starts it in place of
+sandbox, and drops four test fixtures whose names differ only by case,
+which would give the source another hash on macOS.  dbt-mode, in the Emacs configuration, starts it in place of
 =dbt lsp=.
 #+begin_src sh
 dbt-lsp-plus --version                         # dbt-lsp-plus 0.1.5
