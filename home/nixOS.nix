@@ -22,6 +22,8 @@ in {
       unstable.emacs-pgtk
       unstable.libreoffice
       inputs.claude-desktop.packages.${pkgs.stdenv.hostPlatform.system}.claude-desktop
+      # The desktop keeps its own CLI off PATH; the Mac takes the cask.
+      unstable.claude-code
       #inputs.hylki.packages.${pkgs.stdenv.hostPlatform.system}.default # Fails to link against sqlite3 at 1.47.1.
       #inputs.penguin-mail.packages.${pkgs.stdenv.hostPlatform.system}.default # Doesn't compile right now, might enable it again on a tag.
       #inputs.inlark.packages.${pkgs.stdenv.hostPlatform.system}.default

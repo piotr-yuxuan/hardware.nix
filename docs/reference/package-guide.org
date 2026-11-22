@@ -39,7 +39,8 @@ language and platform support.
 - [[Language servers][Language servers]]
   - [[tailwindcss-language-server][tailwindcss-language-server]]
   - [[htmx-lsp][htmx-lsp]]
-  - [[docker-compose-language-service][docker-compose-language-service]]
+  - [[docker-language-server][docker-language-server]]
+  - [[tombi][tombi]]
   - [[marksman][marksman]]
   - [[vscode-langservers-extracted][vscode-langservers-extracted]]
   - [[tofu-ls][tofu-ls]]
@@ -141,9 +142,13 @@ language and platform support.
 - [[AI coding][AI coding]]
   - [[ollama (nixOS only)][ollama (nixOS only)]]
   - [[rtk][rtk]]
+  - [[codegraph][codegraph]]
+  - [[rust-analyzer-mcp][rust-analyzer-mcp]]
+  - [[allium][allium]]
   - [[Emacs MCP integration][Emacs MCP integration]]
   - [[codex-desktop-linux (nixOS only)][codex-desktop-linux (nixOS only)]]
   - [[claude-desktop (nixOS only)][claude-desktop (nixOS only)]]
+  - [[claude-code (nixOS only)][claude-code (nixOS only)]]
   - [[claude, claude-code, codex and codex-app (macOS only)][claude, claude-code, codex and codex-app (macOS only)]]
 - [[Email][Email]]
   - [[mu / mu4e][mu / mu4e]]
@@ -472,7 +477,8 @@ standalone =lsp-ltex-plus= Emacs client; the programming servers use
 | =lua-language-server=        | Lua              | =.lua=               |
 | =tailwindcss-language-server= | Tailwind CSS class names | =.html=, =.tsx=, =.jsx= |
 | =htmx-lsp=                   | htmx attributes  | =.html=              |
-| =docker-compose-langserver=  | Docker Compose   | =compose.yaml=, =docker-compose.yml= |
+| =docker-language-server=     | Docker Compose   | =compose.yaml=, =docker-compose.yml= |
+| =tombi=                      | TOML             | =.toml=              |
 | =marksman=                   | Markdown         | =.md=                |
 | =vscode-html-language-server= | HTML            | =.html=              |
 | =vscode-css-language-server= | CSS / SCSS / LESS | =.css=, =.scss=, =.less= |
@@ -490,12 +496,30 @@ Completion and hover documentation for [[https://htmx.org][htmx]]
 =hx-*= attributes inside HTML.  Tiny scope; expects to run alongside
 =vscode-html-language-server= rather than replace it.
 
-** docker-compose-language-service
-Compose-file LSP shipped as the binary =docker-compose-langserver=.
-Provides schema validation, completion and hover for service keys in
-=compose.yaml= / =docker-compose.yml=.  Distinct from
-=dockerfile-language-server= (which targets =Dockerfile= syntax) and
-they coexist without conflict.
+** docker-language-server
+Docker's language server for Compose files, run as
+=docker-language-server start --stdio=: completion, navigation,
+outline, formatting, hover and rename in =compose.yaml= /
+=docker-compose.yml=, and diagnostics at the YAML level (a syntax
+error, a duplicate key), for a document opened with the language id
+=dockercompose=.  It does not validate against the Compose schema: an
+unknown key, a wrong type and a dangling =depends_on= passed silently
+in a local test on 2026-11-22.  It replaces Microsoft's
+=docker-compose-language-service=, whose repository was archived in
+July 2026.  Its =telemetry= initialisation option takes =all=, =error=
+or =off=.  On a =Dockerfile= it reported image vulnerabilities in the
+same test, which means a Docker Scout lookup over the network.  The
+Emacs configuration starts it for Compose files only, with telemetry
+off (plan 120 of that repository).
+
+** tombi
+TOML language server and command line: schema diagnostics (Cargo.toml
+and pyproject.toml out of the box), completion, definition, references,
+code actions and formatting.
+#+begin_src sh
+tombi lint Cargo.toml           # diagnostics without an editor
+tombi format --check .          # report unformatted TOML files
+#+end_src
 
 ** marksman
 Structural Markdown LSP: heading completion, =[[wiki-link]]= follow,
@@ -1562,6 +1586,122 @@ to about 2,000 tokens, its default context of 4096 then, and when a
 small model answered with a blank line, =rtk digest-log= printed that
 blank line in place of the output.
 
+** codegraph
+[[https://github.com/colbymchenry/codegraph][CodeGraph]] parses a project into a graph of its symbols, calls and
+imports, stored in =.codegraph/= at the project's root, and answers a
+coding agent's questions about the code from it, as an MCP server or on
+the command line. The nixpkgs package repackages the upstream release
+binaries with the nixpkgs Node.js.
+
+=home/base.nix= wraps it so that every start, an MCP server launched
+by a desktop application included, sets two variables:
+- =CODEGRAPH_TELEMETRY=0=: the program otherwise sends anonymous usage
+  data and keeps a random machine identifier in =~/.codegraph/=.
+  =codegraph telemetry status= names the variable that decided.
+- =CODEGRAPH_NO_UPDATE_CHECK=1=: Nix owns the version, so the check
+  against GitHub's releases is moot, and =codegraph upgrade= cannot
+  replace a store path.
+
+The MCP server is registered once per host, after the rebuild, because
+=~/.claude.json= and =~/.codex/config.toml= belong to the applications:
+#+begin_src sh
+claude mcp add --scope user codegraph -- codegraph serve --mcp
+codex mcp add codegraph -- codegraph serve --mcp
+cd <project> && codegraph init   # index a project; the server keeps it in sync
+codegraph status                 # index statistics of this project
+codegraph explore "<question>"   # what the MCP tool codegraph_explore returns
+#+end_src
+On nixOS the Codex CLI is not on =PATH=: it is
+=opt/codex-desktop/resources/codex= inside the =codex-desktop= package.
+
+Always give =codegraph= a subcommand. Without one, as with
+=codegraph install=, it starts upstream's setup wizard. It first asks
+which agents to configure, then offers
+=npm install -g @colbymchenry/codegraph= whether or not =codegraph= is
+already on =PATH=. Under Nix that step is moot: answer no. Accepted, it
+typically fails, and any failure prints =permission denied=. The wizard
+writes the agent configurations described below only after its last
+question, so =Ctrl-C= at any prompt leaves them as they were.
+
+=codegraph install= is not used. Besides the MCP server, it adds a
+=UserPromptSubmit= hook and an auto-allow rule to
+=~/.claude/settings.json=, and an instruction block to
+=~/.claude/CLAUDE.md= and =~/.codex/AGENTS.md=. On nixOS the last is a
+symbolic link to instructions kept in another repository, so the block
+would land there.
+
+The packaged launcher calls =dirname=, so it fails with
+=dirname: command not found= under a =PATH= that lacks coreutils.
+
+** rust-analyzer-mcp
+[[https://github.com/zeenix/rust-analyzer-mcp][rust-analyzer-mcp]] runs the =rust-analyzer= on =PATH= and offers it to
+coding agents as an MCP server, which is how Codex, with no language
+server client of its own, reaches it; Claude Code takes it as well.
+Its tools take a file and a position: hover, definition, references,
+completion, symbols, formatting, code actions, rename, diagnostics of a
+file or of the workspace, and a change of workspace.  It passes
+rust-analyzer's settings through, with =--config KEY=VALUE= (any
+setting, without the =rust-analyzer.= prefix) and the Cargo feature
+options.  =packages/rust-analyzer-mcp.nix= builds it from its release's
+tag, which publishes no binary, and runs its unit tests only: its
+integration tests need a toolchain that the build sandbox lacks.  Each
+running server starts its own rust-analyzer, about 1.6 GB on
+dbt-lsp-plus.
+
+It is registered once per host for every session of both agents, since
+it starts rust-analyzer only at the first Rust tool call; its last
+argument, =.=, is the directory the agent starts it in, and its tool
+=rust_analyzer_set_workspace= changes project.  Claude Code and Codex
+keep the registration in files they write themselves, so it is a
+command, run after the rebuild:
+#+begin_src sh
+claude mcp add --scope user rust-analyzer -- rust-analyzer-mcp \
+  --all-features --config check.command=clippy \
+  --config workspace.symbol.search.kind=all_symbols \
+  --config cargo.targetDir=true \
+  --config numThreads=4 --config cachePriming.numThreads=4 .
+codex mcp add rust-analyzer -- rust-analyzer-mcp \
+  --all-features --config check.command=clippy \
+  --config workspace.symbol.search.kind=all_symbols \
+  --config cargo.targetDir=true \
+  --config numThreads=4 --config cachePriming.numThreads=4 .
+claude mcp get rust-analyzer    # Connected
+codex mcp get rust-analyzer
+#+end_src
+=cargo.targetDir= keeps its checks off the agent's own =cargo= runs, and
+the thread counts keep it within four cores.  On nixOS the Codex CLI is
+inside the =codex-desktop= package, as the codegraph section says.
+=--all-features= suits a project whose features are additive; elsewhere
+name them with =--features=, in a project's own =.mcp.json= or
+=.codex/config.toml=, which take precedence.
+
+** allium
+[[https://allium-lang.org/][Allium]], from JUXT, is a specification language for LLMs: =.allium=
+files of rules (=when:=, =requires:=, =ensures:=) that an agent elicits,
+distils from code, turns into tests and checks against the code.
+=packages/allium.nix= installs, from the binaries of its release
+(nixpkgs does not package it), =allium=, which checks and analyses
+specification files, and =allium-lsp=, its language server, a Node
+script run with nixpkgs's Node.js.
+#+begin_src sh
+allium --version
+allium check spec.allium        # JSON diagnostics; non-zero exit on a finding
+#+end_src
+
+Agents get Allium's skills (=/allium=, =elicit=, =distill=, =propagate=,
+=tend=, =weed=, =witness=) from the plugin =allium= of JUXT's
+marketplace, registered once per host, after the rebuild, since both
+agents keep plugins in files they write themselves:
+#+begin_src sh
+claude plugin marketplace add juxt/claude-plugins
+claude plugin install allium@juxt-plugins
+codex plugin marketplace add juxt/claude-plugins
+codex plugin add allium@juxt-plugins
+#+end_src
+The plugin declares =allium-lsp --stdio= for =.allium= files, taken from
+=PATH=, and adds hooks that run JUXT's Node scripts: after every =Write=
+or =Edit= (=allium-check.mjs=), and around subagents (=loop-trace.mjs=).
+
 ** Emacs MCP integration
 The Emacs configuration runs =rhblind/emacs-mcp-server= on a local Unix
 socket. Codex keeps its MCP registration in the application-owned
@@ -1606,6 +1746,23 @@ nix flake update claude-desktop  # update only this input, then rebuild
 #+end_src
 The Code tab requires a paid Claude plan. After rebuilding, check sign-in,
 the Code tab and a simple local command in a scratch project.
+
+** claude-code (nixOS only)
+The Claude Code CLI, =claude=, for the terminal. Claude Desktop keeps
+its own copy under =~/.config/Claude/claude-code/<version>/=, outside
+=PATH=, and updates it itself; this one follows the locked unstable
+channel, with its auto-updater off. Both read =~/.claude/= and
+=~/.claude.json=, so settings and MCP servers serve both. The Mac takes
+the Homebrew cask instead.
+
+The package is unfree, so cache.nixos.org does not serve it: a rebuild
+downloads the release binary from =downloads.claude.ai= and patches it,
+without compiling anything.
+#+begin_src sh
+claude                          # Claude Code in this directory
+claude --version                # the version of the locked channel
+claude mcp list                 # MCP servers and their status
+#+end_src
 
 ** claude, claude-code, codex and codex-app (macOS only)
 Homebrew casks (=config/Brewfile=) for the vendors' AI coding tools: the

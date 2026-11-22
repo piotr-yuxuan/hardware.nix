@@ -45,7 +45,7 @@ run lists what the Mac will build or fetch:
 nix build --dry-run .#darwinConfigurations.macOS.system
 ```
 
-LSP servers (nil, nixd, shellcheck) must not report errors on touched
+LSP servers (nixd, shellcheck) must not report errors on touched
 files.
 
 ### Destructive commands and questions

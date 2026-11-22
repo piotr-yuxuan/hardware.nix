@@ -81,7 +81,8 @@ in {
       unstable.lua-language-server
       unstable.tailwindcss-language-server # Tailwind CSS in HTML / JSX / TSX
       unstable.htmx-lsp # htmx attribute completion in HTML
-      unstable.docker-compose-language-service # binary: docker-compose-langserver, for compose.yaml
+      unstable.docker-language-server # Docker's, for Compose files
+      unstable.tombi # TOML
       unstable.marksman # Markdown structural LSP (headings, links, refs)
       unstable.vscode-langservers-extracted # HTML, CSS, JSON, ESLint, Markdown
 
@@ -180,6 +181,16 @@ in {
       # AI and LLM
       unstable.llama-cpp
       unstable.rtk # shortens command output for coding agents
+      (unstable.callPackage ../packages/rust-analyzer-mcp.nix {}) # registered per project
+      (unstable.callPackage ../packages/allium.nix {}) # allium and allium-lsp, for Allium's agent plugin
+      # Telemetry and the update check off wherever it starts, MCP clients
+      # included: docs/reference/package-guide.org, "codegraph".
+      (unstable.symlinkJoin {
+        inherit (unstable.codegraph) pname version meta;
+        paths = [unstable.codegraph];
+        nativeBuildInputs = [unstable.makeWrapper];
+        postBuild = "wrapProgram $out/bin/codegraph --set CODEGRAPH_TELEMETRY 0 --set CODEGRAPH_NO_UPDATE_CHECK 1";
+      })
 
       # Build tools
       unstable.meson
