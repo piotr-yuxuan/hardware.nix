@@ -1,0 +1,12 @@
+{
+  "name": "nixd",
+  "description": "Nix",
+  "lspServers": {
+    "nixd": {
+      "command": "nixd",
+      "extensionToLanguage": {
+        ".nix": "nix"
+      }
+    }
+  }
+}

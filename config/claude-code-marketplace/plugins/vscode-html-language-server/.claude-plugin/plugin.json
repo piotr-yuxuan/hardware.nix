@@ -1,0 +1,16 @@
+{
+  "name": "vscode-html-language-server",
+  "description": "HTML",
+  "lspServers": {
+    "vscode-html-language-server": {
+      "command": "vscode-html-language-server",
+      "args": [
+        "--stdio"
+      ],
+      "extensionToLanguage": {
+        ".html": "html",
+        ".htm": "html"
+      }
+    }
+  }
+}

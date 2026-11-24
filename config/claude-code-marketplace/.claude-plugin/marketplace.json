@@ -1,0 +1,141 @@
+{
+  "name": "hardware.nix",
+  "owner": {
+    "name": "piotr-yuxuan"
+  },
+  "metadata": {
+    "description": "The language servers and MCP servers this configuration installs, for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "aws-knowledge",
+      "source": "./plugins/aws-knowledge",
+      "description": "AWS documentation, regional availability and guidance (remote)"
+    },
+    {
+      "name": "basedpyright",
+      "source": "./plugins/basedpyright",
+      "description": "Python type checking, in standard mode where a project names none"
+    },
+    {
+      "name": "bash-language-server",
+      "source": "./plugins/bash-language-server",
+      "description": "Shell scripts, with ShellCheck's findings"
+    },
+    {
+      "name": "clojure-lsp",
+      "source": "./plugins/clojure-lsp",
+      "description": "Clojure, with clj-kondo's findings"
+    },
+    {
+      "name": "clojure-mcp",
+      "source": "./plugins/clojure-mcp",
+      "description": "Clojure tools backed by a REPL; enable it per Clojure project"
+    },
+    {
+      "name": "codegraph",
+      "source": "./plugins/codegraph",
+      "description": "CodeGraph's index of a project's symbols and calls"
+    },
+    {
+      "name": "dbt-lsp-plus",
+      "source": "./plugins/dbt-lsp-plus",
+      "description": "dbt projects, without dbt's usage statistics; enable it per dbt project"
+    },
+    {
+      "name": "dockerfile-language-server",
+      "source": "./plugins/dockerfile-language-server",
+      "description": "Files named *.dockerfile"
+    },
+    {
+      "name": "emacs",
+      "source": "./plugins/emacs",
+      "description": "The running Emacs: diagnostics, Org and buffers"
+    },
+    {
+      "name": "gopls",
+      "source": "./plugins/gopls",
+      "description": "Go"
+    },
+    {
+      "name": "jdtls",
+      "source": "./plugins/jdtls",
+      "description": "Java"
+    },
+    {
+      "name": "ltex-ls-plus",
+      "source": "./plugins/ltex-ls-plus",
+      "description": "Grammar and spelling of Org prose; off by default"
+    },
+    {
+      "name": "lua-language-server",
+      "source": "./plugins/lua-language-server",
+      "description": "Lua"
+    },
+    {
+      "name": "marksman",
+      "source": "./plugins/marksman",
+      "description": "Markdown links and headings"
+    },
+    {
+      "name": "nixd",
+      "source": "./plugins/nixd",
+      "description": "Nix"
+    },
+    {
+      "name": "rust-analyzer",
+      "source": "./plugins/rust-analyzer",
+      "description": "Rust, with clippy and search across all symbols"
+    },
+    {
+      "name": "rust-analyzer-mcp",
+      "source": "./plugins/rust-analyzer-mcp",
+      "description": "rust-analyzer's rename, code actions, formatting and completion"
+    },
+    {
+      "name": "terraform-mcp-server",
+      "source": "./plugins/terraform-mcp-server",
+      "description": "Terraform Registry documentation for providers, modules and policies"
+    },
+    {
+      "name": "texlab",
+      "source": "./plugins/texlab",
+      "description": "LaTeX and BibTeX"
+    },
+    {
+      "name": "tofu-ls",
+      "source": "./plugins/tofu-ls",
+      "description": "OpenTofu and Terraform"
+    },
+    {
+      "name": "tombi",
+      "source": "./plugins/tombi",
+      "description": "TOML, with the schemas of Cargo.toml and pyproject.toml"
+    },
+    {
+      "name": "typescript-language-server",
+      "source": "./plugins/typescript-language-server",
+      "description": "TypeScript and JavaScript"
+    },
+    {
+      "name": "vscode-css-language-server",
+      "source": "./plugins/vscode-css-language-server",
+      "description": "CSS, SCSS and Less"
+    },
+    {
+      "name": "vscode-html-language-server",
+      "source": "./plugins/vscode-html-language-server",
+      "description": "HTML"
+    },
+    {
+      "name": "vscode-json-language-server",
+      "source": "./plugins/vscode-json-language-server",
+      "description": "JSON"
+    },
+    {
+      "name": "yaml-language-server",
+      "source": "./plugins/yaml-language-server",
+      "description": "YAML, with SchemaStore's schemas"
+    }
+  ]
+}

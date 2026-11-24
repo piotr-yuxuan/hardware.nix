@@ -1,0 +1,20 @@
+{
+  "name": "dbt-lsp-plus",
+  "description": "dbt projects, without dbt's usage statistics; enable it per dbt project",
+  "lspServers": {
+    "dbt-lsp-plus": {
+      "command": "dbt-lsp-plus",
+      "args": [
+        "--",
+        "dbt",
+        "lsp",
+        "--no-send-anonymous-usage-stats"
+      ],
+      "extensionToLanguage": {
+        ".sql": "sql",
+        ".yml": "yaml",
+        ".yaml": "yaml"
+      }
+    }
+  }
+}

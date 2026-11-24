@@ -1,0 +1,15 @@
+{
+  "name": "dockerfile-language-server",
+  "description": "Files named *.dockerfile",
+  "lspServers": {
+    "dockerfile-language-server": {
+      "command": "docker-langserver",
+      "args": [
+        "--stdio"
+      ],
+      "extensionToLanguage": {
+        ".dockerfile": "dockerfile"
+      }
+    }
+  }
+}

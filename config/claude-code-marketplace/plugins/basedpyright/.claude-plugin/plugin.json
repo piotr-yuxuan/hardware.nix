@@ -1,0 +1,23 @@
+{
+  "name": "basedpyright",
+  "description": "Python type checking, in standard mode where a project names none",
+  "lspServers": {
+    "basedpyright": {
+      "command": "basedpyright-langserver",
+      "args": [
+        "--stdio"
+      ],
+      "extensionToLanguage": {
+        ".py": "python",
+        ".pyi": "python"
+      },
+      "settings": {
+        "basedpyright": {
+          "analysis": {
+            "typeCheckingMode": "standard"
+          }
+        }
+      }
+    }
+  }
+}

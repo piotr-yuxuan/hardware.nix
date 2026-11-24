@@ -1,0 +1,17 @@
+{
+  "name": "vscode-css-language-server",
+  "description": "CSS, SCSS and Less",
+  "lspServers": {
+    "vscode-css-language-server": {
+      "command": "vscode-css-language-server",
+      "args": [
+        "--stdio"
+      ],
+      "extensionToLanguage": {
+        ".css": "css",
+        ".scss": "scss",
+        ".less": "less"
+      }
+    }
+  }
+}

@@ -24,7 +24,7 @@ language and platform support.
   - [[poetry][poetry]]
   - [[nodejs][nodejs]]
   - [[bun][bun]]
-  - [[Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)][Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)]]
+  - [[Rust toolchain (cargo, clippy, rustc, rustfmt, rust-analyzer)][Rust toolchain (cargo, clippy, rustc, rustfmt, rust-analyzer)]]
   - [[sccache][sccache]]
   - [[rust-code-analysis][rust-code-analysis]]
   - [[go][go]]
@@ -142,6 +142,7 @@ language and platform support.
 - [[AI coding][AI coding]]
   - [[ollama (nixOS only)][ollama (nixOS only)]]
   - [[rtk][rtk]]
+  - [[Servers for Claude Code][Servers for Claude Code]]
   - [[codegraph][codegraph]]
   - [[rust-analyzer-mcp][rust-analyzer-mcp]]
   - [[allium][allium]]
@@ -347,13 +348,17 @@ bun test                       # run the built-in test runner
 bun build ./entry.ts --outdir ./dist   # bundle for production
 #+end_src
 
-** Rust toolchain (cargo, rustc, rustfmt, rust-analyzer)
+** Rust toolchain (cargo, clippy, rustc, rustfmt, rust-analyzer)
 Individual Rust components installed via Nix (=unstable.cargo=,
-=unstable.rustc=, =unstable.rustfmt=, =unstable.rust-analyzer=) in
-=home/base.nix=.  No =rustup= is used.
+=unstable.clippy=, =unstable.rustc=, =unstable.rustfmt=,
+=unstable.rust-analyzer=) in =home/base.nix=.  No =rustup= is used.
+rust-analyzer runs =cargo clippy= as its check, in Emacs and for coding
+agents (see [[Servers for Claude Code][Servers for Claude Code]]): without clippy it reports
+only its own analysis, without the borrow checker's errors.
 #+begin_src sh
 cargo new hello && cd hello && cargo run   # create and run a project
 cargo build --release                      # optimised build
+cargo clippy                               # lints, and every error of cargo check
 rustfmt src/main.rs                        # format Rust code
 #+end_src
 
@@ -457,7 +462,9 @@ Run =clj -A:deps -Stree= to see everything available.
 
 These servers are used through Emacs or other editors. LTeX+ uses the
 standalone =lsp-ltex-plus= Emacs client; the programming servers use
-=lsp-mode=. You generally do not invoke them manually.
+=lsp-mode=. You generally do not invoke them manually. Claude Code
+reaches most of them through plugins, one per server: see
+[[Servers for Claude Code][Servers for Claude Code]].
 
 | Server                       | Language         | Trigger              |
 |------------------------------+------------------+----------------------|
@@ -1095,6 +1102,8 @@ codex mcp add terraform -- terraform-mcp-server --toolsets=registry stdio
 #+end_src
 
 The =registry= toolset omits HCP Terraform and Terraform Enterprise operations.
+Claude Code takes the same server from the plugin =terraform-mcp-server=
+(see [[Servers for Claude Code][Servers for Claude Code]]).
 
 ** infracost
 Estimates infrastructure costs and compares a proposed change with a baseline.
@@ -1586,6 +1595,96 @@ to about 2,000 tokens, its default context of 4096 then, and when a
 small model answered with a blank line, =rtk digest-log= printed that
 blank line in place of the output.
 
+** Servers for Claude Code
+Claude Code takes a language server only from a plugin, and its MCP
+servers either from =~/.claude.json= or from a plugin. Plugins are what
+=~/.claude/settings.json= enables by name, so every server below is a
+plugin of the marketplace =hardware.nix=, kept in
+[[file:../../config/claude-code-marketplace][config/claude-code-marketplace]]: one directory per plugin, each holding
+only =.claude-plugin/plugin.json=. =home/base.nix= links it to
+=~/.local/share/claude-code/hardware.nix= on both hosts.
+Commands are bare names, found on =PATH=.
+
+Claude Code writes =settings.json= itself, so the marketplace is
+registered once per host, after the rebuild; =marketplace add= writes
+=extraKnownMarketplaces=, and each =install= an entry of =enabledPlugins=:
+#+begin_src sh
+claude plugin marketplace add ~/.local/share/claude-code/hardware.nix
+jq -r '.plugins[].name' \
+  ~/.local/share/claude-code/hardware.nix/.claude-plugin/marketplace.json \
+  | while read -r p; do claude plugin install "$p@hardware.nix"; done
+for p in dbt-lsp-plus clojure-mcp ltex-ls-plus; do
+  claude plugin disable "$p@hardware.nix"
+done
+claude plugin list               # each plugin, enabled or not
+claude mcp list                  # the MCP servers, plugin:<plugin>:<server>
+#+end_src
+Claude Code keeps the linked path, not its target, and a session reads
+each plugin from it, so a rebuild that changes one reaches the next
+session, or =/reload-plugins= in a running one, with no command;
+=claude plugin details= shows the copy made at install time. A server starts at the first file it serves, and a plugin's MCP
+server with the session.
+
+| Plugin                        | Serves                                                       | Notes                                                       |
+|-------------------------------+--------------------------------------------------------------+-------------------------------------------------------------|
+| =basedpyright=                | =.py=, =.pyi=                                                | =standard= mode where a project names none                  |
+| =rust-analyzer=               | =.rs=                                                        | clippy, all symbols, own target directory, four threads     |
+| =nixd=                        | =.nix=                                                       |                                                             |
+| =bash-language-server=        | =.sh=, =.bash=                                               | ShellCheck's findings                                       |
+| =tombi=                       | =.toml=                                                      |                                                             |
+| =typescript-language-server=  | =.ts=, =.tsx=, =.js=, =.jsx=, =.mts=, =.cts=, =.mjs=, =.cjs= |                                                             |
+| =clojure-lsp=                 | =.clj=, =.cljs=, =.cljc=, =.edn=, =.bb=                      | clj-kondo's findings                                        |
+| =jdtls=                       | =.java=                                                      | two minutes to start                                        |
+| =gopls=                       | =.go=                                                        |                                                             |
+| =lua-language-server=         | =.lua=                                                       |                                                             |
+| =yaml-language-server=        | =.yaml=, =.yml=                                              | SchemaStore's schemas, fetched over the network             |
+| =dbt-lsp-plus=                | =.sql=, =.yml=, =.yaml=                                      | disabled; a dbt project enables it                          |
+| =marksman=                    | =.md=                                                        | links checked in a Git repository or under =.marksman.toml= |
+| =vscode-json-language-server= | =.json=, =.jsonc=                                            |                                                             |
+| =vscode-css-language-server=  | =.css=, =.scss=, =.less=                                     |                                                             |
+| =vscode-html-language-server= | =.html=, =.htm=                                              |                                                             |
+| =dockerfile-language-server=  | =.dockerfile=                                                | not a file named =Dockerfile=, which has no extension       |
+| =tofu-ls=                     | =.tf=, =.tfvars=, =.tofu=                                    |                                                             |
+| =texlab=                      | =.tex=, =.bib=                                               |                                                             |
+| =ltex-ls-plus=                | =.org=                                                       | disabled: technical words read as misspellings              |
+| =codegraph=                   | MCP                                                          | see [[codegraph][codegraph]]                                               |
+| =rust-analyzer-mcp=           | MCP                                                          | see [[rust-analyzer-mcp][rust-analyzer-mcp]]                                       |
+| =aws-knowledge=               | MCP, remote                                                  | AWS documentation, at =knowledge-mcp.global.api.aws=        |
+| =emacs=                       | MCP                                                          | see [[Emacs MCP integration][Emacs MCP integration]]                                   |
+| =terraform-mcp-server=        | MCP                                                          | see [[terraform-mcp-server][terraform-mcp-server]]                                    |
+| =clojure-mcp=                 | MCP                                                          | disabled: about 690 MB for each session                     |
+
+Claude Code gives an extension to one server only; a second plugin
+that claims it is not used, and =claude plugin list= shows a warning.
+=tests/test_claude_marketplace.py= therefore refuses two plugins for one
+extension, but for =yaml-language-server= and =dbt-lsp-plus=, which a
+project chooses between. A project overrides the user's choice in its
+=.claude/settings.json=, or in =.claude/settings.local.json= for you
+alone; in a dbt project:
+#+begin_src json
+{"enabledPlugins": {"dbt-lsp-plus@hardware.nix": true,
+                    "yaml-language-server@hardware.nix": false}}
+#+end_src
+=clojure-mcp= is enabled the same way in a Clojure project. Claude Code
+passes every diagnostic to the model, hints included, after each edit,
+which is why LTeX+ stays off: on a page of =docs/how-to/= it gave 24
+remarks, two thirds of them words such as =launchd= or =nixpkgs=.
+
+The other installed servers stay with Emacs: docker-language-server and
+=ruff server= would take =.yaml= and =.py= from the servers above, and
+Ruff reaches Claude Code through shift-left's quality-ratchet hook;
+tailwindcss-language-server and htmx-lsp offer completion, which
+Claude Code's =LSP= tool does not use; sqls reported nothing without a
+database; vscode-eslint-language-server and
+vscode-markdown-language-server would take extensions already served;
+terraform-ls, on the Mac, would take =.tf= from tofu-ls.
+
+A new server takes a package in =home/base.nix= and a plugin directory
+listed in =.claude-plugin/marketplace.json=, then =claude plugin
+install= on each host; a removed package takes its plugin with it.
+Codex has no language server client: its MCP servers are registered in
+=~/.codex/config.toml=, as each section says.
+
 ** codegraph
 [[https://github.com/colbymchenry/codegraph][CodeGraph]] parses a project into a graph of its symbols, calls and
 imports, stored in =.codegraph/= at the project's root, and answers a
@@ -1602,10 +1701,11 @@ by a desktop application included, sets two variables:
   against GitHub's releases is moot, and =codegraph upgrade= cannot
   replace a store path.
 
-The MCP server is registered once per host, after the rebuild, because
-=~/.claude.json= and =~/.codex/config.toml= belong to the applications:
+Claude Code takes the MCP server from the plugin =codegraph= (see
+[[Servers for Claude Code][Servers for Claude Code]]). Codex keeps it in =~/.codex/config.toml=, which
+belongs to the application, so it is registered once per host, after
+the rebuild:
 #+begin_src sh
-claude mcp add --scope user codegraph -- codegraph serve --mcp
 codex mcp add codegraph -- codegraph serve --mcp
 cd <project> && codegraph init   # index a project; the server keeps it in sync
 codegraph status                 # index statistics of this project
@@ -1648,32 +1748,31 @@ integration tests need a toolchain that the build sandbox lacks.  Each
 running server starts its own rust-analyzer, about 1.6 GB on
 dbt-lsp-plus.
 
-It is registered once per host for every session of both agents, since
-it starts rust-analyzer only at the first Rust tool call; its last
-argument, =.=, is the directory the agent starts it in, and its tool
-=rust_analyzer_set_workspace= changes project.  Claude Code and Codex
-keep the registration in files they write themselves, so it is a
-command, run after the rebuild:
+It serves every session of both agents, since it starts rust-analyzer
+only at the first Rust tool call; its last argument, =.=, is the
+directory the agent starts it in, and its tool
+=rust_analyzer_set_workspace= changes project.  Claude Code takes it
+from the plugin =rust-analyzer-mcp= (see [[Servers for Claude Code][Servers for Claude Code]]),
+beside the plugin =rust-analyzer=, whose language server sends
+diagnostics after each edit; a session that uses both runs two
+rust-analyzers.  Codex keeps the registration in a file it writes
+itself, so it is a command, run after the rebuild:
 #+begin_src sh
-claude mcp add --scope user rust-analyzer -- rust-analyzer-mcp \
-  --all-features --config check.command=clippy \
-  --config workspace.symbol.search.kind=all_symbols \
-  --config cargo.targetDir=true \
-  --config numThreads=4 --config cachePriming.numThreads=4 .
 codex mcp add rust-analyzer -- rust-analyzer-mcp \
   --all-features --config check.command=clippy \
   --config workspace.symbol.search.kind=all_symbols \
   --config cargo.targetDir=true \
   --config numThreads=4 --config cachePriming.numThreads=4 .
-claude mcp get rust-analyzer    # Connected
+claude mcp list                 # plugin:rust-analyzer-mcp:rust-analyzer: Connected
 codex mcp get rust-analyzer
 #+end_src
 =cargo.targetDir= keeps its checks off the agent's own =cargo= runs, and
 the thread counts keep it within four cores.  On nixOS the Codex CLI is
 inside the =codex-desktop= package, as the codegraph section says.
 =--all-features= suits a project whose features are additive; elsewhere
-name them with =--features=, in a project's own =.mcp.json= or
-=.codex/config.toml=, which take precedence.
+name them with =--features=, in a project's own =.codex/config.toml=, or,
+for Claude Code, in its =.mcp.json= with the plugin disabled in its
+=.claude/settings.json=.
 
 ** allium
 [[https://allium-lang.org/][Allium]], from JUXT, is a specification language for LLMs: =.allium=
@@ -1714,6 +1813,15 @@ codex mcp add emacs-tools -- \
 codex mcp get emacs-tools
 # In Codex:
 /mcp
+#+end_src
+
+Claude Code takes the same bridge from the plugin =emacs= (see
+[[Servers for Claude Code][Servers for Claude Code]]), whose paths start at =${HOME}=, which Claude
+Code expands. Its tool =eval-elisp= runs any code inside Emacs, so
+=~/.claude/settings.json= denies it; the rule is added once per host,
+under =permissions=:
+#+begin_src json
+{"permissions": {"deny": ["mcp__plugin_emacs_emacs__eval-elisp"]}}
 #+end_src
 
 The bridge uses the shared Python 3 package. The shared =socat= package is
@@ -2306,8 +2414,9 @@ journalctl -u touchpad-watchdog -f     # watch for recovery events
 #+end_src
 
 ** Linux kernel (nixOS only)
-The 7.2 series, selected by =boot.kernelPackages = pkgs.linuxPackages_7_2=
-in =hosts/nixOS.nix=.  7.2.8 fixed a TTM use-after-free that crashed the
+The newest stable series, 7.3 on 23 November 2026, selected by
+=boot.kernelPackages = pkgs.linuxPackages_latest= in =hosts/nixOS.nix=.
+7.2.8 fixed a TTM use-after-free that crashed the
 laptop after hibernation, and that 6.18.57 carries without the fix.
 [[file:../explanation/nixOS-kernel-choice.org][Kernel choice and the hibernation crash]] explains the choice and when to
 change it.

@@ -1,0 +1,12 @@
+{
+  "name": "emacs",
+  "description": "The running Emacs: diagnostics, Org and buffers",
+  "mcpServers": {
+    "emacs": {
+      "command": "${HOME}/.emacs.d/straight/repos/emacs-mcp-server/mcp-wrapper.py",
+      "args": [
+        "${HOME}/.emacs.d/var/mcp-server/emacs-mcp-server.sock"
+      ]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 #+title: Kernel choice and the hibernation crash
 
-nixOS runs the 7.2 series of Linux, selected by =boot.kernelPackages= in [[file:../../hosts/nixOS.nix][the host configuration]]. This page records the
+nixOS runs the newest stable series of Linux, 7.3 on 23 November 2026, selected by =boot.kernelPackages= in [[file:../../hosts/nixOS.nix][the host configuration]]. This page records the
 crash that decided it, the kernels that carry the defect, and when to change the choice.
 
 * The crash
@@ -44,7 +44,7 @@ The kernels that predate the defect had no such crash here: none of the 16 hiber
 
 * Kernels that carry the defect
 
-Checked on 20 October 2026 in =drivers/gpu/drm/ttm/ttm_bo.c= of each release:
+Checked on 20 October 2026, and on 23 November 2026 for 6.18.64 and 7.3.5, in =drivers/gpu/drm/ttm/ttm_bo.c= of each release:
 
 | Kernel             | Code after =ttm_tt_swapout()= | Status       |
 |--------------------+-----------------------------+--------------|
@@ -53,6 +53,7 @@ Checked on 20 October 2026 in =drivers/gpu/drm/ttm/ttm_bo.c= of each release:
 | 7.2.0 to 7.2.7     | =if (!ret)=                   | Defect       |
 | 7.2.8 and later    | =if (ret > 0)=                | Fixed        |
 | 7.3                | =if (ret > 0)=                | Fixed        |
+| 6.18.64            | =if (ret > 0)=                | Fixed        |
 
 The defect was tagged for the stable releases from 6.13, and [[https://cdn.kernel.org/pub/linux/kernel/v6.x/ChangeLog-6.18.57][6.18.57]] took it as a dependency of [[https://git.kernel.org/torvalds/c/1d59f36e95f7][1d59f36e95f7]], "drm/ttm:
 Fix ttm_bo_shrink() infinite LRU walk on backup failure". The fix is tagged for 7.1 and later only, so no 6.18 release
@@ -65,8 +66,12 @@ had it on that date.
 | Until 22 Sep 2026 | =linuxPackages_latest= | Default; 7.2.0 to 7.2.4 crashed |
 | 22 Sep 2026       | =linuxPackages_6_18=   | 6.18.50 predates the defect     |
 | 20 Oct 2026       | =linuxPackages_7_2=    | 6.18.57 brought the defect back |
+| 23 Nov 2026       | =linuxPackages_latest= | 7.2 reached its end of life     |
 
 * Alternatives considered
+
+On 23 November 2026, when 7.2 reached its end of life, both 7.3.5 and the longterm 6.18.64 had the fix. 7.3 had had five
+point releases and is the newest series; 6.18 is the branch that brought the defect back once.
 
 On 20 October 2026, two other options had the fix:
 
@@ -79,12 +84,13 @@ Holding 6.18.56 was rejected: it receives no further security fixes.
 
 * When to change it
 
-7.2 reaches its end of life a few weeks after the release of 7.3, and nixpkgs then removes =linuxPackages_7_2=, so a lock
-update makes the configuration fail to evaluate. By then 7.3 has had point releases. Move to =linuxPackages_latest=, or to
-a longterm branch whose release has the fix. To check a release, here 6.18.58, read the line after the call:
+=linuxPackages_latest= moves to the next series, 7.4, in the first lock update after nixpkgs adopts it, without an edit
+here. If that series brings a new crash, pin the previous one, for example =linuxPackages_7_3=, until a point release fixes
+it; nixpkgs removes a pinned series a few weeks after its end of life, and a lock update then fails to evaluate. To check
+whether a release has the fix for this defect, here 7.4, read the line after the call:
 
 #+begin_src sh
-curl -s https://raw.githubusercontent.com/gregkh/linux/v6.18.58/drivers/gpu/drm/ttm/ttm_bo.c |
+curl -s https://raw.githubusercontent.com/gregkh/linux/v7.4/drivers/gpu/drm/ttm/ttm_bo.c |
   grep -A1 'ret = ttm_tt_swapout'
 #+end_src
 

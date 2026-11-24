@@ -1,0 +1,31 @@
+{
+  "name": "rust-analyzer",
+  "description": "Rust, with clippy and search across all symbols",
+  "lspServers": {
+    "rust-analyzer": {
+      "command": "rust-analyzer",
+      "extensionToLanguage": {
+        ".rs": "rust"
+      },
+      "initializationOptions": {
+        "check": {
+          "command": "clippy"
+        },
+        "workspace": {
+          "symbol": {
+            "search": {
+              "kind": "all_symbols"
+            }
+          }
+        },
+        "cargo": {
+          "targetDir": true
+        },
+        "numThreads": 4,
+        "cachePriming": {
+          "numThreads": 4
+        }
+      }
+    }
+  }
+}

@@ -72,10 +72,10 @@ nix flake update nixpkgs
 sudo nixos-rebuild switch --flake .#nixOS
 #+end_src
 
-=boot.kernelPackages = pkgs.linuxPackages_7_2= in
-=hosts/nixOS.nix= follows the 7.2 kernel series: bumping =nixpkgs=
-brings its point releases, and a newer series needs an edit of that
-line; [[file:../explanation/nixOS-kernel-choice.org][Kernel choice and the hibernation crash]] says when.  AMD
+=boot.kernelPackages = pkgs.linuxPackages_latest= in
+=hosts/nixOS.nix= follows the newest stable kernel series: bumping
+=nixpkgs= brings its point releases and, in time, the next series;
+[[file:../explanation/nixOS-kernel-choice.org][Kernel choice and the hibernation crash]] says what to check then.  AMD
 microcode updates come from the AMD CPU profile of =nixos-hardware=
 (=hardware.cpu.amd.updateMicrocode=).
 

@@ -1,0 +1,13 @@
+{
+  "name": "codegraph",
+  "description": "CodeGraph's index of a project's symbols and calls",
+  "mcpServers": {
+    "codegraph": {
+      "command": "codegraph",
+      "args": [
+        "serve",
+        "--mcp"
+      ]
+    }
+  }
+}

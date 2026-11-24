@@ -1,0 +1,10 @@
+{
+  "name": "aws-knowledge",
+  "description": "AWS documentation, regional availability and guidance (remote)",
+  "mcpServers": {
+    "aws-knowledge": {
+      "type": "http",
+      "url": "https://knowledge-mcp.global.api.aws"
+    }
+  }
+}

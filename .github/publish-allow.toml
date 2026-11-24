@@ -14,6 +14,11 @@ values = [
   "date-menu-formatter@marcinjakubowski.github.com",
   "grand-theft-focus@zalckos.github.com",
   "nightthemeswitcher@romainvigier.fr",
+  # Claude Code plugins of this repository's marketplace, as
+  # <plugin>@<marketplace>; the last is a shell variable.
+  "dbt-lsp-plus@hardware.nix",
+  "yaml-language-server@hardware.nix",
+  "p@hardware.nix",
   # Home directories of the placeholder account.
   "/home/example",
   "/home/example.broken",

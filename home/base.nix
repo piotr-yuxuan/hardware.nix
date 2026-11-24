@@ -44,6 +44,7 @@ in {
 
       # Rust toolchain
       unstable.cargo
+      unstable.clippy # rust-analyzer's check command, here and in Emacs
       unstable.rustc
       unstable.rustfmt
       unstable.rust-analyzer
@@ -592,4 +593,9 @@ in {
     source = ../config/rtk;
     recursive = true;
   };
+
+  # Claude Code's servers, at one path on both hosts for `claude plugin
+  # marketplace add`; docs/reference/package-guide.org registers it.
+  home.file.".local/share/claude-code/hardware.nix".source =
+    ../config/claude-code-marketplace;
 }

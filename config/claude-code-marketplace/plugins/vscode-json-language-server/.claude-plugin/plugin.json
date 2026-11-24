@@ -1,0 +1,16 @@
+{
+  "name": "vscode-json-language-server",
+  "description": "JSON",
+  "lspServers": {
+    "vscode-json-language-server": {
+      "command": "vscode-json-language-server",
+      "args": [
+        "--stdio"
+      ],
+      "extensionToLanguage": {
+        ".json": "json",
+        ".jsonc": "jsonc"
+      }
+    }
+  }
+}

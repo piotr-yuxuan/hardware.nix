@@ -1,0 +1,15 @@
+{
+  "name": "marksman",
+  "description": "Markdown links and headings",
+  "lspServers": {
+    "marksman": {
+      "command": "marksman",
+      "args": [
+        "server"
+      ],
+      "extensionToLanguage": {
+        ".md": "markdown"
+      }
+    }
+  }
+}

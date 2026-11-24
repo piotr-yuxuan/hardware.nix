@@ -1,0 +1,16 @@
+{
+  "name": "clojure-lsp",
+  "description": "Clojure, with clj-kondo's findings",
+  "lspServers": {
+    "clojure-lsp": {
+      "command": "clojure-lsp",
+      "extensionToLanguage": {
+        ".clj": "clojure",
+        ".cljs": "clojure",
+        ".cljc": "clojure",
+        ".edn": "clojure",
+        ".bb": "clojure"
+      }
+    }
+  }
+}

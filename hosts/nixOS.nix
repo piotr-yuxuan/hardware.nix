@@ -99,9 +99,9 @@ in {
     };
   };
 
-  # The 7.2 series, fixed since 7.2.8 for a crash after hibernation. Why
-  # and when to change: docs/explanation/nixOS-kernel-choice.org.
-  boot.kernelPackages = pkgs.linuxPackages_7_2;
+  # Every 7.3 release has the fix for a crash after hibernation. Why and
+  # when to change: docs/explanation/nixOS-kernel-choice.org.
+  boot.kernelPackages = pkgs.linuxPackages_latest;
 
   # The console and the LUKS prompt use the XKB layout that
   # hosts/nixOS/personal.nix sets.

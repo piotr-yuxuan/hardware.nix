@@ -1,0 +1,13 @@
+{
+  "name": "terraform-mcp-server",
+  "description": "Terraform Registry documentation for providers, modules and policies",
+  "mcpServers": {
+    "terraform": {
+      "command": "terraform-mcp-server",
+      "args": [
+        "--toolsets=registry",
+        "stdio"
+      ]
+    }
+  }
+}

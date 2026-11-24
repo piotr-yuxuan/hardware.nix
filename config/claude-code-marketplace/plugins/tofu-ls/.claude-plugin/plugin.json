@@ -1,0 +1,17 @@
+{
+  "name": "tofu-ls",
+  "description": "OpenTofu and Terraform",
+  "lspServers": {
+    "tofu-ls": {
+      "command": "tofu-ls",
+      "args": [
+        "serve"
+      ],
+      "extensionToLanguage": {
+        ".tf": "opentofu",
+        ".tfvars": "opentofu-vars",
+        ".tofu": "opentofu"
+      }
+    }
+  }
+}

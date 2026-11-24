@@ -1,0 +1,12 @@
+{
+  "name": "gopls",
+  "description": "Go",
+  "lspServers": {
+    "gopls": {
+      "command": "gopls",
+      "extensionToLanguage": {
+        ".go": "go"
+      }
+    }
+  }
+}

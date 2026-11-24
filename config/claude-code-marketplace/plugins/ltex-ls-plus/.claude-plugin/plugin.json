@@ -1,0 +1,20 @@
+{
+  "name": "ltex-ls-plus",
+  "description": "Grammar and spelling of Org prose; off by default",
+  "lspServers": {
+    "ltex-ls-plus": {
+      "command": "ltex-ls-plus",
+      "extensionToLanguage": {
+        ".org": "org"
+      },
+      "settings": {
+        "ltex": {
+          "language": "auto",
+          "additionalRules": {
+            "motherTongue": "fr"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "rust-analyzer-mcp",
+  "description": "rust-analyzer's rename, code actions, formatting and completion",
+  "mcpServers": {
+    "rust-analyzer": {
+      "command": "rust-analyzer-mcp",
+      "args": [
+        "--all-features",
+        "--config",
+        "check.command=clippy",
+        "--config",
+        "workspace.symbol.search.kind=all_symbols",
+        "--config",
+        "cargo.targetDir=true",
+        "--config",
+        "numThreads=4",
+        "--config",
+        "cachePriming.numThreads=4",
+        "."
+      ]
+    }
+  }
+}

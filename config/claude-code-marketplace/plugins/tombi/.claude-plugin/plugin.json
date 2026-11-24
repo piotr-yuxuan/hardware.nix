@@ -1,0 +1,15 @@
+{
+  "name": "tombi",
+  "description": "TOML, with the schemas of Cargo.toml and pyproject.toml",
+  "lspServers": {
+    "tombi": {
+      "command": "tombi",
+      "args": [
+        "lsp"
+      ],
+      "extensionToLanguage": {
+        ".toml": "toml"
+      }
+    }
+  }
+}

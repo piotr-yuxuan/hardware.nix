@@ -1,0 +1,13 @@
+{
+  "name": "texlab",
+  "description": "LaTeX and BibTeX",
+  "lspServers": {
+    "texlab": {
+      "command": "texlab",
+      "extensionToLanguage": {
+        ".tex": "latex",
+        ".bib": "bibtex"
+      }
+    }
+  }
+}

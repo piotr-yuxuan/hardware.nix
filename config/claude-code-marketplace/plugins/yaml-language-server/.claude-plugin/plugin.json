@@ -1,0 +1,16 @@
+{
+  "name": "yaml-language-server",
+  "description": "YAML, with SchemaStore's schemas",
+  "lspServers": {
+    "yaml-language-server": {
+      "command": "yaml-language-server",
+      "args": [
+        "--stdio"
+      ],
+      "extensionToLanguage": {
+        ".yaml": "yaml",
+        ".yml": "yaml"
+      }
+    }
+  }
+}

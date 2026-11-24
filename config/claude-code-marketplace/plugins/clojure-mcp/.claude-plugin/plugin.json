@@ -1,0 +1,15 @@
+{
+  "name": "clojure-mcp",
+  "description": "Clojure tools backed by a REPL; enable it per Clojure project",
+  "mcpServers": {
+    "clojure-mcp": {
+      "command": "clojure",
+      "args": [
+        "-Tmcp",
+        "start",
+        ":config-profile",
+        ":cli-assist"
+      ]
+    }
+  }
+}

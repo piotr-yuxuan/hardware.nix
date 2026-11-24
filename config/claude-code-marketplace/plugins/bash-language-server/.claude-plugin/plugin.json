@@ -1,0 +1,16 @@
+{
+  "name": "bash-language-server",
+  "description": "Shell scripts, with ShellCheck's findings",
+  "lspServers": {
+    "bash-language-server": {
+      "command": "bash-language-server",
+      "args": [
+        "start"
+      ],
+      "extensionToLanguage": {
+        ".sh": "shellscript",
+        ".bash": "shellscript"
+      }
+    }
+  }
+}
